@@ -33,6 +33,10 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# Local SQLite DB (sandbox artifact)
+db/*.db
+db/*.db-journal
+
 # vercel
 .vercel
 
@@ -58,3 +62,6 @@ server.log
 
 # Local scripts (working dir for build scripts)
 /scripts/
+
+# Dev-server PID files
+.zscripts/*.pid
