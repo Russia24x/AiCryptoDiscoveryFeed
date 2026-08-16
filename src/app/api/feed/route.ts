@@ -165,9 +165,20 @@ export async function GET(request: Request) {
   const limit = Math.min(parseInt(searchParams.get("limit") || "60", 10), 200);
   const search = (searchParams.get("q") || "").trim().toLowerCase();
   const sourceFilter = (searchParams.get("source") || "").trim().toLowerCase();
+  // Language filter — when provided, only return sources in that language
+  // (so Persian UI shows Persian content, English UI shows English content).
+  const lang = (searchParams.get("lang") || "").trim().toLowerCase() as
+    | ""
+    | "fa"
+    | "en";
 
   let sources =
     category === "all" ? SOURCES : SOURCES.filter((s) => s.category === category);
+
+  // Filter by language if requested
+  if (lang === "fa" || lang === "en") {
+    sources = sources.filter((s) => s.language === lang);
+  }
 
   // If a specific source filter is provided, narrow to that single source.
   if (sourceFilter) {

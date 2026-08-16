@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { Language } from "@/lib/sources";
 
-export function useFeedStats() {
+export function useFeedStats(lang?: Language) {
   const [stats, setStats] = useState({
     totalItems: 0,
     sourcesOk: 0,
@@ -14,7 +15,12 @@ export function useFeedStats() {
     let cancelled = false;
     const load = async () => {
       try {
-        const res = await fetch("/api/feed?category=all&limit=200", {
+        const params = new URLSearchParams({
+          category: "all",
+          limit: "200",
+        });
+        if (lang) params.set("lang", lang);
+        const res = await fetch(`/api/feed?${params.toString()}`, {
           cache: "no-store",
         });
         const data = await res.json();
@@ -26,15 +32,14 @@ export function useFeedStats() {
           loaded: true,
         });
       } catch {
-        if (!cancelled)
-          setStats((s) => ({ ...s, loaded: true }));
+        if (!cancelled) setStats((s) => ({ ...s, loaded: true }));
       }
     };
     load();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [lang]);
 
   return stats;
 }

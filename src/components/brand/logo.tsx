@@ -1,12 +1,16 @@
+"use client";
+
 import { cn } from "@/lib/utils";
+import type { Language } from "@/lib/sources";
 
 interface LogoProps {
   className?: string;
   size?: "sm" | "md" | "lg";
   showSub?: boolean;
+  lang?: Language;
 }
 
-export function Logo({ className, size = "md", showSub = false }: LogoProps) {
+export function Logo({ className, size = "md", showSub = false, lang = "fa" }: LogoProps) {
   const sizes = {
     sm: { ai: "text-base", crypto: "text-base", discovery: "text-base", sub: "text-[10px]" },
     md: { ai: "text-xl", crypto: "text-xl", discovery: "text-xl", sub: "text-xs" },
@@ -24,7 +28,7 @@ export function Logo({ className, size = "md", showSub = false }: LogoProps) {
       </div>
       {showSub && (
         <span className={cn("mt-1 text-[var(--brand-muted)] font-latin tracking-[0.2em] uppercase", s.sub)}>
-          Future · Data · Intelligence
+          {lang === "fa" ? "آینده · داده · هوشمندی" : "Future · Data · Intelligence"}
         </span>
       )}
     </div>

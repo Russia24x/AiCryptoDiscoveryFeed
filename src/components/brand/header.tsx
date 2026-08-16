@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import { Search, Menu, X } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
+import { LanguageToggle } from "@/components/brand/language-toggle";
 import { BookmarksButton } from "@/components/feed/bookmarks-drawer";
 import { useBookmarks } from "@/hooks/use-bookmarks";
+import { useLanguage } from "@/hooks/use-language";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,15 +24,6 @@ interface HeaderProps {
   onOpenBookmarks: () => void;
 }
 
-const NAV = [
-  { id: "all", label: "خانه" },
-  { id: "crypto", label: "ارز دیجیتال" },
-  { id: "ai", label: "هوش مصنوعی" },
-  { id: "tech", label: "فناوری" },
-  { id: "gaming", label: "بازی" },
-  { id: "future", label: "آینده‌نگری" },
-];
-
 export function Header({
   activeCategory,
   onCategoryChange,
@@ -41,7 +34,8 @@ export function Header({
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const { count, hydrated } = useBookmarks();
+  const { count, hydrated: bookmarksHydrated } = useBookmarks();
+  const { t, lang } = useLanguage();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -49,6 +43,15 @@ export function Header({
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  const NAV = [
+    { id: "all", label: t.nav.home },
+    { id: "crypto", label: t.nav.crypto },
+    { id: "ai", label: t.nav.ai },
+    { id: "tech", label: t.nav.tech },
+    { id: "gaming", label: t.nav.gaming },
+    { id: "entertainment", label: t.nav.entertainment },
+  ];
 
   return (
     <header
@@ -60,10 +63,10 @@ export function Header({
       )}
     >
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex h-16 items-center justify-between gap-4">
+        <div className="flex h-16 items-center justify-between gap-3">
           {/* Logo */}
           <a href="#" className="flex items-center gap-2 shrink-0">
-            <Logo size="md" />
+            <Logo size="md" lang={lang} />
           </a>
 
           {/* Desktop nav */}
@@ -97,8 +100,8 @@ export function Header({
                     value={search}
                     onChange={(e) => onSearchChange(e.target.value)}
                     onBlur={() => !search && setSearchOpen(false)}
-                    placeholder="جستجو…"
-                    className="bg-transparent outline-none text-sm w-40 lg:w-56 placeholder:text-[var(--brand-muted)]"
+                    placeholder={t.nav.searchPlaceholder}
+                    className="bg-transparent outline-none text-sm w-32 lg:w-48 placeholder:text-[var(--brand-muted)]"
                   />
                   <button
                     onClick={() => {
@@ -114,26 +117,29 @@ export function Header({
                 <button
                   onClick={() => setSearchOpen(true)}
                   className="p-2 rounded-full hover:bg-[var(--brand-surface)] text-[var(--brand-muted)] hover:text-[var(--brand-text)] transition-colors"
-                  aria-label="جستجو"
+                  aria-label={t.nav.search}
                 >
                   <Search className="w-4 h-4" />
                 </button>
               )}
             </div>
 
+            {/* Language toggle */}
+            <LanguageToggle className="hidden sm:flex" />
+
             {/* Bookmarks */}
             <BookmarksButton
-              count={hydrated ? count : 0}
+              count={bookmarksHydrated ? count : 0}
               onClick={onOpenBookmarks}
             />
 
-            {/* Mobile: search + menu */}
+            {/* Mobile: menu */}
             <Button
               variant="ghost"
               size="icon"
               className="sm:hidden text-[var(--brand-muted)] hover:text-[var(--brand-text)]"
               onClick={() => setMobileOpen(true)}
-              aria-label="منو"
+              aria-label={t.nav.menu}
             >
               <Menu className="w-5 h-5" />
             </Button>
@@ -147,7 +153,7 @@ export function Header({
             <input
               value={search}
               onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="جستجو در محتوا…"
+              placeholder={t.nav.searchPlaceholder}
               className="bg-transparent outline-none text-sm w-full placeholder:text-[var(--brand-muted)]"
             />
           </div>
@@ -157,12 +163,12 @@ export function Header({
       {/* Mobile menu */}
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent
-          side="right"
+          side={lang === "fa" ? "right" : "left"}
           className="w-[280px] bg-[var(--brand-surface)] border-l border-[var(--brand-border)]"
         >
           <SheetHeader>
             <SheetTitle className="text-right">
-              <Logo size="md" />
+              <Logo size="md" lang={lang} />
             </SheetTitle>
           </SheetHeader>
           <nav className="mt-6 flex flex-col gap-1">
@@ -184,7 +190,20 @@ export function Header({
               </button>
             ))}
           </nav>
-          <div className="mt-8 pt-6 border-t border-[var(--brand-border)]">
+
+          {/* Language toggle in mobile menu */}
+          <div className="mt-6 pt-6 border-t border-[var(--brand-border)]">
+            <div className="flex items-center justify-between px-4 mb-2">
+              <span className="text-xs text-[var(--brand-muted)] font-latin uppercase tracking-wider">
+                {t.nav.language}
+              </span>
+            </div>
+            <div className="px-4">
+              <LanguageToggle className="w-full justify-between" />
+            </div>
+          </div>
+
+          <div className="mt-6 pt-6 border-t border-[var(--brand-border)]">
             <button
               onClick={() => {
                 onOpenBookmarks();
@@ -192,14 +211,19 @@ export function Header({
               }}
               className="w-full text-right px-4 py-3 rounded-lg text-sm font-medium text-[var(--brand-muted)] hover:text-[var(--brand-text)] hover:bg-[var(--brand-surface-2)] transition-colors flex items-center justify-between"
             >
-              <span className="font-latin text-xs">{count} نشانک</span>
-              <span>نشانک‌های من</span>
+              <span className="font-latin text-xs">
+                {count.toLocaleString(lang === "fa" ? "fa-IR" : "en-US")}
+              </span>
+              <span>{t.nav.bookmarks}</span>
             </button>
           </div>
+
           <div className="mt-8 pt-6 border-t border-[var(--brand-border)]">
             <div className="flex items-center justify-between text-xs text-[var(--brand-muted)]">
-              <span className="font-latin uppercase tracking-wider">Ai Crypto Discovery</span>
-              <span className="font-latin">v1.0</span>
+              <span className="font-latin uppercase tracking-wider">
+                Ai Crypto Discovery
+              </span>
+              <span className="font-latin">v1.1</span>
             </div>
           </div>
         </SheetContent>

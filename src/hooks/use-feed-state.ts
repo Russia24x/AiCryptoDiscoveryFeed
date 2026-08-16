@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import type { Language } from "@/lib/sources";
 
 export function useFeedState() {
   const [category, setCategory] = useState<string>("all");
@@ -60,4 +61,51 @@ export function useFeedState() {
     sourceFilter,
     setSourceFilter,
   };
+}
+
+/** Format a number using the active language's digits. */
+export function formatNumber(n: number, lang: Language): string {
+  return n.toLocaleString(lang === "fa" ? "fa-IR" : "en-US");
+}
+
+/** Format an ISO date string as a relative time, localized per language. */
+export function relativeTime(
+  iso: string,
+  lang: Language,
+  dict: {
+    justNow: string;
+    minutesAgo: string;
+    hoursAgo: string;
+    daysAgo: string;
+    monthsAgo: string;
+    yearsAgo: string;
+  }
+): string {
+  const date = new Date(iso);
+  const diff = Date.now() - date.getTime();
+  if (Number.isNaN(diff)) return "";
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return dict.justNow;
+  if (min < 60) {
+    const n = min.toLocaleString(lang === "fa" ? "fa-IR" : "en-US");
+    return lang === "fa" ? `${n} ${dict.minutesAgo}` : `${n} ${dict.minutesAgo}`;
+  }
+  const hr = Math.floor(min / 60);
+  if (hr < 24) {
+    const n = hr.toLocaleString(lang === "fa" ? "fa-IR" : "en-US");
+    return `${n} ${dict.hoursAgo}`;
+  }
+  const day = Math.floor(hr / 24);
+  if (day < 30) {
+    const n = day.toLocaleString(lang === "fa" ? "fa-IR" : "en-US");
+    return `${n} ${dict.daysAgo}`;
+  }
+  const month = Math.floor(day / 30);
+  if (month < 12) {
+    const n = month.toLocaleString(lang === "fa" ? "fa-IR" : "en-US");
+    return `${n} ${dict.monthsAgo}`;
+  }
+  const year = Math.floor(month / 12);
+  const n = year.toLocaleString(lang === "fa" ? "fa-IR" : "en-US");
+  return `${n} ${dict.yearsAgo}`;
 }

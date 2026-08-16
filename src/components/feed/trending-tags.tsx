@@ -3,6 +3,8 @@
 import { useMemo } from "react";
 import { Hash, TrendingUp } from "lucide-react";
 import type { FeedItem } from "@/types/feed";
+import { useLanguage } from "@/hooks/use-language";
+import { formatNumber } from "@/hooks/use-feed-state";
 
 interface TrendingTagsProps {
   items: FeedItem[];
@@ -10,11 +12,13 @@ interface TrendingTagsProps {
 }
 
 export function TrendingTags({ items, onTagClick }: TrendingTagsProps) {
+  const { t, lang } = useLanguage();
+
   const tags = useMemo(() => {
     const map = new Map<string, number>();
     for (const it of items) {
-      for (const t of it.tags || []) {
-        const k = t.trim();
+      for (const tag of it.tags || []) {
+        const k = tag.trim();
         if (!k || k.length > 28) continue;
         map.set(k, (map.get(k) || 0) + 1);
       }
@@ -31,11 +35,11 @@ export function TrendingTags({ items, onTagClick }: TrendingTagsProps) {
       <div className="flex items-center gap-2 mb-4">
         <TrendingUp className="w-4 h-4 text-[var(--brand-accent)]" />
         <h3 className="text-sm font-bold">
-          <span className="text-[var(--brand-text)]">برچسب‌های </span>
-          <span className="text-[var(--brand-accent)]">داغ</span>
+          <span className="text-[var(--brand-text)]">{t.trending.title} </span>
+          <span className="text-[var(--brand-accent)]">{t.trending.titleAccent}</span>
         </h3>
         <span className="text-[10px] font-latin text-[var(--brand-muted)] uppercase tracking-wider mr-1">
-          · {tags.length} tags
+          · {formatNumber(tags.length, lang)} {t.trending.count}
         </span>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -48,7 +52,7 @@ export function TrendingTags({ items, onTagClick }: TrendingTagsProps) {
             <Hash className="w-3 h-3 text-[var(--brand-accent)]/60 group-hover:text-[var(--brand-accent)]" />
             <span className="truncate max-w-[180px]">{tag}</span>
             <span className="text-[10px] text-[var(--brand-muted)]/60 ml-1">
-              {count.toLocaleString("fa-IR")}
+              {formatNumber(count, lang)}
             </span>
           </button>
         ))}

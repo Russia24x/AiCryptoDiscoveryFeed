@@ -4,11 +4,13 @@ import { useMemo, useState } from "react";
 import { RefreshCw, LayoutGrid, List, Filter } from "lucide-react";
 import type { FeedItem } from "@/types/feed";
 import { useFeed } from "@/hooks/use-feed";
+import { useLanguage } from "@/hooks/use-language";
 import { FeedCard } from "./feed-card";
 import { FeedDetail } from "./feed-detail";
 import { FeedSkeleton, FeedEmpty, FeedError } from "./feed-states";
 import { SourceFilter } from "./source-filter";
-import { CATEGORY_META } from "@/lib/sources";
+import { CATEGORY_META, categoryLabel } from "@/lib/sources";
+import { formatNumber } from "@/hooks/use-feed-state";
 import { cn } from "@/lib/utils";
 
 interface FeedGridProps {
@@ -26,10 +28,12 @@ export function FeedGrid({
   sourceFilter,
   onSourceChange,
 }: FeedGridProps) {
+  const { t, lang } = useLanguage();
   const { data, loading, error, refetch } = useFeed(
     category,
     search,
-    sourceFilter
+    sourceFilter,
+    lang
   );
   const [selected, setSelected] = useState<FeedItem | null>(null);
   const [open, setOpen] = useState(false);
@@ -41,10 +45,10 @@ export function FeedGrid({
   };
 
   const title = useMemo(() => {
-    if (search.trim()) return `نتایج جستجو: «${search}»`;
-    if (category === "all") return "آخرین محتواها";
-    return CATEGORY_META[category as keyof typeof CATEGORY_META]?.label || "محتوا";
-  }, [category, search]);
+    if (search.trim()) return `${t.feed.searchResults}: «${search}»`;
+    if (category === "all") return t.feed.latestContent;
+    return categoryLabel(category as any, lang);
+  }, [category, search, lang, t]);
 
   const count = data?.items?.length || 0;
 
@@ -55,17 +59,17 @@ export function FeedGrid({
         <div>
           <div className="flex items-center gap-2 text-[11px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-1.5">
             <Filter className="w-3.5 h-3.5" />
-            <span>Feed · Live</span>
+            <span>{t.feed.feedLive}</span>
             {data?.fetchedAt && (
               <span className="text-[var(--brand-muted)]/60">
-                · updated {new Date(data.fetchedAt).toLocaleTimeString("en-GB")}
+                · {t.feed.updated} {new Date(data.fetchedAt).toLocaleTimeString("en-GB")}
               </span>
             )}
           </div>
           <h2 className="text-xl md:text-2xl font-bold flex items-center gap-3">
             <span className="text-[var(--brand-text)]">{title}</span>
             <span className="text-sm font-latin text-[var(--brand-accent)] bg-[var(--brand-accent-soft)] px-2 py-0.5 rounded-md">
-              {count.toLocaleString("fa-IR")}
+              {formatNumber(count, lang)}
             </span>
           </h2>
         </div>
@@ -81,7 +85,7 @@ export function FeedGrid({
                   ? "bg-[var(--brand-surface-2)] text-[var(--brand-accent)]"
                   : "text-[var(--brand-muted)] hover:text-[var(--brand-text)]"
               )}
-              aria-label="نمای شبکه‌ای"
+              aria-label={t.feed.gridView}
             >
               <LayoutGrid className="w-4 h-4" />
             </button>
@@ -93,7 +97,7 @@ export function FeedGrid({
                   ? "bg-[var(--brand-surface-2)] text-[var(--brand-accent)]"
                   : "text-[var(--brand-muted)] hover:text-[var(--brand-text)]"
               )}
-              aria-label="نمای فهرستی"
+              aria-label={t.feed.listView}
             >
               <List className="w-4 h-4" />
             </button>
@@ -105,7 +109,7 @@ export function FeedGrid({
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md bg-[var(--brand-surface)] border border-[var(--brand-border)] text-xs text-[var(--brand-muted)] hover:text-[var(--brand-accent)] hover:border-[var(--brand-accent)]/40 transition-colors disabled:opacity-50"
           >
             <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
-            <span className="hidden sm:inline">به‌روزرسانی</span>
+            <span className="hidden sm:inline">{t.feed.refresh}</span>
           </button>
         </div>
       </div>
@@ -121,9 +125,9 @@ export function FeedGrid({
       {loading ? (
         <FeedSkeleton />
       ) : error ? (
-        <FeedError onRetry={refetch} />
+        <FeedError onRetry={refetch} title={t.feed.errorTitle} hint={t.feed.errorHint} retryLabel={t.feed.retry} />
       ) : count === 0 ? (
-        <FeedEmpty query={search} />
+        <FeedEmpty query={search} title={t.feed.noResults} hint={t.feed.noResultsHint} />
       ) : view === "grid" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {data!.items.map((item, i) => (
@@ -154,6 +158,7 @@ function FeedListItem({
   index: number;
 }) {
   const [imgError, setImgError] = useState(false);
+  const { t, lang } = useLanguage();
   const meta = CATEGORY_META[item.source.category];
 
   return (
@@ -180,7 +185,9 @@ function FeedListItem({
               className="text-3xl font-bold font-latin opacity-20"
               style={{ color: meta?.tint || "var(--brand-accent)" }}
             >
-              {meta?.labelEn?.charAt(0) || "?"}
+              {(lang === "fa"
+                ? meta?.label?.charAt(0)
+                : meta?.labelEn?.charAt(0)) || "?"}
             </span>
           </div>
         )}
@@ -191,11 +198,13 @@ function FeedListItem({
             className="font-bold"
             style={{ color: meta?.tint }}
           >
-            {meta?.label}
+            {categoryLabel(item.source.category, lang)}
           </span>
           <span className="text-[var(--brand-muted)]">·</span>
           <span className="text-[var(--brand-muted)] truncate">
-            {item.source.nameFa || item.source.name}
+            {lang === "fa"
+              ? item.source.nameFa || item.source.name
+              : item.source.name}
           </span>
         </div>
         <h3 className="text-sm md:text-base font-bold line-clamp-2 group-hover:text-[var(--brand-accent)] transition-colors">

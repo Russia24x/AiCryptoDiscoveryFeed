@@ -1,7 +1,9 @@
 "use client";
 
-import { Sparkles, ArrowLeft, Activity, Globe2, Zap } from "lucide-react";
+import { Sparkles, ArrowLeft, ArrowRight, Activity, Globe2, Zap } from "lucide-react";
 import { motion } from "framer-motion";
+import { useLanguage } from "@/hooks/use-language";
+import { formatNumber } from "@/hooks/use-feed-state";
 
 interface HeroProps {
   totalItems: number;
@@ -10,13 +12,14 @@ interface HeroProps {
 }
 
 export function Hero({ totalItems, sourcesOk, sourcesTried }: HeroProps) {
+  const { t, lang, isRTL } = useLanguage();
+  const Arrow = isRTL ? ArrowLeft : ArrowRight;
+
   return (
     <section className="relative overflow-hidden border-b border-[var(--brand-border)]">
       {/* Background layers */}
       <div className="absolute inset-0 bg-grid pointer-events-none" />
-      {/* Primary teal glow */}
       <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-[680px] h-[680px] bg-glow-teal pointer-events-none" />
-      {/* Secondary smaller glow */}
       <div
         className="absolute top-1/3 -left-24 w-[300px] h-[300px] pointer-events-none"
         style={{
@@ -61,7 +64,7 @@ export function Hero({ totalItems, sourcesOk, sourcesTried }: HeroProps) {
             className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[var(--brand-accent-soft)] border border-[var(--brand-accent)]/20 text-xs font-latin tracking-wide text-[var(--brand-accent)]"
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span className="uppercase tracking-[0.2em]">Discovery Engine · Live</span>
+            <span className="uppercase tracking-[0.2em]">{t.hero.badge}</span>
             <span className="relative ml-1 flex h-2 w-2">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--brand-accent)] opacity-60" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--brand-accent)]" />
@@ -74,9 +77,9 @@ export function Hero({ totalItems, sourcesOk, sourcesTried }: HeroProps) {
             transition={{ duration: 0.6, delay: 0.05 }}
             className="text-3xl md:text-5xl lg:text-6xl font-extrabold leading-[1.15] tracking-tight max-w-3xl"
           >
-            <span className="text-[var(--brand-text)]">آینده را </span>
-            <span className="text-[var(--brand-accent)]">کشف کن</span>
-            <span className="text-[var(--brand-text)]">، نه فقط دنبالش برو.</span>
+            <span className="text-[var(--brand-text)]">{t.hero.titlePart1}</span>
+            <span className="text-[var(--brand-accent)]">{t.hero.titleAccent}</span>
+            <span className="text-[var(--brand-text)]">{t.hero.titlePart2}</span>
           </motion.h1>
 
           <motion.p
@@ -85,9 +88,7 @@ export function Hero({ totalItems, sourcesOk, sourcesTried }: HeroProps) {
             transition={{ duration: 0.6, delay: 0.12 }}
             className="text-base md:text-lg text-[var(--brand-muted)] max-w-2xl leading-relaxed"
           >
-            یک پلتفرم داده‌محور برای گردآوری هوشمند محتوای ارز دیجیتال، هوش مصنوعی،
-            فناوری و بازی‌های ویدیویی. منابع خبری، کانال‌های تلگرام و توییتر را در یک
-            داشبورد مینیمال و خوانا متمرکز کنید — بدون دیتابیس، روی زیرساخت رایگان کلادفلر.
+            {t.hero.description}
           </motion.p>
 
           {/* Stat row — reimagined as glowing cards */}
@@ -98,20 +99,20 @@ export function Hero({ totalItems, sourcesOk, sourcesTried }: HeroProps) {
             className="grid grid-cols-3 gap-3 md:gap-4 w-full max-w-xl mt-2"
           >
             <StatCard
-              label="محتوای زنده"
-              value={totalItems.toLocaleString("fa-IR")}
+              label={t.hero.statLiveItems}
+              value={formatNumber(totalItems, lang)}
               icon={<Activity className="w-4 h-4" />}
               accent="#2dd4bf"
             />
             <StatCard
-              label="منابع فعال"
-              value={`${sourcesOk.toLocaleString("fa-IR")}/${sourcesTried.toLocaleString("fa-IR")}`}
+              label={t.hero.statActiveSources}
+              value={`${formatNumber(sourcesOk, lang)}/${formatNumber(sourcesTried, lang)}`}
               icon={<Globe2 className="w-4 h-4" />}
               accent="#38bdf8"
             />
             <StatCard
-              label="حوزه تخصصی"
-              value="۵ حوزه"
+              label={t.hero.statCategories}
+              value={lang === "fa" ? "۵ حوزه" : "5 fields"}
               icon={<Zap className="w-4 h-4" />}
               accent="#a78bfa"
             />
@@ -127,8 +128,8 @@ export function Hero({ totalItems, sourcesOk, sourcesTried }: HeroProps) {
           >
             {/* Shimmer overlay on hover */}
             <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/30 to-transparent" />
-            <span className="relative">مشاهده فید زنده</span>
-            <ArrowLeft className="w-4 h-4 relative transition-transform group-hover:-translate-x-1" />
+            <span className="relative">{t.hero.cta}</span>
+            <Arrow className="w-4 h-4 relative transition-transform group-hover:-translate-x-1" />
           </motion.a>
         </div>
       </div>
@@ -149,7 +150,6 @@ function StatCard({
 }) {
   return (
     <div className="relative rounded-lg border border-[var(--brand-border)] bg-[var(--brand-surface)]/60 backdrop-blur-sm p-3 md:p-4 overflow-hidden">
-      {/* Accent edge */}
       <div
         className="absolute top-0 right-0 w-px h-full"
         style={{

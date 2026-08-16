@@ -14,6 +14,7 @@ import { TrendingTags } from "@/components/feed/trending-tags";
 import { useFeedState } from "@/hooks/use-feed-state";
 import { useFeedStats } from "@/hooks/use-feed-stats";
 import { useFeed } from "@/hooks/use-feed";
+import { useLanguage } from "@/hooks/use-language";
 
 export default function Home() {
   const {
@@ -24,11 +25,12 @@ export default function Home() {
     sourceFilter,
     setSourceFilter,
   } = useFeedState();
-  const stats = useFeedStats();
+  const { lang } = useLanguage();
+  const stats = useFeedStats(lang);
   const [bookmarksOpen, setBookmarksOpen] = useState(false);
 
-  // Local feed hook used only to feed trending tags (always "all")
-  const { data: allData } = useFeed("all", "", null);
+  // Local feed hook used only to feed trending tags (always "all" but localized)
+  const { data: allData } = useFeed("all", "", null, lang);
 
   const onTagClick = useCallback(
     (tag: string) => {

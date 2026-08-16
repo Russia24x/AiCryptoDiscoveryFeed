@@ -1,3 +1,5 @@
+"use client";
+
 export function FeedSkeleton() {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -19,36 +21,48 @@ export function FeedSkeleton() {
   );
 }
 
-export function FeedEmpty({ query }: { query?: string }) {
+export function FeedEmpty({
+  title,
+  hint,
+  query,
+}: {
+  title: string;
+  hint: string;
+  query?: string;
+}) {
   return (
     <div className="rounded-xl border border-dashed border-[var(--brand-border)] bg-[var(--brand-surface)]/40 py-16 text-center">
       <div className="mx-auto w-12 h-12 rounded-full bg-[var(--brand-surface-2)] flex items-center justify-center mb-4">
         <span className="font-latin text-[var(--brand-muted)] text-lg">∅</span>
       </div>
       <p className="text-sm font-medium text-[var(--brand-text)]">
-        {query ? "نتیجه‌ای یافت نشد" : "محتوایی در دسترس نیست"}
+        {query ? title : title}
       </p>
-      <p className="text-xs text-[var(--brand-muted)] mt-1">
-        {query
-          ? "عبارت دیگری را امتحان کنید یا فیلتر را تغییر دهید."
-          : "لطفاً چند لحظه صبر کنید و دوباره تلاش کنید."}
-      </p>
+      <p className="text-xs text-[var(--brand-muted)] mt-1">{hint}</p>
     </div>
   );
 }
 
-export function FeedError({ onRetry }: { onRetry: () => void }) {
+export function FeedError({
+  onRetry,
+  title,
+  hint,
+  retryLabel,
+}: {
+  onRetry: () => void;
+  title: string;
+  hint: string;
+  retryLabel: string;
+}) {
   return (
     <div className="rounded-xl border border-red-500/30 bg-red-500/5 py-12 text-center px-4">
-      <p className="text-sm font-medium text-red-300">خطا در دریافت محتوا</p>
-      <p className="text-xs text-[var(--brand-muted)] mt-1 mb-4">
-        ارتباط با منابع با مشکل مواجه شد. ممکن است محدودیت نرخ درخواست اعمال شده باشد.
-      </p>
+      <p className="text-sm font-medium text-red-300">{title}</p>
+      <p className="text-xs text-[var(--brand-muted)] mt-1 mb-4">{hint}</p>
       <button
         onClick={onRetry}
         className="px-4 py-2 rounded-md bg-[var(--brand-accent)] text-[#04201d] text-xs font-bold hover:brightness-110"
       >
-        تلاش مجدد
+        {retryLabel}
       </button>
     </div>
   );

@@ -1,53 +1,34 @@
 "use client";
 
 import { useState } from "react";
-import { Bookmark, X, ExternalLink, Trash2, Clock } from "lucide-react";
+import { Bookmark, X, ExternalLink, Clock } from "lucide-react";
 import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { useBookmarks } from "@/hooks/use-bookmarks";
-import { CATEGORY_META } from "@/lib/sources";
+import { useLanguage } from "@/hooks/use-language";
+import { CATEGORY_META, categoryLabel } from "@/lib/sources";
+import { relativeTime } from "@/hooks/use-feed-state";
 import { cn } from "@/lib/utils";
 
 interface BookmarksDrawerProps {
-  trigger?: React.ReactNode;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-function relativeFa(iso: string): string {
-  const date = new Date(iso);
-  const diff = Date.now() - date.getTime();
-  if (Number.isNaN(diff)) return "";
-  const min = Math.floor(diff / 60000);
-  if (min < 1) return "همین حالا";
-  if (min < 60) return `${min.toLocaleString("fa-IR")} دقیقه پیش`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr.toLocaleString("fa-IR")} ساعت پیش`;
-  const day = Math.floor(hr / 24);
-  if (day < 30) return `${day.toLocaleString("fa-IR")} روز پیش`;
-  const month = Math.floor(day / 30);
-  if (month < 12) return `${month.toLocaleString("fa-IR")} ماه پیش`;
-  const year = Math.floor(month / 12);
-  return `${year.toLocaleString("fa-IR")} سال پیش`;
-}
-
-export function BookmarksDrawer({
-  open,
-  onOpenChange,
-}: BookmarksDrawerProps) {
+export function BookmarksDrawer({ open, onOpenChange }: BookmarksDrawerProps) {
   const { bookmarks, removeBookmark, clearAll } = useBookmarks();
+  const { t, lang } = useLanguage();
   const [confirmingClear, setConfirmingClear] = useState(false);
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
-        side="left"
+        side={lang === "fa" ? "left" : "right"}
         className="w-full sm:w-[420px] bg-[var(--brand-surface)] border-l border-[var(--brand-border)] p-0 overflow-y-auto"
       >
         {/* Header */}
@@ -55,9 +36,9 @@ export function BookmarksDrawer({
           <div className="flex items-center justify-between">
             <SheetTitle className="flex items-center gap-2">
               <Bookmark className="w-4 h-4 text-[var(--brand-accent)] fill-[var(--brand-accent)]" />
-              <span>نشانک‌ها</span>
+              <span>{t.bookmarksDrawer.title}</span>
               <span className="font-latin text-xs text-[var(--brand-muted)] bg-[var(--brand-surface-2)] px-2 py-0.5 rounded-md">
-                {bookmarks.length.toLocaleString("fa-IR")}
+                {bookmarks.length.toLocaleString(lang === "fa" ? "fa-IR" : "en-US")}
               </span>
             </SheetTitle>
             {bookmarks.length > 0 && (
@@ -77,13 +58,13 @@ export function BookmarksDrawer({
               >
                 {confirmingClear ? (
                   <>
-                    <Trash2 className="w-3 h-3 ml-1" />
-                    مطمئنی؟
+                    <X className="w-3 h-3 ml-1" />
+                    {t.bookmarksDrawer.confirmClear}
                   </>
                 ) : (
                   <>
-                    <Trash2 className="w-3 h-3 ml-1" />
-                    پاک کردن همه
+                    <X className="w-3 h-3 ml-1" />
+                    {t.bookmarksDrawer.clearAll}
                   </>
                 )}
               </Button>
@@ -99,10 +80,10 @@ export function BookmarksDrawer({
                 <Bookmark className="w-5 h-5 text-[var(--brand-muted)]" />
               </div>
               <p className="text-sm text-[var(--brand-text)]">
-                هنوز نشانکی ذخیره نکرده‌اید
+                {t.bookmarksDrawer.empty}
               </p>
               <p className="text-xs text-[var(--brand-muted)] mt-1">
-                روی آیکن نشانک هر مقاله بزنید تا اینجا ذخیره شود.
+                {t.bookmarksDrawer.emptyHint}
               </p>
             </div>
           ) : (
@@ -136,16 +117,15 @@ export function BookmarksDrawer({
                   <div className="p-3 flex flex-col gap-1.5">
                     <div className="flex items-center gap-2 text-[11px]">
                       {meta && (
-                        <span
-                          className="font-bold"
-                          style={{ color: meta.tint }}
-                        >
-                          {meta.label}
+                        <span className="font-bold" style={{ color: meta.tint }}>
+                          {categoryLabel(b.category as any, lang)}
                         </span>
                       )}
                       <span className="text-[var(--brand-muted)]">·</span>
                       <span className="text-[var(--brand-muted)] truncate">
-                        {b.sourceNameFa || b.sourceName || ""}
+                        {lang === "fa"
+                          ? b.sourceNameFa || b.sourceName || ""
+                          : b.sourceName || ""}
                       </span>
                     </div>
                     <h3 className="text-sm font-bold line-clamp-2 leading-snug text-[var(--brand-text)]">
@@ -154,7 +134,8 @@ export function BookmarksDrawer({
                     <div className="flex items-center justify-between mt-1">
                       <span className="text-[10px] text-[var(--brand-muted)] flex items-center gap-1 font-latin">
                         <Clock className="w-3 h-3" />
-                        ذخیره {relativeFa(b.savedAt)}
+                        {t.bookmarksDrawer.savedAt}{" "}
+                        {relativeTime(b.savedAt, lang, t.feed)}
                       </span>
                       <div className="flex items-center gap-1">
                         <a
@@ -162,14 +143,14 @@ export function BookmarksDrawer({
                           target="_blank"
                           rel="noopener noreferrer"
                           className="p-1.5 rounded hover:bg-[var(--brand-surface)] text-[var(--brand-muted)] hover:text-[var(--brand-accent)] transition-colors"
-                          aria-label="باز کردن مقاله"
+                          aria-label={t.bookmarksDrawer.openArticle}
                         >
                           <ExternalLink className="w-3.5 h-3.5" />
                         </a>
                         <button
                           onClick={() => removeBookmark(b.id)}
                           className="p-1.5 rounded hover:bg-[var(--brand-surface)] text-[var(--brand-muted)] hover:text-red-400 transition-colors"
-                          aria-label="حذف نشانک"
+                          aria-label={t.bookmarksDrawer.remove}
                         >
                           <X className="w-3.5 h-3.5" />
                         </button>
@@ -196,10 +177,11 @@ export function BookmarksButton({
   onClick: () => void;
   active?: boolean;
 }) {
+  const { t } = useLanguage();
   return (
     <button
       onClick={onClick}
-      aria-label="نشانک‌ها"
+      aria-label={t.nav.bookmarks}
       className={cn(
         "relative p-2 rounded-full transition-colors",
         active
@@ -207,12 +189,10 @@ export function BookmarksButton({
           : "text-[var(--brand-muted)] hover:text-[var(--brand-text)] hover:bg-[var(--brand-surface)]"
       )}
     >
-      <Bookmark
-        className={cn("w-4 h-4", active && "fill-[var(--brand-accent)]")}
-      />
+      <Bookmark className={cn("w-4 h-4", active && "fill-[var(--brand-accent)]")} />
       {count > 0 && (
         <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-[var(--brand-accent)] text-[#04201d] text-[10px] font-bold font-latin">
-          {count > 99 ? "۹۹+" : count.toLocaleString("fa-IR")}
+          {count > 99 ? "99+" : count.toLocaleString("fa-IR")}
         </span>
       )}
     </button>

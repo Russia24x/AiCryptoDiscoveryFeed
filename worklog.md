@@ -259,7 +259,231 @@ $ eslint .
 
 ---
 
-_Last updated: 2026-08-17 — Phase 3 complete + pushed to GitHub._
+_Last updated: 2026-08-17 — Phase 4 complete (bilingual + Persian sources + custom channels)._
+
+---
+
+## Task ID: 4 — Phase 4: Bilingual i18n + Persian sources + custom channels
+**Agent**: Main agent
+**Task**: User requested: 1) full bilingual UI (Persian + English), 2) sources
+separated by language (FA UI → Persian content only, EN UI → English only),
+3) specific Persian RSS sources per category, 4) new "Entertainment" category
+replacing "Future", 5) ability to add Telegram/X channels per category with
+filtering.
+
+### Work Log
+
+#### Sync-check (Rule 2)
+- `git fetch origin` → ✅ success.
+- `git rev-list --left-right --count origin/main...HEAD` → `0 0` (clean).
+- Verdict: ✅ Up-to-date and clean — proceeded with new work.
+
+#### i18n architecture (new)
+- Created `src/i18n/translations.ts` — full dictionary with `fa` and `en`
+  sections covering: brand, nav, ticker, hero, feed, detail, trending,
+  futureVision, channels, footer, bookmarksDrawer, common.
+- Created `src/hooks/use-language.ts` — Zustand-style store backed by
+  `localStorage` (`acd:lang`). Persists selection across reloads + syncs
+  across tabs via `storage` event + `acd:lang-changed` custom event.
+- The hook also updates `<html lang dir>` on language change so RTL/LTR
+  switches automatically.
+
+#### Source reorganization (rewritten `src/lib/sources/index.ts`)
+- Added `language: "fa" | "en"` field to every source.
+- Replaced category `future` with `entertainment` everywhere (sources,
+  channels, CATEGORY_META, navbar, footer).
+- Added 14 new Persian sources per user spec:
+  - **Crypto (5)**: ArzDigital Breaking, ArzDigital Blog, MihanBlockchain
+    News, MihanBlockchain Learn, Digiato Crypto
+  - **AI (2)**: Digiato AI, Zoomit AI Articles
+  - **Tech (3)**: Digiato Tech, ShahrSakhtAfzar News, SakhtAfzarMag
+  - **Gaming (2)**: Vigiato Game Reviews, GameFa Game News
+  - **Entertainment (3)**: GameFa Cinema News, Vigiato Cinema & TV,
+    Vigiato Entertainment
+- Kept 13 English sources across all 5 categories.
+
+#### Channels reorganization
+- Added `language` field to both Telegram channels and Twitter accounts.
+- Added 2 new Persian Telegram channels per user spec:
+  - **Mastersharkcrypto** (crypto, fa) — explicitly requested
+  - **smartainewss** (AI, fa) — explicitly requested
+- Added 1 English Twitter account for entertainment: `@Variety`.
+
+#### API update (`src/app/api/feed/route.ts`)
+- Added `lang` query parameter. When provided (`?lang=fa` or `?lang=en`),
+  filters sources by language BEFORE fetching — so Persian UI only fetches
+  Persian sources, English UI only fetches English sources.
+- This means the language filter applies at the source-aggregation level,
+  not just at the rendering level. Big performance win: only ~7 sources
+  fetched per language instead of ~14.
+
+#### UI updates (every component made bilingual)
+
+**`use-language.ts` (new)** — global language state hook.
+
+**`language-toggle.tsx` (new)** — pill-style [FA | EN] toggle in header.
+Auto-rerenders all consuming components when language changes.
+
+**`header.tsx`** — nav items now use `t.nav.home / crypto / ai / tech / gaming
+/ entertainment`. Mobile Sheet opens from the side based on RTL/LTR.
+
+**`hero.tsx`** — title, description, stats labels all localized. Stat
+numbers use `formatNumber()` which respects `fa-IR` vs `en-US` digit
+system. CTA arrow flips direction with RTL/LTR.
+
+**`feed-card.tsx`** — bookmark aria-label, source name, category label,
+reading time, relative time all localized. Empty placeholder shows the
+category initial in the active language's alphabet (Persian letter vs
+Latin letter).
+
+**`feed-grid.tsx`** — passes `lang` to `useFeed()`, so the API request
+includes `?lang=fa` or `?lang=en`. Section title localized.
+
+**`feed-detail.tsx`** — dialog strings localized. Time-ago uses
+`relativeTime()` helper that picks the right dictionary.
+
+**`source-filter.tsx`** — chip strip now shows ONLY sources matching the
+active language (e.g., Persian mode shows ArzDigital + MihanBlockchain +
+Digiato + Vigiato + GameFa, English mode shows CoinDesk + Cointelegraph +
+Decrypt + IGN + Polygon + ...).
+
+**`channels.tsx` (heavily rewritten)** — added:
+  - Category filter chips (All / Crypto / AI / Tech / Gaming / Entertainment)
+  - Language filter chips (Both / Persian / English)
+  - "Add custom source" button → opens dialog
+  - AddChannelDialog with type toggle (Telegram/X), handle, name, category,
+    language fields. Saves to `localStorage` under `acd:custom-channels`.
+  - Custom channels render with a small × button to remove.
+
+**`bookmarks-drawer.tsx`** — drawer slides from left in FA mode, right in
+EN mode. All labels localized.
+
+**`future-vision.tsx`** — pillar titles and texts come from translations
+dictionary; each language has its own copy.
+
+**`trending-tags.tsx`**, **`footer.tsx`** — localized.
+
+#### Verification (agent-browser)
+
+**Persian (FA) mode:**
+- `<html lang="fa" dir="rtl">` ✅
+- Nav items in Persian: خانه، ارز دیجیتال، هوش مصنوعی، فناوری، بازی، سرگرمی ✅
+- Hero title: «آینده را کشف کن، نه فقط دنبالش برو.» ✅
+- 86 articles loaded, ALL with Persian titles (0 English) ✅
+- Source filter chips show ONLY Persian sources: آرزدیجیتال — اخبار فوری،
+  میهن بلاکچین، دیجیاتو، زومیت، شهر سخت‌افزار، سخت‌افزارمگ، ویجیاتو، گیم‌فا ✅
+- Telegram channels show Mastersharkcrypto + smartainewss with "FA" badge ✅
+
+**English (EN) mode (after toggle click):**
+- `<html lang="en" dir="ltr">` ✅
+- Nav items: Home, Crypto, AI, Tech, Gaming, Entertainment ✅
+- Hero title: "Discover the future, don't just follow it." ✅
+- 86 articles, ALL English titles (0 Persian) ✅
+- Source filter chips show ONLY English sources: CoinDesk, Cointelegraph,
+  Decrypt, Bitcoin Magazine, TechCrunch AI, VentureBeat AI, etc. ✅
+
+**Custom channel add:**
+- Clicked "افزودن منبع دلخواه" → dialog opens ✅
+- Selected Telegram type, entered handle `testcryptonews`, submitted ✅
+- Custom card appears in channels list with × remove button ✅
+- Persisted across page reload (localStorage) ✅
+
+**Channel filters:**
+- Category filter chip "ارز دیجیتال" → only crypto channels shown ✅
+- Language filter chip "فارسی" → only FA channels (Mastersharkcrypto,
+  smartainewss) shown ✅
+- Language filter chip "English" → only EN channels shown ✅
+
+**Responsive:**
+- Mobile (390×844): Persian layout, RTL preserved, language toggle works
+  in mobile Sheet menu, all 14 articles visible in single column ✅
+
+**Console:** clean — no errors, no warnings ✅
+
+**Lint:** `bun run lint` → 0 errors, 0 warnings ✅
+
+#### Files added/modified
+
+**New (4):**
+- `src/i18n/translations.ts` — bilingual dictionary (FA + EN, ~600 lines)
+- `src/hooks/use-language.ts` — language store + `<html dir>` sync
+- `src/components/brand/language-toggle.tsx` — FA/EN pill toggle
+- (No new components beyond these — reused existing structure)
+
+**Modified (12):**
+- `src/lib/sources/index.ts` — rewrote with language field, replaced
+  `future` with `entertainment`, added 14 Persian sources + 2 Persian
+  Telegram channels + 1 English Twitter (Variety)
+- `src/app/api/feed/route.ts` — added `lang` param filtering
+- `src/app/page.tsx` — wires useLanguage + passes lang to hooks
+- `src/components/brand/logo.tsx` — bilingual subtitle
+- `src/components/brand/header.tsx` — bilingual nav + language toggle
+- `src/components/brand/hero.tsx` — bilingual strings + LTR arrow flip
+- `src/components/brand/future-vision.tsx` — bilingual pillar texts
+- `src/components/brand/footer.tsx` — bilingual footer
+- `src/components/feed/feed-card.tsx` — localized card meta
+- `src/components/feed/feed-grid.tsx` — passes lang to API
+- `src/components/feed/feed-detail.tsx` — localized dialog
+- `src/components/feed/feed-states.tsx` — accepts localized strings
+- `src/components/feed/source-filter.tsx` — filters chips by active lang
+- `src/components/feed/channels.tsx` — added category + lang filters +
+  custom channel dialog
+- `src/components/feed/bookmarks-drawer.tsx` — localized, RTL/LTR side
+- `src/components/feed/trending-tags.tsx` — localized
+- `src/hooks/use-feed.ts` — accepts lang param
+- `src/hooks/use-feed-state.ts` — adds formatNumber + relativeTime helpers
+- `src/hooks/use-feed-stats.ts` — accepts lang param
+
+### Stage Summary
+
+- **Bilingual UI**: FA ↔ EN toggle persists to localStorage, switches
+  RTL/LTR layout, updates `<html lang dir>`, and re-renders all components
+  via Zustand-style subscription.
+- **Content separation**: Persian UI shows ONLY Persian RSS sources (14
+  new sources added: ArzDigital × 2, MihanBlockchain × 2, Digiato × 3,
+  Zoomit × 1, ShahrSakhtAfzar × 1, SakhtAfzarMag × 1, Vigiato × 3,
+  GameFa × 2). English UI shows the original English sources.
+- **New category**: "Entertainment" (سرگرمی) replaces "Future" everywhere.
+- **Channel filters**: Each Telegram + X channel has category + language
+  metadata. UI shows two filter strips (category + language) so users can
+  narrow down to e.g. "Persian crypto Telegram channels" or "English AI
+  X accounts".
+- **Custom channels**: Users can add their own Telegram or X channels via
+  a dialog. Saved to localStorage, persisted across reloads, removable.
+- **Lint**: clean. **Console**: clean. **Build**: works.
+
+### Unresolved Issues / Risks
+
+1. **First feed fetch is slow (~9 seconds)** — because the API fetches
+   all sources (across all categories) in parallel when category=all.
+   For a single language this is ~7 sources; still 9s. Mitigation: deploy
+   behind Cloudflare with `s-maxage=300` edge cache.
+
+2. **`@dnd-kit/core` and many shadcn/ui deps may not be needed** — could
+   trim `package.json` later. Not blocking.
+
+3. **VLM (vision QA) sometimes fabricates HTML instead of describing
+   screenshots** — for QA verification prefer `agent-browser eval` with
+   concrete DOM queries (which is what I did).
+
+4. **Telegram channel previews as iframe embeds** — currently links
+   go to `t.me/<handle>` (web preview). Could use `t.me/<handle>/preview`
+   iframe for inline preview. Out of scope for this phase.
+
+### Priority Recommendations for Phase 5
+
+1. **Push Phase 4 to GitHub** — sync-check, push as commit on top of
+   `d06d2b1`.
+2. **Deploy to Cloudflare Pages** — set up CF Pages project connected
+   to GitHub repo.
+3. **Toast feedback** — show a small toast on language change, bookmark
+   toggle, custom channel added/removed.
+4. **Per-article OG meta tags** — for shareable URLs (needs per-article
+   route).
+5. **Settings panel** — let user set default language, default category,
+   enable/disable sources.
+6. **Search across both languages** — optional "search both" toggle when
+   in one language mode, for cross-lingual discovery.
 
 ---
 

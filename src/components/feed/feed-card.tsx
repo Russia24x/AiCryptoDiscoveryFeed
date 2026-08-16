@@ -4,15 +4,16 @@ import { useState } from "react";
 import {
   ExternalLink,
   Clock,
-  ImageOff,
   Bookmark,
   BookmarkCheck,
   BookOpen,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import type { FeedItem } from "@/types/feed";
-import { CATEGORY_META } from "@/lib/sources";
+import { CATEGORY_META, categoryLabel } from "@/lib/sources";
 import { useBookmarks } from "@/hooks/use-bookmarks";
+import { useLanguage } from "@/hooks/use-language";
+import { relativeTime, formatNumber } from "@/hooks/use-feed-state";
 import { cn } from "@/lib/utils";
 
 interface FeedCardProps {
@@ -21,30 +22,10 @@ interface FeedCardProps {
   index?: number;
 }
 
-/** Convert ISO date to a Persian relative time string. */
-function relativeFa(iso: string): string {
-  const date = new Date(iso);
-  const diff = Date.now() - date.getTime();
-  if (Number.isNaN(diff)) return "";
-  const min = Math.floor(diff / 60000);
-  if (min < 1) return "همین حالا";
-  if (min < 60) return `${min.toLocaleString("fa-IR")} دقیقه پیش`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr.toLocaleString("fa-IR")} ساعت پیش`;
-  const day = Math.floor(hr / 24);
-  if (day < 30) return `${day.toLocaleString("fa-IR")} روز پیش`;
-  const month = Math.floor(day / 30);
-  if (month < 12) return `${month.toLocaleString("fa-IR")} ماه پیش`;
-  const year = Math.floor(month / 12);
-  return `${year.toLocaleString("fa-IR")} سال پیش`;
-}
-
 /** Estimate reading time in minutes based on description length. */
 function readingTime(description?: string): number {
   if (!description) return 1;
-  // Count Latin words + Persian words. Latin split by spaces; Persian by char fallback.
   const words = description.trim().split(/\s+/).length;
-  // Assume ~220 wpm for mixed-language scanning.
   return Math.max(1, Math.round(words / 220));
 }
 
@@ -55,14 +36,15 @@ const CATEGORY_GRADIENTS: Record<string, string> = {
   tech: "linear-gradient(135deg, rgba(56,189,248,0.10) 0%, transparent 60%)",
   gaming:
     "linear-gradient(135deg, rgba(167,139,250,0.10) 0%, transparent 60%)",
-  future:
-    "linear-gradient(135deg, rgba(245,158,11,0.10) 0%, transparent 60%)",
+  entertainment:
+    "linear-gradient(135deg, rgba(244,114,182,0.10) 0%, transparent 60%)",
 };
 
 export function FeedCard({ item, onOpen, index = 0 }: FeedCardProps) {
   const [imgError, setImgError] = useState(false);
   const meta = CATEGORY_META[item.source.category];
   const { isBookmarked, toggleBookmark, hydrated } = useBookmarks();
+  const { t, lang } = useLanguage();
   const bookmarked = hydrated && isBookmarked(item.id);
 
   const onBookmarkClick = (e: React.MouseEvent) => {
@@ -79,6 +61,11 @@ export function FeedCard({ item, onOpen, index = 0 }: FeedCardProps) {
       category: item.source.category,
     });
   };
+
+  const sourceDisplayName =
+    lang === "fa"
+      ? item.source.nameFa || item.source.name
+      : item.source.name;
 
   return (
     <motion.article
@@ -105,19 +92,22 @@ export function FeedCard({ item, onOpen, index = 0 }: FeedCardProps) {
             loading="lazy"
           />
         ) : (
-          // Better empty placeholder — show category icon initial
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
             <div
               className="text-3xl font-bold font-latin opacity-20"
               style={{ color: meta?.tint || "var(--brand-accent)" }}
             >
-              {meta?.labelEn?.charAt(0) || "?"}
+              {(lang === "fa"
+                ? meta?.label?.charAt(0)
+                : meta?.labelEn?.charAt(0)) || "?"}
             </div>
             <span
               className="text-[10px] font-latin uppercase tracking-[0.2em] opacity-40"
               style={{ color: meta?.tint || "var(--brand-muted)" }}
             >
-              {meta?.labelEn || "no preview"}
+              {lang === "fa"
+                ? categoryLabel(item.source.category, "fa")
+                : categoryLabel(item.source.category, "en")}
             </span>
           </div>
         )}
@@ -135,14 +125,14 @@ export function FeedCard({ item, onOpen, index = 0 }: FeedCardProps) {
               className="w-1.5 h-1.5 rounded-full"
               style={{ backgroundColor: meta?.tint || "var(--brand-accent)" }}
             />
-            {meta?.label || item.source.category}
+            {categoryLabel(item.source.category, lang)}
           </span>
         </div>
 
-        {/* Bookmark button — always visible on mobile, hover on desktop */}
+        {/* Bookmark button */}
         <button
           onClick={onBookmarkClick}
-          aria-label={bookmarked ? "حذف از نشانک‌ها" : "افزودن به نشانک‌ها"}
+          aria-label={bookmarked ? t.detail.unbookmark : t.detail.bookmark}
           className={cn(
             "absolute top-2.5 right-2.5 p-1.5 rounded-md backdrop-blur-md transition-all",
             "bg-[rgba(13,15,18,0.7)] hover:bg-[rgba(13,15,18,0.9)]",
@@ -174,16 +164,17 @@ export function FeedCard({ item, onOpen, index = 0 }: FeedCardProps) {
         {/* Meta row */}
         <div className="mt-auto pt-3 flex items-center justify-between text-[11px] text-[var(--brand-muted)]">
           <span className="font-medium truncate max-w-[45%]">
-            {item.source.nameFa || item.source.name}
+            {sourceDisplayName}
           </span>
           <div className="flex items-center gap-3 font-latin">
             <span className="flex items-center gap-1">
               <BookOpen className="w-3 h-3" />
-              {readingTime(item.description).toLocaleString("fa-IR")} دقیقه
+              {formatNumber(readingTime(item.description), lang)}{" "}
+              {t.feed.minutesShort}
             </span>
             <span className="flex items-center gap-1">
               <Clock className="w-3 h-3" />
-              {relativeFa(item.pubDate)}
+              {relativeTime(item.pubDate, lang, t.feed)}
             </span>
           </div>
         </div>
