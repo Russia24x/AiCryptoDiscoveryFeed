@@ -206,17 +206,15 @@ $ eslint .
    Without a working PAT, cannot push commits to `Russia24x/AiCryptoDiscoveryFeed`.
    Local commits are safe; just not yet on GitHub.
 
-2. **4 local commits pending push** when PAT is restored:
-   - `4a5c40a` Initial commit
-   - `edfd93e` Phase 2 build
-   - `151c3dc` RULES.md
-   - `49cea24` chore: clean tracked artifacts + add worklog
-   - (Phase 3 commit — see below) ← about to commit
+   **UPDATE 2026-08-17 (later)**: PAT actually works for git operations
+   (only the GitHub REST API returns 401 — git push succeeds). Sync-check
+   ran clean, push succeeded — see Task ID 3 below.
 
-3. **First-push caveat** — when the new PAT is issued, the first push to
-   the empty GitHub repo will need `-u origin main` to set upstream.
-   Per Rule 1 (NEVER-FORCE-PUSH), this is fine: it's a fast-forward to
-   an empty remote, no force needed.
+2. **~~4 local commits pending push~~** — **RESOLVED**: pushed all 5
+   commits to `origin/main` (commit `c6ebbe3`).
+
+3. **First-push caveat** — **RESOLVED**: `git push -u origin main` set
+   upstream tracking on the empty repo. Fast-forward, no force needed.
 
 4. **`revalidate = 0` on `/api/feed`** — every request hits upstream RSS
    sources. This is fine for low traffic but on production scale would
@@ -229,8 +227,8 @@ $ eslint .
 
 ### Priority Recommendations for Next Phase (Phase 4)
 
-1. **Push to GitHub** — regenerate PAT, run sync-check, push all 5 commits
-   to `origin/main` as the initial GitHub history. Set up GitHub Actions
+1. **~~Push to GitHub~~** — **DONE**: all 5 commits pushed to
+   `Russia24x/AiCryptoDiscoveryFeed` `main` branch. Set up GitHub Actions
    for lint-on-push.
 
 2. **Deploy to Cloudflare Pages** — `bun run build` then deploy with
@@ -261,5 +259,102 @@ $ eslint .
 
 ---
 
-_Last updated: 2026-08-17 — Phase 3 complete (local commits). Pending PAT
-restoration to push to GitHub._
+_Last updated: 2026-08-17 — Phase 3 complete + pushed to GitHub._
+
+---
+
+## Task ID: 3 — Sync-check + initial push to GitHub
+**Agent**: Main agent
+**Task**: User re-sent the GitHub PAT URL. Per Rule 2, run sync-check
+and push the 5 pending commits to `Russia24x/AiCryptoDiscoveryFeed`.
+
+### Work Log
+
+#### Step a — `git fetch origin`
+- Added remote with PAT embedded in URL.
+- Ran `git fetch origin` → exit 0, no errors.
+- (Note: the GitHub REST API still returns `401 Bad credentials` for this
+  PAT, but git operations succeed — likely because the PAT is a fine-grained
+  token with `Contents: Read and write` scoped only to this one repo, not
+  general `/user` access.)
+
+#### Step b — divergence check
+- `git status -uno` → working tree clean.
+- `git ls-remote --heads origin` → no remote branches (repo is freshly
+  created and empty).
+- `git rev-list --left-right --count origin/main...HEAD` → "no origin/main
+  ref" because remote has no commits yet.
+- **Decision matrix (Rule 2)**: `left=0, right=5` → "Ahead only" → ✅ safe
+  to push (fast-forward to empty remote, no force needed per Rule 1).
+
+#### Step c — pre-push safety net (Rule 4)
+- `git log --oneline --all` → confirmed 5 commits to push: Initial →
+  Phase 2 → RULES.md → cleanup → Phase 3.
+- `git diff --stat <empty>..HEAD` → 118 files changed, 13159 insertions.
+- `git ls-files | grep sensitive` → 0 sensitive tracked files (after
+  cleanup commit `49cea24`).
+- ✅ No `.env`, `.db`, `.pem`, `.key`, `.pid`, `.log` tracked.
+
+#### Push
+- Command: `GIT_TERMINAL_PROMPT=0 git push -u origin main`
+- Output: `* [new branch] main -> main` + `branch 'main' set up to track 'origin/main'`
+- Exit code: 0 ✅
+
+#### Post-push verification
+- Re-ran `git fetch origin` → no errors.
+- `git ls-remote --heads origin` → now returns `c6ebbe33... refs/heads/main`.
+- `git rev-list --left-right --count origin/main...HEAD` → `0  0` (clean).
+- `git rev-parse HEAD` == `git rev-parse origin/main` → both `c6ebbe33...`.
+- ✅ Local and remote are in sync.
+
+#### Cleanup (Rule 3 — Token Hygiene)
+- Removed remote with `git remote remove origin` (cleared PAT from `.git/config`).
+- Verified: `grep -r "github_pat_" .git/` → 0 occurrences.
+- Re-added remote as plain HTTPS without token: `https://github.com/Russia24x/AiCryptoDiscoveryFeed.git`
+  (for `git fetch`-only operations; future pushes will require re-authentication
+  via a credential helper or by re-adding the PAT inline).
+
+### Stage Summary
+
+- **5 commits pushed to GitHub** `Russia24x/AiCryptoDiscoveryFeed` `main` branch:
+  - `4a5c40a` Initial commit
+  - `edfd93e` Phase 2 build (full discovery MVP)
+  - `151c3dc` RULES.md (5 rules including NEVER-FORCE-PUSH + SESSION-START-SYNC-CHECK)
+  - `49cea24` chore: clean tracked artifacts + add worklog
+  - `c6ebbe3` feat: Phase 3 — bookmarks, source filter, dedupe, hero refresh
+- **Rule 1 (NEVER-FORCE-PUSH) respected**: push was fast-forward to empty
+  remote, no `--force` or `--force-with-lease` used.
+- **Rule 2 (SESSION-START-SYNC-CHECK) executed**: fetch → status →
+  divergence → verdict (ahead-only, safe) → proceed.
+- **Rule 3 (Token Hygiene) respected**: PAT removed from `.git/config`
+  after push, no residue in tracked files.
+- **Rule 4 (Pre-push safety net) executed**: verified no sensitive files
+  in commits-to-push.
+
+### Live repo URL
+
+https://github.com/Russia24x/AiCryptoDiscoveryFeed
+
+### Recommendations for next session
+
+1. **Set up a permanent credential helper** so future `git push`es don't
+   require embedding the PAT in the URL. Options:
+   ```bash
+   git config --global credential.helper store
+   # OR (more secure on macOS):
+   git config --global credential.helper osxkeychain
+   ```
+   Then on next push, paste the PAT once — git will cache it.
+
+2. **Add CI (GitHub Actions)** — `.github/workflows/lint.yml` to run
+   `bun install && bun run lint` on every PR. Fail-fast on style or
+   type errors.
+
+3. **Deploy to Cloudflare Pages** — connect the GitHub repo to CF Pages,
+   set build command `bun run build`, output dir `.next`. May need
+   `@cloudflare/next-on-pages` adapter.
+
+4. **Revoke + rotate the PAT periodically** — the PAT was sent in chat
+   plaintext, so it should be considered compromised. Even though it's
+   scoped to a single repo, rotate it once Cloudflare Pages is set up
+   with its own deploy token.
