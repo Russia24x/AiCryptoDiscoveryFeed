@@ -1,7 +1,16 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { ImageOff } from "lucide-react";
+import { useState, useMemo, useEffect } from "react";
+import {
+  Loader2,
+  Network,
+  Sparkles,
+  Bitcoin,
+  Brain,
+  Cpu,
+  Gamepad2,
+  Film,
+} from "lucide-react";
 import { CATEGORY_META, categoryLabel } from "@/lib/sources";
 import type { Category } from "@/lib/sources";
 import { useLanguage } from "@/hooks/use-language";
@@ -11,13 +20,12 @@ interface SmartImageProps {
   src?: string;
   alt: string;
   category: Exclude<Category, "all">;
+  /** Source article URL — used to lazily fetch og:image when src is missing. */
+  articleUrl?: string;
   sourceId?: string;
   sourceName?: string;
   className?: string;
-  /** When true (used in card), use compact "category initial" placeholder.
-   *  When false (used in detail/reader), use fuller gradient with source name. */
   variant?: "card" | "detail" | "reader";
-  /** Aspect ratio class — defaults to 16/9 */
   aspectClass?: string;
   loading?: "lazy" | "eager";
 }
@@ -32,23 +40,32 @@ function hashString(s: string): number {
 }
 
 const GRADIENTS = [
-  // Each: [color1, color2, angle] — teal-heavy palette matching brand
-  ["#2dd4bf", "#0d9488", 135],
-  ["#38bdf8", "#0284c7", 135],
-  ["#a78bfa", "#7c3aed", 135],
-  ["#f7931a", "#b45309", 135],
-  ["#f472b6", "#be185d", 135],
-  ["#2dd4bf", "#0e7490", 135],
-  ["#34d399", "#047857", 135],
-  ["#60a5fa", "#1e40af", 135],
-  ["#fbbf24", "#92400e", 135],
-  ["#c084fc", "#6d28d9", 135],
+  ["#2dd4bf", "#0d9488"],
+  ["#38bdf8", "#0284c7"],
+  ["#a78bfa", "#7c3aed"],
+  ["#f7931a", "#b45309"],
+  ["#f472b6", "#be185d"],
+  ["#2dd4bf", "#0e7490"],
+  ["#34d399", "#047857"],
+  ["#60a5fa", "#1e40af"],
+  ["#fbbf24", "#92400e"],
+  ["#c084fc", "#6d28d9"],
 ];
+
+/** Pick a different icon per category for the placeholder. */
+const CATEGORY_ICONS = {
+  crypto: Bitcoin,
+  ai: Brain,
+  tech: Cpu,
+  gaming: Gamepad2,
+  entertainment: Film,
+} as const;
 
 export function SmartImage({
   src,
   alt,
   category,
+  articleUrl,
   sourceId = "",
   sourceName = "",
   className,
@@ -57,23 +74,80 @@ export function SmartImage({
   loading = "lazy",
 }: SmartImageProps) {
   const [imgError, setImgError] = useState(false);
+  const [fetchedImage, setFetchedImage] = useState<string | undefined>(undefined);
+  const [fetchingOG, setFetchingOG] = useState(false);
+  const [ogFailed, setOGFailed] = useState(false);
   const { lang } = useLanguage();
-  const meta = CATEGORY_META[category];
 
   const gradient = useMemo(() => {
     const seed = hashString(sourceId + sourceName + category);
     return GRADIENTS[seed % GRADIENTS.length];
   }, [sourceId, sourceName, category]);
 
-  // Generate a 3-letter category prefix in the active language
-  const prefix = useMemo(() => {
-    const label = categoryLabel(category, lang);
-    // Use first 1-2 chars in Persian, 3 in English
-    return lang === "fa" ? label.slice(0, 2) : label.slice(0, 3).toUpperCase();
-  }, [category, lang]);
+  const Icon = CATEGORY_ICONS[category] || Sparkles;
 
-  // If src is missing or broken, show placeholder
-  if (!src || imgError) {
+  // If src is missing but articleUrl is provided, lazily fetch og:image
+  useEffect(() => {
+    if ((src || fetchedImage) && !imgError) return;
+    if (!articleUrl || fetchedImage || fetchingOG || ogFailed) return;
+
+    let cancelled = false;
+    setFetchingOG(true);
+
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/og-image?url=${encodeURIComponent(articleUrl)}`
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (cancelled) return;
+        if (data.url) {
+          setFetchedImage(data.url);
+        } else {
+          setOGFailed(true);
+        }
+      } catch {
+        if (!cancelled) setOGFailed(true);
+      } finally {
+        if (!cancelled) setFetchingOG(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [src, fetchedImage, imgError, articleUrl, fetchingOG, ogFailed]);
+
+  // Reset state when src or articleUrl changes
+  useEffect(() => {
+    setFetchedImage(undefined);
+    setOGFailed(false);
+    setImgError(false);
+  }, [articleUrl, src]);
+
+  const effectiveSrc = src || fetchedImage;
+  const showPlaceholder =
+    (!effectiveSrc || imgError) && (!articleUrl || ogFailed || (!fetchingOG && !fetchedImage));
+
+  // Show real image (from RSS or fetched og:image)
+  if (effectiveSrc && !imgError) {
+    return (
+      <div className={cn("relative overflow-hidden", aspectClass, className)}>
+        <img
+          src={effectiveSrc}
+          alt={alt}
+          referrerPolicy="no-referrer"
+          onError={() => setImgError(true)}
+          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+          loading={loading}
+        />
+      </div>
+    );
+  }
+
+  // Show "fetching" state briefly if we're trying to get og:image
+  if (!src && articleUrl && fetchingOG && !showPlaceholder) {
     return (
       <div
         className={cn(
@@ -82,55 +156,154 @@ export function SmartImage({
           className
         )}
         style={{
-          background: `linear-gradient(${gradient[2]}deg, ${gradient[0]}26 0%, ${gradient[1]}40 60%, transparent 100%)`,
+          background: `linear-gradient(135deg, ${gradient[0]}1a 0%, ${gradient[1]}1a 60%, transparent 100%)`,
         }}
       >
-        {/* Animated grain texture overlay */}
-        <div
-          className="absolute inset-0 opacity-30"
-          style={{
-            backgroundImage: `radial-gradient(circle at 30% 40%, ${gradient[0]}30 0%, transparent 40%), radial-gradient(circle at 70% 80%, ${gradient[1]}30 0%, transparent 40%)`,
-          }}
-        />
-
-        {/* Large category letter watermark */}
-        <div className="relative flex flex-col items-center gap-2">
-          <div
-            className="text-4xl md:text-5xl font-bold font-latin leading-none opacity-90"
-            style={{ color: gradient[0], textShadow: `0 0 24px ${gradient[0]}40` }}
-          >
-            {prefix}
-          </div>
-          {variant !== "card" && (
-            <div className="text-[10px] md:text-xs font-latin uppercase tracking-[0.2em] text-[var(--brand-muted)] mt-1 text-center px-3">
-              {categoryLabel(category, lang)}
-            </div>
-          )}
-          {variant === "reader" && sourceName && (
-            <div className="text-xs text-[var(--brand-muted)] mt-1 px-3 text-center truncate max-w-full">
-              {sourceName}
-            </div>
-          )}
-        </div>
-
-        {/* Tiny corner icon */}
-        <div className="absolute bottom-2 right-2 opacity-30">
-          <ImageOff className="w-3 h-3 text-[var(--brand-muted)]" />
-        </div>
+        <Loader2 className="w-4 h-4 animate-spin text-[var(--brand-muted)] opacity-50" />
       </div>
     );
   }
 
+  // LAST RESORT — beautiful placeholder
+  // (only shown when RSS image is missing AND og:image fetch failed/not available)
   return (
-    <div className={cn("relative overflow-hidden", aspectClass, className)}>
-      <img
-        src={src}
-        alt={alt}
-        referrerPolicy="no-referrer"
-        onError={() => setImgError(true)}
-        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-        loading={loading}
+    <Placeholder
+      gradient={gradient}
+      Icon={Icon}
+      category={category}
+      variant={variant}
+      sourceName={sourceName}
+      lang={lang}
+      aspectClass={aspectClass}
+      className={className}
+    />
+  );
+}
+
+function Placeholder({
+  gradient,
+  Icon,
+  category,
+  variant,
+  sourceName,
+  lang,
+  aspectClass,
+  className,
+}: {
+  gradient: string[];
+  Icon: React.ComponentType<{ className?: string }>;
+  category: Exclude<Category, "all">;
+  variant: "card" | "detail" | "reader";
+  sourceName: string;
+  lang: "fa" | "en";
+  aspectClass: string;
+  className?: string;
+}) {
+  const meta = CATEGORY_META[category];
+  const label = categoryLabel(category, lang);
+
+  // Generate a unique pattern based on category — abstract shapes, not just a letter
+  const patternSeed = hashString(category + sourceName);
+  const patternType = patternSeed % 4;
+
+  return (
+    <div
+      className={cn(
+        "relative overflow-hidden flex items-center justify-center",
+        aspectClass,
+        className
+      )}
+      style={{
+        background: `linear-gradient(135deg, ${gradient[0]}26 0%, ${gradient[1]}33 50%, transparent 100%)`,
+      }}
+    >
+      {/* Layered radial gradients — abstract depth */}
+      <div
+        className="absolute inset-0"
+        style={{
+          backgroundImage: `
+            radial-gradient(circle at ${20 + (patternSeed % 30)}% ${30 + (patternSeed % 40)}%, ${gradient[0]}30 0%, transparent 35%),
+            radial-gradient(circle at ${70 + (patternSeed % 20)}% ${60 + (patternSeed % 30)}%, ${gradient[1]}30 0%, transparent 35%),
+            radial-gradient(circle at ${40 + (patternSeed % 40)}% ${85 + (patternSeed % 10)}%, ${gradient[0]}15 0%, transparent 25%)
+          `,
+        }}
       />
+
+      {/* Decorative pattern overlay — varies by seed */}
+      {patternType === 0 && (
+        // Diagonal lines
+        <div
+          className="absolute inset-0 opacity-10"
+          style={{
+            backgroundImage: `repeating-linear-gradient(45deg, ${gradient[0]} 0, ${gradient[0]} 1px, transparent 1px, transparent 12px)`,
+          }}
+        />
+      )}
+      {patternType === 1 && (
+        // Dotted grid
+        <div
+          className="absolute inset-0 opacity-15"
+          style={{
+            backgroundImage: `radial-gradient(${gradient[0]}40 1px, transparent 1px)`,
+            backgroundSize: "16px 16px",
+          }}
+        />
+      )}
+      {patternType === 2 && (
+        // Concentric circles
+        <div
+          className="absolute inset-0 opacity-10"
+          style={{
+            backgroundImage: `radial-gradient(circle at 50% 50%, transparent 20%, ${gradient[0]}20 20%, transparent 22%, transparent 35%, ${gradient[0]}15 35%, transparent 37%, transparent 50%, ${gradient[0]}10 50%, transparent 52%)`,
+          }}
+        />
+      )}
+      {patternType === 3 && (
+        // Wave-like gradient
+        <div
+          className="absolute inset-0 opacity-20"
+          style={{
+            background: `conic-gradient(from ${patternSeed % 360}deg at 50% 50%, ${gradient[0]}00, ${gradient[0]}40, ${gradient[1]}40, ${gradient[0]}00)`,
+          }}
+        />
+      )}
+
+      {/* Center content — icon + category label, not just a letter */}
+      <div className="relative flex flex-col items-center gap-2 px-4">
+        <div
+          className="w-12 h-12 md:w-14 md:h-14 rounded-2xl flex items-center justify-center backdrop-blur-sm"
+          style={{
+            background: `linear-gradient(135deg, ${gradient[0]}30, ${gradient[1]}30)`,
+            border: `1px solid ${gradient[0]}40`,
+            boxShadow: `0 0 24px ${gradient[0]}30`,
+          }}
+        >
+          <Icon
+            className="w-5 h-5 md:w-6 md:h-6"
+            // @ts-expect-error — inline style
+            style={{ color: gradient[0] }}
+          />
+        </div>
+
+        <div className="text-center">
+          <div
+            className="text-xs md:text-sm font-bold tracking-wide"
+            style={{ color: gradient[0] }}
+          >
+            {label}
+          </div>
+          {variant !== "card" && sourceName && (
+            <div className="text-[10px] md:text-xs text-[var(--brand-muted)] mt-1 max-w-[200px] truncate">
+              {sourceName}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Tiny corner indicator */}
+      <div className="absolute bottom-2 right-2 opacity-30">
+        <Network className="w-3 h-3 text-[var(--brand-muted)]" />
+      </div>
     </div>
   );
 }

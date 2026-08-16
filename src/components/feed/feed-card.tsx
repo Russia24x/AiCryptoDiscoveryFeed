@@ -86,6 +86,7 @@ export function FeedCard({ item, onOpen, index = 0 }: FeedCardProps) {
           src={item.image}
           alt={item.title}
           category={item.source.category}
+          articleUrl={item.link}
           sourceId={item.source.id}
           sourceName={sourceDisplayName}
           variant="card"
