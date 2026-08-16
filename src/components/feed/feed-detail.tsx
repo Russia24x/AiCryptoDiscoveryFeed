@@ -49,7 +49,10 @@ export function FeedDetail({ item, open, onOpenChange }: FeedDetailProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden p-0 bg-[var(--brand-surface)] border border-[var(--brand-border)] rounded-xl">
+      <DialogContent
+        aria-describedby={undefined}
+        className="max-w-3xl max-h-[90vh] overflow-hidden p-0 bg-[var(--brand-surface)] border border-[var(--brand-border)] rounded-xl"
+      >
         {/* Image header */}
         {item.image && !imgError && (
           <div className="relative aspect-[16/9] w-full overflow-hidden bg-[var(--brand-surface-2)]">

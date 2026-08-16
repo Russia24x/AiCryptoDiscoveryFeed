@@ -164,9 +164,15 @@ export async function GET(request: Request) {
   const category = (searchParams.get("category") || "all") as Category;
   const limit = Math.min(parseInt(searchParams.get("limit") || "60", 10), 200);
   const search = (searchParams.get("q") || "").trim().toLowerCase();
+  const sourceFilter = (searchParams.get("source") || "").trim().toLowerCase();
 
-  const sources =
+  let sources =
     category === "all" ? SOURCES : SOURCES.filter((s) => s.category === category);
+
+  // If a specific source filter is provided, narrow to that single source.
+  if (sourceFilter) {
+    sources = sources.filter((s) => s.id === sourceFilter);
+  }
 
   const results = await Promise.allSettled(
     sources.map(async (src) => {
@@ -178,12 +184,41 @@ export async function GET(request: Request) {
   const allItems: FeedItem[] = [];
   let sourcesOk = 0;
 
+  // Track canonical keys (normalized title + URL hostname+pathname) to dedupe
+  // articles that appear in multiple feeds (e.g., TechCrunch + TechCrunch AI).
+  const seenKeys = new Set<string>();
+  const dedupeKey = (title: string, link: string): string => {
+    const t = (title || "")
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 120);
+    let host = "";
+    let path = "";
+    try {
+      const u = new URL(link);
+      host = u.hostname.replace(/^www\./, "");
+      path = u.pathname.replace(/\/+$/g, "").toLowerCase();
+    } catch {
+      // ignore — fall back to title-only key
+    }
+    return host ? `${host}|${path}|${t}` : `title|${t}`;
+  };
+
   for (const r of results) {
     if (r.status !== "fulfilled") continue;
     const { src, items } = r.value;
     if (!items.length) continue;
     sourcesOk++;
     for (const it of items) {
+      // Skip items missing both link AND title
+      if (!it.title && !it.link) continue;
+
+      const key = dedupeKey(it.title, it.link);
+      if (seenKeys.has(key)) continue;
+      seenKeys.add(key);
+
       const id = `${src.id}:${it.link || it.title}`.slice(0, 200);
       allItems.push({
         id,

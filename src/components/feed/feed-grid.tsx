@@ -7,18 +7,30 @@ import { useFeed } from "@/hooks/use-feed";
 import { FeedCard } from "./feed-card";
 import { FeedDetail } from "./feed-detail";
 import { FeedSkeleton, FeedEmpty, FeedError } from "./feed-states";
+import { SourceFilter } from "./source-filter";
 import { CATEGORY_META } from "@/lib/sources";
 import { cn } from "@/lib/utils";
 
 interface FeedGridProps {
   category: string;
   search: string;
+  sourceFilter: string | null;
+  onSourceChange: (sourceId: string | null) => void;
 }
 
 type ViewMode = "grid" | "list";
 
-export function FeedGrid({ category, search }: FeedGridProps) {
-  const { data, loading, error, refetch } = useFeed(category, search);
+export function FeedGrid({
+  category,
+  search,
+  sourceFilter,
+  onSourceChange,
+}: FeedGridProps) {
+  const { data, loading, error, refetch } = useFeed(
+    category,
+    search,
+    sourceFilter
+  );
   const [selected, setSelected] = useState<FeedItem | null>(null);
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<ViewMode>("grid");
@@ -98,6 +110,13 @@ export function FeedGrid({ category, search }: FeedGridProps) {
         </div>
       </div>
 
+      {/* Source filter chips */}
+      <SourceFilter
+        category={category}
+        activeSourceId={sourceFilter}
+        onSourceChange={onSourceChange}
+      />
+
       {/* Body */}
       {loading ? (
         <FeedSkeleton />
@@ -156,8 +175,13 @@ function FeedListItem({
             loading="lazy"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-[var(--brand-muted)]/30">
-            <span className="font-latin text-xs uppercase">{meta?.labelEn}</span>
+          <div className="w-full h-full flex items-center justify-center">
+            <span
+              className="text-3xl font-bold font-latin opacity-20"
+              style={{ color: meta?.tint || "var(--brand-accent)" }}
+            >
+              {meta?.labelEn?.charAt(0) || "?"}
+            </span>
           </div>
         )}
       </div>

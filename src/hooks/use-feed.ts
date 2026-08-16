@@ -3,7 +3,11 @@
 import { useEffect, useState, useCallback } from "react";
 import type { FeedResponse } from "@/types/feed";
 
-export function useFeed(category: string, search: string) {
+export function useFeed(
+  category: string,
+  search: string,
+  sourceFilter?: string | null
+) {
   const [data, setData] = useState<FeedResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -17,6 +21,7 @@ export function useFeed(category: string, search: string) {
         limit: "80",
       });
       if (search.trim()) params.set("q", search.trim());
+      if (sourceFilter) params.set("source", sourceFilter);
       const res = await fetch(`/api/feed?${params.toString()}`, {
         cache: "no-store",
       });
@@ -29,7 +34,7 @@ export function useFeed(category: string, search: string) {
     } finally {
       setLoading(false);
     }
-  }, [category, search]);
+  }, [category, search, sourceFilter]);
 
   useEffect(() => {
     const t = setTimeout(() => refetch(), 150);

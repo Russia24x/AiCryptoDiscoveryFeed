@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Search, Menu, X, Github, Moon, Sun } from "lucide-react";
+import { Search, Menu, X } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
+import { BookmarksButton } from "@/components/feed/bookmarks-drawer";
+import { useBookmarks } from "@/hooks/use-bookmarks";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,7 +12,6 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
 } from "@/components/ui/sheet";
 
 interface HeaderProps {
@@ -18,6 +19,7 @@ interface HeaderProps {
   onCategoryChange: (cat: string) => void;
   search: string;
   onSearchChange: (s: string) => void;
+  onOpenBookmarks: () => void;
 }
 
 const NAV = [
@@ -34,10 +36,12 @@ export function Header({
   onCategoryChange,
   search,
   onSearchChange,
+  onOpenBookmarks,
 }: HeaderProps) {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const { count, hydrated } = useBookmarks();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -82,7 +86,7 @@ export function Header({
           </nav>
 
           {/* Right cluster */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             {/* Search (expandable on desktop) */}
             <div className="hidden sm:flex items-center">
               {searchOpen ? (
@@ -116,6 +120,12 @@ export function Header({
                 </button>
               )}
             </div>
+
+            {/* Bookmarks */}
+            <BookmarksButton
+              count={hydrated ? count : 0}
+              onClick={onOpenBookmarks}
+            />
 
             {/* Mobile: search + menu */}
             <Button
@@ -174,6 +184,18 @@ export function Header({
               </button>
             ))}
           </nav>
+          <div className="mt-8 pt-6 border-t border-[var(--brand-border)]">
+            <button
+              onClick={() => {
+                onOpenBookmarks();
+                setMobileOpen(false);
+              }}
+              className="w-full text-right px-4 py-3 rounded-lg text-sm font-medium text-[var(--brand-muted)] hover:text-[var(--brand-text)] hover:bg-[var(--brand-surface-2)] transition-colors flex items-center justify-between"
+            >
+              <span className="font-latin text-xs">{count} نشانک</span>
+              <span>نشانک‌های من</span>
+            </button>
+          </div>
           <div className="mt-8 pt-6 border-t border-[var(--brand-border)]">
             <div className="flex items-center justify-between text-xs text-[var(--brand-muted)]">
               <span className="font-latin uppercase tracking-wider">Ai Crypto Discovery</span>
