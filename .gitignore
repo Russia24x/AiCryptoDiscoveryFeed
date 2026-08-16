@@ -52,3 +52,9 @@ prompt
 server.log
 # Skills directory
 /skills/
+
+# Agent Browser screenshots (test artifacts, not for git)
+/screenshots/
+
+# Local scripts (working dir for build scripts)
+/scripts/
