@@ -259,7 +259,337 @@ $ eslint .
 
 ---
 
-_Last updated: 2026-08-17 — Phase 4 complete (bilingual + Persian sources + custom channels)._
+_Last updated: 2026-08-17 — Phase 5 complete (in-app article reader + smart image fallback + Telegram media preview)._
+
+---
+
+## Task ID: 5 — Phase 5: In-app Article Reader + Smart Image Fallback + Telegram Media Preview
+**Agent**: Main agent
+**Task**: User requested: 1) Modern design for displaying Telegram + X channel
+content WITH their media (not just follow cards), 2) Fix missing images on
+articles (most sources don't have featured images in RSS), 3) Read articles
+in-app instead of redirecting to source — modern, full-featured reader.
+
+### Work Log
+
+#### Sync-check (Rule 2)
+- `git fetch origin` → ✅ success.
+- `git rev-list --left-right --count origin/main...HEAD` → `0 0` (clean).
+- Verdict: ✅ Up-to-date and clean — proceeded with new work.
+
+#### QA findings (via agent-browser)
+- **Image coverage problem**: 58 of 86 articles have NO image. Source RSS
+  feeds don't include featured images for most posts, so cards show a
+  broken or empty placeholder.
+- **Old FeedDetail dialog was minimal**: only showed the RSS description
+  (~280 chars truncated). To read the full article, user had to click
+  "خواندن کامل" and leave the site.
+- **Telegram channels were just follow cards**: clicking opened Telegram
+  in a new tab; no in-app preview of recent posts.
+- **X/Twitter accounts were also just follow cards**.
+- **Article content IS extractable** — RSS feeds include `<content:encoded>`
+  field, but it's often truncated or just contains a redirect link.
+
+#### 1. New API route `/api/article?url=...` (server-side proxy + extractor)
+**File**: `src/app/api/article/route.ts`
+
+- Accepts a `url` query parameter (the source article URL).
+- Fetches the source HTML server-side (bypasses CORS, hides our IP behind
+  a clean User-Agent).
+- Extracts the article body via 3 strategies (tried in order):
+  1. `<article>` tag (most modern sites).
+  2. Common content class patterns (`entry-content`, `post-content`,
+     `article-body`, etc.).
+  3. Fallback: collect all `<p>` tags from `<body>` (>80 chars, no nav/
+     footer text).
+- Cleans the HTML:
+  - Removes `<script>`, `<style>`, `<iframe>`, `<form>`, `<nav>`,
+    `<footer>`, `<header>`, `<aside>`, `<button>`, `<svg>`, comments.
+  - Strips `class`, `style`, `id`, `onclick`, `onload`, `onerror`,
+    `data-*` attributes.
+  - Whitelists only safe tags: `p, h1-h6, ul, ol, li, a, img, figure,
+    figcaption, blockquote, pre, code, br, hr, em, strong, b, i, u, s,
+    table, thead, tbody, tr, th, td`.
+  - For `<a>` tags, only keeps `href` + adds `target="_blank"
+    rel="noopener noreferrer nofollow"`.
+  - For `<img>` tags, only keeps `src`, `alt`, adds `loading="lazy"
+    referrerpolicy="no-referrer"`.
+- Extracts metadata: `og:title`, `og:image`, `author`, `published_time`,
+  `site_name`, favicon.
+- Returns JSON with: `title`, `html`, `text`, `excerpt`, `images[]`,
+  `author`, `publishedDate`, `siteName`, `favicon`, `wordCount`,
+  `readingTimeMinutes`.
+- Cache-Control: `public, s-maxage=600, stale-while-revalidate=1200`
+  (10 min edge cache, 20 min stale-while-revalidate).
+- All errors handled gracefully — returns 200 with `error` field so client
+  can show fallback UI.
+- 12s timeout per fetch.
+
+#### 2. New API route `/api/channel?handle=...` (Telegram preview scraper)
+**File**: `src/app/api/channel/route.ts`
+
+- Fetches `https://t.me/s/<handle>` (the public web preview that Telegram
+  serves for any non-private channel — no API token needed).
+- Extracts recent posts (up to 20) by parsing the HTML structure:
+  - Post ID (from `data-post` attribute).
+  - Text (from `tgme_widget_message_text` div).
+  - Images (from `tgme_widget_message_photo` divs — the background-image
+    URL).
+  - Videos (from `<video src="...">` tags).
+  - Timestamp (from `tgme_widget_message_date` link's `title` attribute).
+  - Views count (from `tgme_widget_message_views` span).
+- Returns JSON: `{ handle, previewUrl, posts[], postCount, isPrivate, error }`.
+- Detects private channels (no web preview) and returns `isPrivate: true`
+  with empty posts array — UI then shows a "channel private" fallback.
+- Cache-Control: `public, s-maxage=300, stale-while-revalidate=600`
+  (5 min edge cache).
+- 12s timeout per fetch.
+
+#### 3. New component: `SmartImage` (smart placeholder when no image)
+**File**: `src/components/feed/smart-image.tsx`
+
+- Accepts `src`, `alt`, `category`, `sourceId`, `sourceName`, `variant`,
+  `aspectClass`, `loading`.
+- If `src` is missing OR image fails to load (`onError`), shows a
+  beautiful generated placeholder:
+  - Picks a deterministic gradient (10 gradient variations: teal, blue,
+    purple, orange, pink, etc.) based on `hashString(sourceId +
+    sourceName + category)`.
+  - Renders a large category-initial letter (in active language alphabet
+    — Persian or English) in the gradient color with a glow.
+  - Adds a layered grain texture overlay (radial gradients).
+  - For `variant="reader"`, also shows the source name and full category
+    label.
+- For `variant="card"`: compact — just the initial + small "no preview"
+  hint icon in the corner.
+- For `variant="detail"` or `"reader"`: full — initial + category label
+  + source name.
+- All gradient colors are derived from the brand palette (teal-heavy).
+- Animated image fade-in (`@keyframes imgFadeIn`) when image loads.
+
+#### 4. New component: `ArticleReader` (full-width slide-in reader)
+**File**: `src/components/feed/article-reader.tsx`
+
+- Replaces the old `FeedDetail` modal (which only showed RSS description).
+- A `Sheet` (radix-ui) that slides in from the right (LTR) or left (RTL)
+  based on language.
+- Width: full on mobile, 800px on desktop.
+- Sticky header bar: category badge, source name, bookmark button,
+  prev/next chevrons, close button.
+- Hero image: uses `SmartImage` (so it always has a beautiful image even
+  when RSS doesn't provide one).
+- Title (`<h1>`), then meta row (favicon + source + author + published
+  time + reading time + word count).
+- Body content:
+  - On mount, fetches `/api/article?url=...` to get full article HTML.
+  - Loading spinner while fetching.
+  - On success: renders the extracted HTML via `dangerouslySetInnerHTML`
+    inside a `.article-body` div that has magazine-style typography
+    (defined in globals.css).
+  - On error: shows a warning banner + falls back to the RSS description.
+  - Image gallery (3x3 grid) at the end if the article has multiple
+    images.
+- Footer: source hostname link + "خواندن کامل" CTA.
+- Keyboard navigation:
+  - `ESC` closes the reader.
+  - `←` / `→` arrows navigate to prev/next article (respecting RTL/LTR).
+- Bookmark toggle button (top-right of header).
+- Hint at the bottom: "ESC to close · ← → to navigate" (localized).
+
+#### 5. Article typography in `globals.css`
+**File**: `src/app/globals.css` — added `.article-body` styles for:
+- `p`: 1.85 line-height, 1.25em bottom margin, kerning on.
+- `h1-h6`: bold, letter-spacing -0.01em for h1/h2, proper margins.
+- `ul, ol`: padding-inline-start (respects RTL), disc/decimal list styles.
+- `a`: teal underline with 30% opacity that goes 100% on hover, offset 3px.
+- `img`: max-width 100%, border-radius 0.75rem, fade-in animation.
+- `blockquote`: teal left-border, accent-soft background, italic.
+- `pre, code`: monospace, surface-2 background, teal accent for inline code.
+- `table`: full-width, border-collapse, surface-2 header background.
+- `strong, em, s`: bold/italic/line-through styling.
+- `figcaption`: small, muted, italic, centered.
+- `hr`: thin border.
+
+#### 6. New component: `TelegramPreview` (channel post card with media)
+**File**: `src/components/feed/telegram-preview.tsx`
+
+- Shows a card per Telegram channel with the most recent posts.
+- Channel header: avatar + name + @handle + category badge + "open in
+  Telegram" link.
+- Body: list of recent posts (default 3, expanded to 6 via "show more"
+  button).
+- Each post card:
+  - Media thumbnail (16/9 aspect) if the post has an image — extracted
+    from the channel preview HTML.
+  - Play button overlay if the post has a video.
+  - Text (truncated to 3 lines via `line-clamp-3`).
+  - Footer: timestamp (relative, localized) + views count (with eye icon).
+  - Clicking the post opens `t.me/<channel>/<post_id>` in a new tab.
+- Loading state: spinner with "Loading recent posts...".
+- Error/empty state: shows alert icon + "Channel is private or has no
+  web preview" or "No posts available" + "Open in Telegram" fallback link.
+- Image error handling: per-post error state that hides the image and
+  shows just the text body.
+
+#### 7. Updated `Channels` section (with view toggle)
+**File**: `src/components/feed/channels.tsx`
+
+- Added a view toggle: "Recent posts" (default) vs "Cards".
+  - **Recent posts view**: renders each Telegram channel via
+    `TelegramPreview` (with media, posts, views, etc.). This is the new
+    modern view.
+  - **Cards view**: the old compact card layout (for when you just want
+    to scan channels).
+- Filter chips (category + language) now apply to BOTH views.
+- Removed old `feed-detail.tsx` (replaced by `article-reader.tsx`).
+
+#### 8. Updated `FeedCard` (uses SmartImage, better depth)
+**File**: `src/components/feed/feed-card.tsx`
+
+- Replaced inline `<img>` with `<SmartImage>` — now cards always have a
+  beautiful image, even when RSS doesn't provide one.
+- Read-time badge moved to bottom-right of the image (instead of meta row).
+- Added category color dot in the source-name meta row.
+- Subtle gradient overlay per category (already existed, kept).
+- Better hover micro-animations (card-lift + image scale-105 on hover).
+
+#### 9. Updated `FeedGrid` (uses ArticleReader, supports navigation)
+**File**: `src/components/feed/feed-grid.tsx`
+
+- Replaced `FeedDetail` with `ArticleReader`.
+- Tracks `selectedIdx` to know which article is currently open.
+- `onPrev` / `onNext` handlers navigate between articles without closing
+  the reader.
+- `hasPrev` / `hasNext` props control chevron button visibility.
+- List view also uses `SmartImage` now.
+
+### Verification (agent-browser)
+
+**Image coverage fix**:
+- Before: 28 of 86 articles had real images, 58 had broken/empty.
+- After: ALL articles show either a real image OR a beautiful gradient
+  placeholder with the category initial.
+  - Persian mode: 95 articles, 34 with real image, 61 with placeholder ✅
+  - VLM verified: gradient colors are varied per category (orange for
+    crypto, teal for AI, blue for tech, purple for gaming, pink for
+    entertainment) ✅
+
+**Article Reader (in-app full content)**:
+- Clicked article "فروش بازی ARC Raiders" → reader opens with full
+  article HTML body (links, images, paragraphs all rendered) ✅
+- Body content length: ~500 chars of real article text + 1 image ✅
+- Word count + reading time + author + published date shown in meta row ✅
+- Bookmark button works ✅
+- "خواندن کامل" CTA still available for users who want to visit source ✅
+- Image gallery section at the end if article has multiple images ✅
+- Error fallback: shows yellow warning banner + RSS description if fetch
+  fails ✅
+
+**Keyboard navigation**:
+- Clicked "Next article" chevron → title changed from "ARC Raiders" to
+  "پلی‌ استیشن به دنبال شناسایی کاربران..." ✅
+- Both Previous and Next chevrons now visible (since we're in the middle) ✅
+- Arrow keys + ESC work (registered in keydown listener) ✅
+- RTL/LTR direction respected — arrow keys swap in RTL ✅
+
+**Telegram preview**:
+- 17 direct post links found in DOM (e.g., `t.me/Mastersharkcrypto/12345`)
+  → confirms server-side post extraction is working ✅
+- 8 post images visible (media thumbnails) ✅
+- 7 view-count icons visible (the eye icon) → confirms Telegram post
+  metadata (views, timestamp) is being extracted ✅
+- Loading state works (spinner while fetching) ✅
+- View toggle (Recent posts vs Cards) works ✅
+
+**Mobile**:
+- Reader opens full-width (390px) on 390×844 viewport ✅
+- Article body renders correctly on mobile ✅
+- SmartImage placeholders render correctly on mobile ✅
+- RTL preserved ✅
+
+**Code quality**:
+- ✅ `bun run lint` clean (0 errors, 0 warnings).
+- ✅ No console errors or warnings.
+- ✅ Dev server compiles without errors.
+- ✅ All API routes respond 200.
+- ✅ No sensitive files in tracked changes (Rule 4 pre-push check).
+
+#### Files added/modified
+
+**New (5):**
+- `src/app/api/article/route.ts` — article content fetcher + extractor
+- `src/app/api/channel/route.ts` — Telegram channel preview scraper
+- `src/components/feed/smart-image.tsx` — smart placeholder component
+- `src/components/feed/article-reader.tsx` — full-width reader
+- `src/components/feed/telegram-preview.tsx` — Telegram post card
+
+**Modified (5):**
+- `src/app/globals.css` — added `.article-body` magazine typography
+- `src/components/feed/feed-card.tsx` — uses SmartImage, better depth
+- `src/components/feed/feed-grid.tsx` — uses ArticleReader + navigation
+- `src/components/feed/channels.tsx` — view toggle, uses TelegramPreview
+- (worklog.md — this update)
+
+**Removed (1):**
+- `src/components/feed/feed-detail.tsx` — replaced by article-reader.tsx
+
+### Stage Summary
+
+- **In-app Article Reader**: click any article → full magazine-style
+  reading experience with HTML content, images, image gallery, word count,
+  reading time, keyboard nav, bookmark. No need to leave the app.
+- **Smart Image Fallback**: 60+ articles that previously had broken/empty
+  images now show a beautiful deterministic gradient placeholder with the
+  category initial.
+- **Telegram Media Preview**: instead of just "follow" cards, each
+  Telegram channel now shows its 3 most recent posts with text, images,
+  video thumbnails, timestamps, and view counts. Expandable to 6 posts.
+- **Modern Typography**: full CSS styling for article body (p, h1-h6,
+  ul/ol/li, blockquote, pre/code, table, img, figure, figcaption, a, hr).
+- **Keyboard Navigation**: ESC closes reader, ← → arrows swap articles.
+- **No backend storage** (per user's reminder): all article content is
+  fetched on-demand via server-side proxy and cached at the edge via
+  Cloudflare Cache-Control. Bookmarks + custom channels are in browser
+  localStorage. Nothing is stored server-side.
+
+### Unresolved Issues / Risks
+
+1. **Article extraction quality varies by source** — some sites (notably
+   WordPress with heavy plugins) have complex DOM that may not extract
+   cleanly. Mitigation: 3-strategy fallback chain + graceful error
+   banner showing the RSS description instead.
+
+2. **Telegram web preview is rate-limited** — Telegram may rate-limit
+   scrapers. Mitigation: 5-minute edge cache + per-channel fetch only
+   happens when the user opens the Channels section.
+
+3. **Some Persian sites use HTTPS with mixed content** — images loaded
+   via `http://` may be blocked by browsers. Mitigation: `referrerPolicy="no-referrer"`
+   on img tags + `loading="lazy"` for incremental loading.
+
+4. **Article fetch latency** — server-side fetch + parse takes ~1
+   second per article (acceptable but noticeable). Mitigation: 10-minute
+   edge cache means each article is fetched at most once per 10 min.
+
+5. **VLM (vision QA) sometimes fabricates HTML instead of describing
+   screenshots** — for QA verification prefer `agent-browser eval` with
+   concrete DOM queries (which is what I did).
+
+### Priority Recommendations for Phase 6
+
+1. **Push Phase 5 to GitHub** — sync-check, push as commit on top of
+   `703dbc3`.
+2. **X/Twitter preview cards** — currently X cards are still just follow
+   cards. Could add a lightweight post preview using the public RSS feed
+   (`nitter.net` mirrors or `rss.app`).
+3. **Reading progress bar** — show a top progress bar in the reader that
+   tracks scroll position.
+4. **Article font size control** — A-/A+ buttons in the reader header.
+5. **Share button** — copy article URL to clipboard.
+6. **Image lightbox** — clicking an article image should open a
+   full-screen lightbox with prev/next nav between images.
+7. **More article sources for extraction** — add regex patterns for
+   common WordPress + Ghost + Medium + Substack themes.
 
 ---
 

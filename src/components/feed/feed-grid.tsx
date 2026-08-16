@@ -6,9 +6,10 @@ import type { FeedItem } from "@/types/feed";
 import { useFeed } from "@/hooks/use-feed";
 import { useLanguage } from "@/hooks/use-language";
 import { FeedCard } from "./feed-card";
-import { FeedDetail } from "./feed-detail";
+import { ArticleReader } from "./article-reader";
 import { FeedSkeleton, FeedEmpty, FeedError } from "./feed-states";
 import { SourceFilter } from "./source-filter";
+import { SmartImage } from "./smart-image";
 import { CATEGORY_META, categoryLabel } from "@/lib/sources";
 import { formatNumber } from "@/hooks/use-feed-state";
 import { cn } from "@/lib/utils";
@@ -35,13 +36,25 @@ export function FeedGrid({
     sourceFilter,
     lang
   );
-  const [selected, setSelected] = useState<FeedItem | null>(null);
-  const [open, setOpen] = useState(false);
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const [readerOpen, setReaderOpen] = useState(false);
   const [view, setView] = useState<ViewMode>("grid");
 
   const onOpen = (item: FeedItem) => {
-    setSelected(item);
-    setOpen(true);
+    const idx = data?.items.findIndex((it) => it.id === item.id) ?? -1;
+    setSelectedIdx(idx >= 0 ? idx : 0);
+    setReaderOpen(true);
+  };
+
+  const onPrev = () => {
+    if (selectedIdx === null || !data) return;
+    setSelectedIdx((idx) => (idx !== null && idx > 0 ? idx - 1 : idx));
+  };
+  const onNext = () => {
+    if (selectedIdx === null || !data) return;
+    setSelectedIdx((idx) =>
+      idx !== null && idx < data.items.length - 1 ? idx + 1 : idx
+    );
   };
 
   const title = useMemo(() => {
@@ -51,6 +64,8 @@ export function FeedGrid({
   }, [category, search, lang, t]);
 
   const count = data?.items?.length || 0;
+  const selectedItem =
+    selectedIdx !== null && data ? data.items[selectedIdx] : null;
 
   return (
     <section id="feed" className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10 md:py-14 scroll-mt-20">
@@ -137,17 +152,33 @@ export function FeedGrid({
       ) : (
         <div className="flex flex-col gap-3">
           {data!.items.map((item, i) => (
-            <FeedListItem key={item.id} item={item} onOpen={onOpen} index={i} />
+            <FeedListItem
+              key={item.id}
+              item={item}
+              onOpen={onOpen}
+              index={i}
+            />
           ))}
         </div>
       )}
 
-      <FeedDetail item={selected} open={open} onOpenChange={setOpen} />
+      {/* In-app Article Reader (replaces old FeedDetail) */}
+      <ArticleReader
+        item={selectedItem}
+        open={readerOpen}
+        onOpenChange={setReaderOpen}
+        onPrev={onPrev}
+        onNext={onNext}
+        hasPrev={selectedIdx !== null && selectedIdx > 0}
+        hasNext={
+          selectedIdx !== null && !!data && selectedIdx < data.items.length - 1
+        }
+      />
     </section>
   );
 }
 
-/** Compact horizontal list-row variant. */
+/** Compact horizontal list-row variant using SmartImage. */
 function FeedListItem({
   item,
   onOpen,
@@ -157,7 +188,6 @@ function FeedListItem({
   onOpen: (item: FeedItem) => void;
   index: number;
 }) {
-  const [imgError, setImgError] = useState(false);
   const { t, lang } = useLanguage();
   const meta = CATEGORY_META[item.source.category];
 
@@ -169,35 +199,19 @@ function FeedListItem({
         animation: `fadeUp 0.35s ease ${Math.min(index * 0.02, 0.4)}s both`,
       }}
     >
-      <div className="relative aspect-square md:aspect-auto bg-[var(--brand-surface-2)] overflow-hidden">
-        {item.image && !imgError ? (
-          <img
-            src={item.image}
-            alt={item.title}
-            referrerPolicy="no-referrer"
-            onError={() => setImgError(true)}
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <span
-              className="text-3xl font-bold font-latin opacity-20"
-              style={{ color: meta?.tint || "var(--brand-accent)" }}
-            >
-              {(lang === "fa"
-                ? meta?.label?.charAt(0)
-                : meta?.labelEn?.charAt(0)) || "?"}
-            </span>
-          </div>
-        )}
-      </div>
+      <SmartImage
+        src={item.image}
+        alt={item.title}
+        category={item.source.category}
+        sourceId={item.source.id}
+        sourceName={item.source.name}
+        variant="card"
+        aspectClass="aspect-square md:aspect-auto h-full"
+        loading="lazy"
+      />
       <div className="p-3 md:p-4 flex flex-col gap-1.5">
         <div className="flex items-center gap-2 text-[11px]">
-          <span
-            className="font-bold"
-            style={{ color: meta?.tint }}
-          >
+          <span className="font-bold" style={{ color: meta?.tint }}>
             {categoryLabel(item.source.category, lang)}
           </span>
           <span className="text-[var(--brand-muted)]">·</span>

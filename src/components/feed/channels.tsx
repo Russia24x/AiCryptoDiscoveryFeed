@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Send, Twitter, ExternalLink, Plus, X, Trash2 } from "lucide-react";
+import { Send, Twitter, ExternalLink, Plus, X } from "lucide-react";
 import {
   TELEGRAM_CHANNELS,
   TWITTER_ACCOUNTS,
@@ -13,6 +13,7 @@ import {
   type Language,
 } from "@/lib/sources";
 import { useLanguage } from "@/hooks/use-language";
+import { TelegramPreview } from "./telegram-preview";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -74,8 +75,8 @@ export function Channels() {
   const [langFilter, setLangFilter] = useState<Language | "all">("all");
   const [customChannels, setCustomChannels] = useState<CustomChannel[]>([]);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
+  const [view, setView] = useState<"grid" | "feed">("feed");
 
-  // Load custom channels
   useEffect(() => {
     const load = () => setCustomChannels(readCustom());
     load();
@@ -83,7 +84,6 @@ export function Channels() {
     return () => window.removeEventListener("acd:custom-channels-changed", load);
   }, []);
 
-  // Combine built-in + custom channels
   const tgChannels: (TelegramChannel | (CustomChannel & { type: "telegram" }))[] =
     [
       ...TELEGRAM_CHANNELS,
@@ -118,7 +118,6 @@ export function Channels() {
         })),
     ];
 
-  // Apply filters
   const filterFn = (
     item: { category: Exclude<Category, "all">; language: Language }
   ) => {
@@ -151,19 +150,46 @@ export function Channels() {
           </p>
         </div>
 
-        <Button
-          onClick={() => setAddDialogOpen(true)}
-          variant="outline"
-          className="bg-[var(--brand-surface)] border-[var(--brand-border)] text-[var(--brand-text)] hover:border-[var(--brand-accent)] hover:text-[var(--brand-accent)]"
-        >
-          <Plus className="w-4 h-4" />
-          {t.channels.addChannel}
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* View toggle — feed vs grid */}
+          <div className="flex items-center bg-[var(--brand-surface)] border border-[var(--brand-border)] rounded-md p-0.5">
+            <button
+              onClick={() => setView("feed")}
+              className={cn(
+                "px-3 py-1.5 rounded text-xs font-bold transition-colors",
+                view === "feed"
+                  ? "bg-[var(--brand-surface-2)] text-[var(--brand-accent)]"
+                  : "text-[var(--brand-muted)] hover:text-[var(--brand-text)]"
+              )}
+            >
+              {lang === "fa" ? "پست‌های اخیر" : "Recent posts"}
+            </button>
+            <button
+              onClick={() => setView("grid")}
+              className={cn(
+                "px-3 py-1.5 rounded text-xs font-bold transition-colors",
+                view === "grid"
+                  ? "bg-[var(--brand-surface-2)] text-[var(--brand-accent)]"
+                  : "text-[var(--brand-muted)] hover:text-[var(--brand-text)]"
+              )}
+            >
+              {lang === "fa" ? "کارتی" : "Cards"}
+            </button>
+          </div>
+
+          <Button
+            onClick={() => setAddDialogOpen(true)}
+            variant="outline"
+            className="bg-[var(--brand-surface)] border-[var(--brand-border)] text-[var(--brand-text)] hover:border-[var(--brand-accent)] hover:text-[var(--brand-accent)]"
+          >
+            <Plus className="w-4 h-4" />
+            {t.channels.addChannel}
+          </Button>
+        </div>
       </div>
 
       {/* Filter chips */}
       <div className="flex flex-wrap items-center gap-2 mb-8">
-        {/* Category filter */}
         <div className="flex gap-1 flex-wrap">
           <FilterChip
             active={catFilter === "all"}
@@ -188,7 +214,6 @@ export function Channels() {
 
         <span className="mx-2 h-5 w-px bg-[var(--brand-border)] hidden sm:block" />
 
-        {/* Language filter */}
         <div className="flex gap-1">
           <FilterChip
             active={langFilter === "all"}
@@ -211,167 +236,177 @@ export function Channels() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Telegram */}
-        <div>
-          <div className="flex items-center gap-2 mb-4 text-sm font-semibold text-[var(--brand-muted)]">
-            <Send className="w-4 h-4 text-[var(--brand-accent)]" />
-            <span className="font-latin uppercase tracking-wider">
-              {t.channels.telegramTitle}
-            </span>
-            <span className="text-[10px] font-latin text-[var(--brand-muted)]/60">
-              {filteredTg.length}
-            </span>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {filteredTg.length === 0 ? (
-              <div className="text-xs text-[var(--brand-muted)] py-6 text-center col-span-2">
-                —
-              </div>
-            ) : (
-              filteredTg.map((ch) => {
-                const meta = CATEGORY_META[ch.category];
-                const name = lang === "fa" ? ch.nameFa : ch.name;
-                const description =
-                  lang === "fa"
-                    ? (ch as TelegramChannel).descriptionFa ||
-                      (ch as TelegramChannel).description ||
-                      ""
-                    : (ch as TelegramChannel).description || "";
-                return (
-                  <div
-                    key={ch.id}
-                    className="card-lift group relative block rounded-lg border border-[var(--brand-border)] bg-[var(--brand-surface)] p-4"
-                  >
-                    <a
-                      href={`https://t.me/${ch.handle}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block"
-                    >
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <div className="flex items-center gap-2">
-                          <div className="w-9 h-9 rounded-full bg-[var(--brand-accent-soft)] flex items-center justify-center">
-                            <Send className="w-4 h-4 text-[var(--brand-accent)]" />
-                          </div>
-                          <div>
-                            <div className="text-sm font-bold text-[var(--brand-text)]">
-                              {name}
-                            </div>
-                            <div className="text-[11px] font-latin text-[var(--brand-muted)]">
-                              @{ch.handle}
-                            </div>
-                          </div>
-                        </div>
-                        <ExternalLink className="w-3.5 h-3.5 text-[var(--brand-muted)] opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </div>
-                      {description && (
-                        <p className="text-xs text-[var(--brand-muted)] leading-relaxed mb-3">
-                          {description}
-                        </p>
-                      )}
-                      <div className="flex items-center gap-2">
-                        <span
-                          className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded"
-                          style={{
-                            backgroundColor: "var(--brand-accent-soft)",
-                            color: meta?.tint,
-                          }}
-                        >
-                          {categoryLabel(ch.category, lang)}
-                        </span>
-                        <span className="text-[10px] font-latin text-[var(--brand-muted)] uppercase">
-                          {ch.language === "fa" ? "FA" : "EN"}
-                        </span>
-                      </div>
-                    </a>
-                    {ch.isCustom && (
-                      <button
-                        onClick={() => removeCustom(ch.handle, "telegram")}
-                        className="absolute top-1 left-1 p-1 rounded bg-[var(--brand-bg)]/80 text-[var(--brand-muted)] hover:text-red-400 transition-colors"
-                        aria-label={t.channels.removeChannel}
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
+      {/* Telegram */}
+      <div className="mb-12">
+        <div className="flex items-center gap-2 mb-4 text-sm font-semibold text-[var(--brand-muted)]">
+          <Send className="w-4 h-4 text-[var(--brand-accent)]" />
+          <span className="font-latin uppercase tracking-wider">
+            {t.channels.telegramTitle}
+          </span>
+          <span className="text-[10px] font-latin text-[var(--brand-muted)]/60">
+            {filteredTg.length}
+          </span>
         </div>
 
-        {/* Twitter */}
-        <div>
-          <div className="flex items-center gap-2 mb-4 text-sm font-semibold text-[var(--brand-muted)]">
-            <Twitter className="w-4 h-4 text-[var(--brand-accent)]" />
-            <span className="font-latin uppercase tracking-wider">
-              {t.channels.twitterTitle}
-            </span>
-            <span className="text-[10px] font-latin text-[var(--brand-muted)]/60">
-              {filteredX.length}
-            </span>
+        {filteredTg.length === 0 ? (
+          <div className="text-xs text-[var(--brand-muted)] py-6 text-center rounded-lg border border-dashed border-[var(--brand-border)]">
+            —
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {filteredX.length === 0 ? (
-              <div className="text-xs text-[var(--brand-muted)] py-6 text-center col-span-2">
-                —
-              </div>
-            ) : (
-              filteredX.map((acc) => {
-                const meta = CATEGORY_META[acc.category];
-                const name = lang === "fa" ? acc.nameFa : acc.name;
-                return (
-                  <div
-                    key={acc.id}
-                    className="card-lift group relative flex items-center gap-3 rounded-lg border border-[var(--brand-border)] bg-[var(--brand-surface)] p-4"
+        ) : view === "feed" ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredTg.map((ch) => (
+              <TelegramPreview
+                key={ch.id}
+                handle={ch.handle}
+                channelName={lang === "fa" ? ch.nameFa : ch.name}
+                category={ch.category}
+                description={lang === "fa" ? (ch as TelegramChannel).descriptionFa || (ch as TelegramChannel).description : (ch as TelegramChannel).description}
+                postCount={3}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {filteredTg.map((ch) => {
+              const meta = CATEGORY_META[ch.category];
+              const name = lang === "fa" ? ch.nameFa : ch.name;
+              const description =
+                lang === "fa"
+                  ? (ch as TelegramChannel).descriptionFa || (ch as TelegramChannel).description || ""
+                  : (ch as TelegramChannel).description || "";
+              return (
+                <div
+                  key={ch.id}
+                  className="card-lift group relative block rounded-lg border border-[var(--brand-border)] bg-[var(--brand-surface)] p-4"
+                >
+                  <a
+                    href={`https://t.me/${ch.handle}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block"
                   >
-                    <a
-                      href={`https://x.com/${acc.handle}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 flex-1 min-w-0"
-                    >
-                      <div className="w-9 h-9 rounded-full bg-[var(--brand-surface-2)] border border-[var(--brand-border)] flex items-center justify-center shrink-0">
-                        <Twitter className="w-4 h-4 text-[var(--brand-text)]" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-bold text-[var(--brand-text)] truncate">
-                          {name}
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-9 h-9 rounded-full bg-[var(--brand-accent-soft)] flex items-center justify-center">
+                          <Send className="w-4 h-4 text-[var(--brand-accent)]" />
                         </div>
-                        <div className="text-[11px] font-latin text-[var(--brand-muted)]">
-                          @{acc.handle}
+                        <div>
+                          <div className="text-sm font-bold text-[var(--brand-text)]">
+                            {name}
+                          </div>
+                          <div className="text-[11px] font-latin text-[var(--brand-muted)]">
+                            @{ch.handle}
+                          </div>
                         </div>
                       </div>
-                      <div className="flex flex-col items-end gap-1 shrink-0">
-                        <span
-                          className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-                          style={{
-                            color: meta?.tint,
-                            backgroundColor: "var(--brand-accent-soft)",
-                          }}
-                        >
-                          {categoryLabel(acc.category, lang)}
-                        </span>
-                        <span className="text-[10px] font-latin text-[var(--brand-muted)] uppercase">
-                          {acc.language === "fa" ? "FA" : "EN"}
-                        </span>
-                      </div>
-                    </a>
-                    {acc.isCustom && (
-                      <button
-                        onClick={() => removeCustom(acc.handle, "twitter")}
-                        className="absolute -top-1.5 -left-1.5 p-1 rounded-full bg-[var(--brand-bg)] border border-[var(--brand-border)] text-[var(--brand-muted)] hover:text-red-400 transition-colors"
-                        aria-label={t.channels.removeChannel}
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
+                      <ExternalLink className="w-3.5 h-3.5 text-[var(--brand-muted)] opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    {description && (
+                      <p className="text-xs text-[var(--brand-muted)] leading-relaxed mb-3">
+                        {description}
+                      </p>
                     )}
-                  </div>
-                );
-              })
-            )}
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded"
+                        style={{
+                          backgroundColor: "var(--brand-accent-soft)",
+                          color: meta?.tint,
+                        }}
+                      >
+                        {categoryLabel(ch.category, lang)}
+                      </span>
+                      <span className="text-[10px] font-latin text-[var(--brand-muted)] uppercase">
+                        {ch.language === "fa" ? "FA" : "EN"}
+                      </span>
+                    </div>
+                  </a>
+                  {ch.isCustom && (
+                    <button
+                      onClick={() => removeCustom(ch.handle, "telegram")}
+                      className="absolute top-1 left-1 p-1 rounded bg-[var(--brand-bg)]/80 text-[var(--brand-muted)] hover:text-red-400 transition-colors"
+                      aria-label={t.channels.removeChannel}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
+        )}
+      </div>
+
+      {/* Twitter / X */}
+      <div>
+        <div className="flex items-center gap-2 mb-4 text-sm font-semibold text-[var(--brand-muted)]">
+          <Twitter className="w-4 h-4 text-[var(--brand-accent)]" />
+          <span className="font-latin uppercase tracking-wider">
+            {t.channels.twitterTitle}
+          </span>
+          <span className="text-[10px] font-latin text-[var(--brand-muted)]/60">
+            {filteredX.length}
+          </span>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {filteredX.length === 0 ? (
+            <div className="col-span-full text-xs text-[var(--brand-muted)] py-6 text-center rounded-lg border border-dashed border-[var(--brand-border)]">
+              —
+            </div>
+          ) : (
+            filteredX.map((acc) => {
+              const meta = CATEGORY_META[acc.category];
+              const name = lang === "fa" ? acc.nameFa : acc.name;
+              return (
+                <div
+                  key={acc.id}
+                  className="card-lift group relative flex items-center gap-3 rounded-lg border border-[var(--brand-border)] bg-[var(--brand-surface)] p-4"
+                >
+                  <a
+                    href={`https://x.com/${acc.handle}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 flex-1 min-w-0"
+                  >
+                    <div className="w-9 h-9 rounded-full bg-[var(--brand-surface-2)] border border-[var(--brand-border)] flex items-center justify-center shrink-0">
+                      <Twitter className="w-4 h-4 text-[var(--brand-text)]" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-bold text-[var(--brand-text)] truncate">
+                        {name}
+                      </div>
+                      <div className="text-[11px] font-latin text-[var(--brand-muted)]">
+                        @{acc.handle}
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <span
+                        className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                        style={{
+                          color: meta?.tint,
+                          backgroundColor: "var(--brand-accent-soft)",
+                        }}
+                      >
+                        {categoryLabel(acc.category, lang)}
+                      </span>
+                      <span className="text-[10px] font-latin text-[var(--brand-muted)] uppercase">
+                        {acc.language === "fa" ? "FA" : "EN"}
+                      </span>
+                    </div>
+                  </a>
+                  {acc.isCustom && (
+                    <button
+                      onClick={() => removeCustom(acc.handle, "twitter")}
+                      className="absolute -top-1.5 -left-1.5 p-1 rounded-full bg-[var(--brand-bg)] border border-[var(--brand-border)] text-[var(--brand-muted)] hover:text-red-400 transition-colors"
+                      aria-label={t.channels.removeChannel}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 
@@ -452,13 +487,12 @@ function AddChannelDialog({
     };
 
     const existing = readCustom();
-    // Prevent duplicates
     if (
       existing.some(
         (c) => c.handle === newItem.handle && c.type === newItem.type
       )
     ) {
-      return; // silently skip
+      return;
     }
     writeCustom([...existing, newItem]);
     reset();
@@ -479,7 +513,6 @@ function AddChannelDialog({
         </DialogHeader>
 
         <div className="space-y-4 px-6 pb-6">
-          {/* Type toggle */}
           <div>
             <Label className="text-xs text-[var(--brand-muted)] mb-2 block">
               {lang === "fa" ? "نوع منبع" : "Source type"}
@@ -506,13 +539,12 @@ function AddChannelDialog({
                     : "bg-[var(--brand-surface-2)] border border-[var(--brand-border)] text-[var(--brand-muted)] hover:text-[var(--brand-text)]"
                 )}
               >
-                <Twitter className="x-3.5 h-3.5" />
+                <Twitter className="w-3.5 h-3.5" />
                 {t.channels.addChannelTwitter}
               </button>
             </div>
           </div>
 
-          {/* Handle */}
           <div>
             <Label htmlFor="ch-handle" className="text-xs text-[var(--brand-muted)] mb-2 block">
               {t.channels.addChannelHandle}
@@ -527,7 +559,6 @@ function AddChannelDialog({
             />
           </div>
 
-          {/* Display name */}
           <div>
             <Label htmlFor="ch-name" className="text-xs text-[var(--brand-muted)] mb-2 block">
               {t.channels.addChannelName}
@@ -541,7 +572,6 @@ function AddChannelDialog({
             />
           </div>
 
-          {/* Category */}
           <div>
             <Label className="text-xs text-[var(--brand-muted)] mb-2 block">
               {t.channels.addChannelCategory}
@@ -563,7 +593,6 @@ function AddChannelDialog({
             </Select>
           </div>
 
-          {/* Language */}
           <div>
             <Label className="text-xs text-[var(--brand-muted)] mb-2 block">
               {lang === "fa" ? "زبان" : "Language"}
@@ -594,7 +623,6 @@ function AddChannelDialog({
             </div>
           </div>
 
-          {/* Actions */}
           <div className="flex gap-2 pt-2">
             <Button
               variant="ghost"

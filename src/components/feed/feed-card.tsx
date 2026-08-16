@@ -14,6 +14,7 @@ import { CATEGORY_META, categoryLabel } from "@/lib/sources";
 import { useBookmarks } from "@/hooks/use-bookmarks";
 import { useLanguage } from "@/hooks/use-language";
 import { relativeTime, formatNumber } from "@/hooks/use-feed-state";
+import { SmartImage } from "./smart-image";
 import { cn } from "@/lib/utils";
 
 interface FeedCardProps {
@@ -41,7 +42,6 @@ const CATEGORY_GRADIENTS: Record<string, string> = {
 };
 
 export function FeedCard({ item, onOpen, index = 0 }: FeedCardProps) {
-  const [imgError, setImgError] = useState(false);
   const meta = CATEGORY_META[item.source.category];
   const { isBookmarked, toggleBookmark, hydrated } = useBookmarks();
   const { t, lang } = useLanguage();
@@ -81,39 +81,20 @@ export function FeedCard({ item, onOpen, index = 0 }: FeedCardProps) {
       }}
     >
       {/* Media */}
-      <div className="relative aspect-[16/9] overflow-hidden bg-[var(--brand-surface-2)]">
-        {item.image && !imgError ? (
-          <img
-            src={item.image}
-            alt={item.title}
-            referrerPolicy="no-referrer"
-            onError={() => setImgError(true)}
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-            loading="lazy"
-          />
-        ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-            <div
-              className="text-3xl font-bold font-latin opacity-20"
-              style={{ color: meta?.tint || "var(--brand-accent)" }}
-            >
-              {(lang === "fa"
-                ? meta?.label?.charAt(0)
-                : meta?.labelEn?.charAt(0)) || "?"}
-            </div>
-            <span
-              className="text-[10px] font-latin uppercase tracking-[0.2em] opacity-40"
-              style={{ color: meta?.tint || "var(--brand-muted)" }}
-            >
-              {lang === "fa"
-                ? categoryLabel(item.source.category, "fa")
-                : categoryLabel(item.source.category, "en")}
-            </span>
-          </div>
-        )}
+      <div className="relative">
+        <SmartImage
+          src={item.image}
+          alt={item.title}
+          category={item.source.category}
+          sourceId={item.source.id}
+          sourceName={sourceDisplayName}
+          variant="card"
+          aspectClass="aspect-[16/9]"
+          loading="lazy"
+        />
 
         {/* Category tint at top-left */}
-        <div className="absolute top-2.5 left-2.5">
+        <div className="absolute top-2.5 left-2.5 pointer-events-none">
           <span
             className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold backdrop-blur-md"
             style={{
@@ -147,6 +128,17 @@ export function FeedCard({ item, onOpen, index = 0 }: FeedCardProps) {
             <Bookmark className="w-3.5 h-3.5" />
           )}
         </button>
+
+        {/* Read-time badge — bottom-right of image */}
+        <div className="absolute bottom-2.5 right-2.5 pointer-events-none">
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-bold backdrop-blur-md bg-[rgba(13,15,18,0.75)] text-[var(--brand-muted)]">
+            <BookOpen className="w-2.5 h-2.5" />
+            <span className="font-latin">
+              {formatNumber(readingTime(item.description), lang)}
+            </span>
+            <span>{t.feed.minutesShort}</span>
+          </span>
+        </div>
       </div>
 
       {/* Body */}
@@ -163,25 +155,22 @@ export function FeedCard({ item, onOpen, index = 0 }: FeedCardProps) {
 
         {/* Meta row */}
         <div className="mt-auto pt-3 flex items-center justify-between text-[11px] text-[var(--brand-muted)]">
-          <span className="font-medium truncate max-w-[45%]">
+          <span className="font-medium truncate max-w-[55%] flex items-center gap-1.5">
+            <span
+              className="w-1.5 h-1.5 rounded-full shrink-0"
+              style={{ backgroundColor: meta?.tint }}
+            />
             {sourceDisplayName}
           </span>
-          <div className="flex items-center gap-3 font-latin">
-            <span className="flex items-center gap-1">
-              <BookOpen className="w-3 h-3" />
-              {formatNumber(readingTime(item.description), lang)}{" "}
-              {t.feed.minutesShort}
-            </span>
-            <span className="flex items-center gap-1">
-              <Clock className="w-3 h-3" />
-              {relativeTime(item.pubDate, lang, t.feed)}
-            </span>
+          <div className="flex items-center gap-1 font-latin">
+            <Clock className="w-3 h-3" />
+            <span>{relativeTime(item.pubDate, lang, t.feed)}</span>
           </div>
         </div>
       </div>
 
       {/* Hover corner indicator */}
-      <div className="absolute bottom-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="absolute bottom-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
         <ExternalLink className="w-3.5 h-3.5 text-[var(--brand-accent)]" />
       </div>
     </motion.article>
