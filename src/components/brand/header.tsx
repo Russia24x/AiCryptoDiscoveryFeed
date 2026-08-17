@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Search, Menu, X, Send, Twitter, Github } from "lucide-react";
+import { Search, Menu, X } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { LanguageToggle } from "@/components/brand/language-toggle";
 import { BookmarksButton } from "@/components/feed/bookmarks-drawer";
@@ -218,66 +218,25 @@ export function Header({
             </button>
           </div>
 
-          {/* Social media + Telegram channels quick access */}
+          {/* Channels quick-access — scrolls to the ChannelsHub sidebar */}
           <div className="mt-6 pt-6 border-t border-[var(--brand-border)]">
-            <div className="px-4 mb-3">
-              <span className="text-xs text-[var(--brand-muted)] font-latin uppercase tracking-wider">
-                {lang === "fa" ? "شبکه‌های اجتماعی" : "Social Media"}
-              </span>
-            </div>
-            <div className="px-4 grid grid-cols-4 gap-2">
-              {/* Telegram channels */}
-              <a
-                href="https://t.me/Mastersharkcrypto"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-[var(--brand-surface-2)] transition-colors"
-                title={lang === "fa" ? "کریپتو" : "Crypto TG"}
-              >
-                <div className="w-9 h-9 rounded-full bg-[#229ED9]/15 flex items-center justify-center">
-                  <Send className="w-4 h-4 text-[#229ED9]" />
-                </div>
-                <span className="text-[9px] text-[var(--brand-muted)] truncate w-full text-center">Crypto</span>
-              </a>
-              <a
-                href="https://t.me/smartainewss"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-[var(--brand-surface-2)] transition-colors"
-                title={lang === "fa" ? "هوش مصنوعی" : "AI TG"}
-              >
-                <div className="w-9 h-9 rounded-full bg-[#229ED9]/15 flex items-center justify-center">
-                  <Send className="w-4 h-4 text-[#229ED9]" />
-                </div>
-                <span className="text-[9px] text-[var(--brand-muted)] truncate w-full text-center">AI</span>
-              </a>
-              {/* X/Twitter */}
-              <a
-                href="https://x.com/VitalikButerin"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-[var(--brand-surface-2)] transition-colors"
-                title="X / Twitter"
-              >
-                <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center">
-                  <Twitter className="w-4 h-4 text-white" />
-                </div>
-                <span className="text-[9px] text-[var(--brand-muted)] truncate w-full text-center">X</span>
-              </a>
-              {/* GitHub */}
-              <a
-                href="https://github.com/Russia24x/AiCryptoDiscoveryFeed"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex flex-col items-center gap-1 p-2 rounded-lg hover:bg-[var(--brand-surface-2)] transition-colors"
-                title="GitHub"
-              >
-                <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center">
-                  <Github className="w-4 h-4 text-white" />
-                </div>
-                <span className="text-[9px] text-[var(--brand-muted)] truncate w-full text-center">GitHub</span>
-              </a>
-            </div>
+            <button
+              onClick={() => {
+                setMobileOpen(false);
+                requestAnimationFrame(() => {
+                  // On mobile, the channels hub is below the feed (stacked layout)
+                  // Scroll to it smoothly
+                  const hub = document.querySelector("aside");
+                  if (hub) {
+                    hub.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }
+                });
+              }}
+              className="w-full text-right px-4 py-3 rounded-lg text-sm font-medium text-[var(--brand-muted)] hover:text-[var(--brand-text)] hover:bg-[var(--brand-surface-2)] transition-colors flex items-center justify-between"
+            >
+              <span className="font-latin text-xs opacity-60">←</span>
+              <span>{t.channels.title} {t.channels.titleAccent}</span>
+            </button>
           </div>
 
           <div className="mt-8 pt-6 border-t border-[var(--brand-border)]">

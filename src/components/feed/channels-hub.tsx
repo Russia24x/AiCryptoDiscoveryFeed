@@ -15,6 +15,7 @@ import {
   Clock,
   Play,
   Newspaper,
+  Check,
 } from "lucide-react";
 import {
   TELEGRAM_CHANNELS,
@@ -200,40 +201,54 @@ export function ChannelsHub({ lang, onOpenBookmarks }: ChannelsHubProps) {
         </div>
       </div>
 
-      {/* Category filter chips */}
-      <div className="px-3 py-2 border-b border-[var(--brand-border)]">
+      {/* Category filter chips — modern graphical pills */}
+      <div className="px-3 py-2.5 border-b border-[var(--brand-border)]">
         <div className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:thin]">
           <button
             onClick={() => setActiveCat("all")}
             className={cn(
-              "shrink-0 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors",
+              "shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all whitespace-nowrap",
               activeCat === "all"
-                ? "bg-[var(--brand-accent)] text-[#04201d] font-bold"
-                : "bg-[var(--brand-surface-2)] border border-[var(--brand-border)] text-[var(--brand-muted)] hover:text-[var(--brand-text)]"
+                ? "bg-[var(--brand-accent)] text-[#04201d] font-bold shadow-sm"
+                : "bg-[var(--brand-surface-2)] border border-[var(--brand-border)] text-[var(--brand-muted)] hover:text-[var(--brand-text)] hover:border-[var(--brand-accent)]/30"
             )}
           >
+            {activeCat === "all" && <Check className="w-3 h-3" />}
             {t.channels.allCategories}
           </button>
           {CATEGORIES.map((cat) => {
             const meta = CATEGORY_META[cat];
+            const isActive = activeCat === cat;
             return (
               <button
                 key={cat}
                 onClick={() => setActiveCat(cat)}
                 className={cn(
-                  "shrink-0 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors flex items-center gap-1.5",
-                  activeCat === cat
-                    ? "bg-[var(--brand-accent)] text-[#04201d] font-bold"
-                    : "bg-[var(--brand-surface-2)] border border-[var(--brand-border)] text-[var(--brand-muted)] hover:text-[var(--brand-text)]"
+                  "shrink-0 flex items-center gap-2 pl-2 pr-2.5 py-1 rounded-full text-[11px] font-medium transition-all whitespace-nowrap group",
+                  isActive
+                    ? "text-[#04201d] font-bold shadow-sm"
+                    : "bg-[var(--brand-surface-2)] border border-[var(--brand-border)] text-[var(--brand-muted)] hover:text-[var(--brand-text)] hover:border-[var(--brand-accent)]/30"
                 )}
+                style={
+                  isActive
+                    ? {
+                        background: `linear-gradient(135deg, ${meta.tint}, ${meta.tint}dd)`,
+                        boxShadow: `0 2px 8px ${meta.tint}40`,
+                      }
+                    : undefined
+                }
               >
                 <span
-                  className="w-1 h-1 rounded-full"
+                  className={cn(
+                    "w-2 h-2 rounded-full shrink-0 transition-transform group-hover:scale-125",
+                    isActive && "ring-2 ring-[#04201d]/20"
+                  )}
                   style={{
-                    backgroundColor: activeCat === cat ? "#04201d" : meta.tint,
+                    backgroundColor: isActive ? "#04201d" : meta.tint,
                   }}
                 />
                 {categoryLabel(cat, lang)}
+                {isActive && <Check className="w-3 h-3" />}
               </button>
             );
           })}

@@ -288,7 +288,34 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for development workflow, git rules, 
 
 - **Live site**: (deploy to Cloudflare Pages and add URL here)
 - **GitHub repo**: [Russia24x/AiCryptoDiscoveryFeed](https://github.com/Russia24x/AiCryptoDiscoveryFeed)
-- **Worklog**: [`worklog.md`](./worklog.md) — detailed development history (8 phases)
+- **Worklog**: [`worklog.md`](./worklog.md) — detailed development history (10 phases)
+
+---
+
+## 🗺 Development Roadmap
+
+### Completed (Phases 1-10)
+- ✅ Phase 1-2: Initial scaffold, brand identity, feed aggregation, 18 RSS sources
+- ✅ Phase 3: Bookmarks, source filter, dedupe, hero refresh
+- ✅ Phase 4: Bilingual FA/EN, Persian sources, custom channels
+- ✅ Phase 5: In-app article reader, smart image fallback, Telegram media preview
+- ✅ Phase 6: Hub layout, lazy og:image fetch, wider reader, a11y fixes
+- ✅ Phase 7: Lazy loading (IntersectionObserver), progress bar, font size, share, lightbox
+- ✅ Phase 8: Source audit (27 sources), server+client caching, extraction improvements
+- ✅ Phase 9: Documentation (README, DEPLOYMENT, CONTRIBUTING), CF Pages config
+- ✅ Phase 10: Digiato category feeds, favicon, PWA, mobile channels menu
+
+### Planned (Phases 11+)
+- 🔲 **Phase 11**: Server-Sent Events for progressive feed loading (stream items as sources complete)
+- 🔲 **Phase 12**: Settings panel — default language, default category, source enable/disable
+- 🔲 **Phase 13**: Toast notifications (sonner) for bookmark, share, font size, custom channel
+- 🔲 **Phase 14**: Dark/Light theme toggle with separate light palette
+- 🔲 **Phase 15**: Article reading queue ("Read later" tier, separate from bookmarks)
+- 🔲 **Phase 16**: Pull-to-refresh on mobile (touch gesture)
+- 🔲 **Phase 17**: Article print mode (Ctrl+P produces clean printable version)
+- 🔲 **Phase 18**: Per-source stats (article count in source filter chips)
+- 🔲 **Phase 19**: Search history + saved searches (localStorage)
+- 🔲 **Phase 20**: Offline mode (service worker caches last feed for offline reading)
 
 ---
 
