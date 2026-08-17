@@ -159,8 +159,15 @@ export function ArticleReader({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side={isRTL ? "left" : "right"}
-        className="w-full sm:w-[680px] md:w-[800px] bg-[var(--brand-bg)] border-l border-[var(--brand-border)] p-0 overflow-y-auto"
+        className="w-full sm:w-[90vw] md:w-[85vw] lg:w-[75vw] xl:w-[1200px] sm:max-w-none h-full sm:h-full bg-[var(--brand-bg)] border-l border-[var(--brand-border)] p-0 overflow-y-auto"
       >
+        {/* Visually-hidden title for accessibility (per Radix Dialog requirement) */}
+        <SheetHeader className="sr-only">
+          <SheetTitle>
+            {article?.title || item.title}
+          </SheetTitle>
+        </SheetHeader>
+
         {/* Sticky header bar with close + nav */}
         <div className="sticky top-0 z-20 flex items-center justify-between px-4 py-3 bg-[var(--brand-bg)]/95 backdrop-blur-xl border-b border-[var(--brand-border)]">
           <div className="flex items-center gap-2 min-w-0">
@@ -246,17 +253,18 @@ export function ArticleReader({
         </div>
 
         {/* Article body — scrollable */}
-        <article className="px-5 py-6 md:px-8 md:py-10 max-w-3xl mx-auto">
+        <article className="px-5 py-6 md:px-10 md:py-10 lg:px-16 lg:py-12 max-w-4xl mx-auto">
           {/* Hero image (from RSS or fallback SmartImage) */}
           {(item.image || true) && (
             <SmartImage
               src={item.image}
               alt={item.title}
               category={item.source.category}
+              articleUrl={item.link}
               sourceId={item.source.id}
               sourceName={sourceDisplayName}
               variant="reader"
-              aspectClass="aspect-[16/9] rounded-xl mb-6"
+              aspectClass="aspect-[16/9] md:aspect-[21/9] rounded-xl mb-6"
               loading="eager"
             />
           )}

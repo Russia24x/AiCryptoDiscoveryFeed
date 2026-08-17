@@ -203,6 +203,7 @@ function FeedListItem({
         src={item.image}
         alt={item.title}
         category={item.source.category}
+        articleUrl={item.link}
         sourceId={item.source.id}
         sourceName={item.source.name}
         variant="card"

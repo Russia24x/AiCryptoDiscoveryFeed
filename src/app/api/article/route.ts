@@ -58,29 +58,46 @@ function decodeEntities(s: string): string {
 /**
  * Try a series of CSS-selector strategies to extract the article body.
  * Most news sites use one of these common patterns.
+ *
+ * Strategy priority (most reliable first):
+ *   1. Common content classes (entry-content, post-content, etc.) — most WordPress sites.
+ *   2. <article> tag — but only if it contains substantial content (>1500 chars).
+ *   3. <main> tag.
+ *   4. Paragraph fallback — collect all <p> tags with >80 chars from <body>.
  */
 function extractArticleHtml(html: string): { html: string; strategy: string } {
-  // Strategy 1: <article> tag (most modern sites)
-  const articleMatch = html.match(/<article\b[^>]*>([\s\S]*?)<\/article>/i);
-  if (articleMatch && articleMatch[1].length > 1500) {
-    return { html: articleMatch[1], strategy: "article" };
-  }
-
-  // Strategy 2: common content class patterns
+  // Strategy 1: common content class patterns (highest priority — most sites use these)
   const contentPatterns = [
-    /<div[^>]*class=["'][^"']*(?:entry-content|post-content|article-content|content-body|article__body|post__content|post-body|content__article|story-body|article-body|rich-text|markdown-body)[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*(?:<div|<footer|<section|<\/main)/i,
-    /<main\b[^>]*>([\s\S]*?)<\/main>/i,
-    /<div[^>]*role=["']main["'][^>]*>([\s\S]*?)<\/div>/i,
+    /<div[^>]*class=["'][^"']*(?:entry-content|post-content|article-content|content-body|article__body|post__content|post-body|content__article|story-body|article-body|rich-text|markdown-body|td-post-content|single-content)[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*(?:<div|<footer|<section|<\/main|<aside)/i,
+    /<article\b[^>]*class=["'][^"']*(?:entry-content|post-content|article-content|content-body|article__body|post__content|post-body)[^"']*["'][^>]*>([\s\S]*?)<\/article>/i,
   ];
 
   for (const re of contentPatterns) {
     const m = html.match(re);
-    if (m && m[1].length > 1500) {
+    if (m && m[1].length > 800) {
       return { html: m[1], strategy: "content-class" };
     }
   }
 
-  // Strategy 3: WordPress /oembed fallback — get all <p> tags within <body>
+  // Strategy 2: <article> tag (only if it has substantial content)
+  const articleMatches = html.matchAll(/<article\b[^>]*>([\s\S]*?)<\/article>/gi);
+  let bestArticle = "";
+  for (const m of articleMatches) {
+    if (m[1].length > bestArticle.length) {
+      bestArticle = m[1];
+    }
+  }
+  if (bestArticle.length > 1500) {
+    return { html: bestArticle, strategy: "article" };
+  }
+
+  // Strategy 3: <main> tag
+  const mainMatch = html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i);
+  if (mainMatch && mainMatch[1].length > 1500) {
+    return { html: mainMatch[1], strategy: "main" };
+  }
+
+  // Strategy 4: WordPress /oembed fallback — get all <p> tags within <body>
   const bodyMatch = html.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i);
   if (bodyMatch) {
     const body = bodyMatch[1];
@@ -215,6 +232,12 @@ function extractMeta(html: string, sourceUrl: string) {
   const siteName =
     get(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i);
 
+  // og:description / meta description — used as fallback when body extraction fails
+  const ogDescription =
+    get(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i) ||
+    get(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i) ||
+    get(/<meta[^>]+name=["']twitter:description["'][^>]+content=["']([^"']+)["']/i);
+
   let favicon: string | undefined;
   const faviconMatch =
     html.match(/<link[^>]+rel=["'](?:shortcut )?icon["'][^>]+href=["']([^"']+)["']/i);
@@ -226,7 +249,7 @@ function extractMeta(html: string, sourceUrl: string) {
     }
   }
 
-  return { ogTitle, ogImage, author, publishedDate, siteName, favicon };
+  return { ogTitle, ogImage, author, publishedDate, siteName, favicon, ogDescription };
 }
 
 export async function GET(request: Request) {
@@ -290,9 +313,18 @@ export async function GET(request: Request) {
       extractedImages = extractImages(cleanedHtml);
     }
 
-    // If we have og:image but no images in body, add it
+    // If we have og:image but no images in body, add it as the first image
     if (meta.ogImage && !extractedImages.includes(meta.ogImage)) {
       extractedImages.unshift(meta.ogImage);
+      // Also inject the og:image as the lead image in the HTML body if it's empty
+      if (!cleanedHtml) {
+        cleanedHtml = `<p><img src="${meta.ogImage}" alt="${meta.ogTitle || ""}" /></p>`;
+      }
+    }
+
+    // FALLBACK: If article body extraction failed, use og:description as the body
+    if ((!cleanedHtml || cleanedHtml.length < 200) && meta.ogDescription) {
+      cleanedHtml = `<p>${meta.ogDescription}</p>`;
     }
 
     const plainText = cleanedHtml ? htmlToText(cleanedHtml) : "";

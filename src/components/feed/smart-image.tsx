@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
   Loader2,
   Network,
@@ -86,10 +86,17 @@ export function SmartImage({
 
   const Icon = CATEGORY_ICONS[category] || Sparkles;
 
+  // Use a ref to track the current articleUrl so we don't re-fetch on every render
+  const fetchRef = useRef<string | null>(null);
+
   // If src is missing but articleUrl is provided, lazily fetch og:image
   useEffect(() => {
-    if ((src || fetchedImage) && !imgError) return;
-    if (!articleUrl || fetchedImage || fetchingOG || ogFailed) return;
+    // Skip if we already have an image source
+    if (src && !imgError) return;
+    if (!articleUrl) return;
+    // Skip if we already fetched for this URL
+    if (fetchRef.current === articleUrl) return;
+    fetchRef.current = articleUrl;
 
     let cancelled = false;
     setFetchingOG(true);
@@ -104,6 +111,7 @@ export function SmartImage({
         if (cancelled) return;
         if (data.url) {
           setFetchedImage(data.url);
+          setOGFailed(false);
         } else {
           setOGFailed(true);
         }
@@ -117,13 +125,14 @@ export function SmartImage({
     return () => {
       cancelled = true;
     };
-  }, [src, fetchedImage, imgError, articleUrl, fetchingOG, ogFailed]);
+  }, [src, articleUrl, imgError]);
 
-  // Reset state when src or articleUrl changes
+  // Reset state when articleUrl or src changes
   useEffect(() => {
     setFetchedImage(undefined);
     setOGFailed(false);
     setImgError(false);
+    fetchRef.current = null;
   }, [articleUrl, src]);
 
   const effectiveSrc = src || fetchedImage;

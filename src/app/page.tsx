@@ -8,7 +8,7 @@ import { FutureVision } from "@/components/brand/future-vision";
 import { Footer } from "@/components/brand/footer";
 import { BackToTop } from "@/components/brand/back-to-top";
 import { FeedGrid } from "@/components/feed/feed-grid";
-import { Channels } from "@/components/feed/channels";
+import { ChannelsHub } from "@/components/feed/channels-hub";
 import { BookmarksDrawer } from "@/components/feed/bookmarks-drawer";
 import { TrendingTags } from "@/components/feed/trending-tags";
 import { useFeedState } from "@/hooks/use-feed-state";
@@ -60,20 +60,38 @@ export default function Home() {
           sourcesTried={stats.sourcesTried}
         />
 
-        <FeedGrid
-          category={category}
-          search={search}
-          sourceFilter={sourceFilter}
-          onSourceChange={setSourceFilter}
-        />
+        {/* HUB LAYOUT — feed + channels side-by-side on desktop */}
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 md:py-12">
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] xl:grid-cols-[1fr_400px] gap-6 lg:gap-8 items-start">
+            {/* LEFT — Live feed (main content) */}
+            <div className="min-w-0">
+              <FeedGrid
+                category={category}
+                search={search}
+                sourceFilter={sourceFilter}
+                onSourceChange={setSourceFilter}
+              />
+            </div>
 
-        {allData?.items && (
-          <TrendingTags items={allData.items} onTagClick={onTagClick} />
-        )}
+            {/* RIGHT — Sticky channels sidebar */}
+            <aside className="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-1 lg:pl-0 -mx-4 px-4 lg:mx-0 lg:px-0">
+              <ChannelsHub
+                lang={lang}
+                onOpenBookmarks={() => setBookmarksOpen(true)}
+              />
 
+              {/* Trending tags (only when feed data is available) */}
+              {allData?.items && allData.items.length > 0 && (
+                <div className="mt-6">
+                  <TrendingTags items={allData.items} onTagClick={onTagClick} />
+                </div>
+              )}
+            </aside>
+          </div>
+        </div>
+
+        {/* Future vision — full-width below the hub */}
         <FutureVision />
-
-        <Channels />
       </main>
 
       <Footer />

@@ -408,16 +408,9 @@ export const TELEGRAM_CHANNELS: TelegramChannel[] = [
     description: "Live crypto market news",
     descriptionFa: "اخبار لحظه‌ای بازار ارزهای دیجیتال",
   },
-  {
-    id: "tg-ai-news",
-    handle: "ai_news",
-    name: "AI News",
-    nameFa: "اخبار هوش مصنوعی",
-    category: "ai",
-    language: "en",
-    description: "Latest AI news and language model updates",
-    descriptionFa: "آخرین اخبار مدل‌های زبانی و هوش مصنوعی",
-  },
+  // NOTE: tg-ai-news (handle: ai_news) was REMOVED — its preview returned no content
+  // (channel has no public web preview). Replaced by smartainewss for the AI category
+  // in Persian mode, and English users can use the X/Twitter accounts instead.
 ];
 
 export interface TwitterAccount {
