@@ -3,7 +3,7 @@ import { SOURCES } from "@/lib/sources";
 import type { FeedItem, FeedResponse } from "@/types/feed";
 import type { Category } from "@/lib/sources";
 
-export const runtime = "nodejs";
+export const runtime = "edge";
 export const revalidate = 0; // always fresh — per-query response
 export const dynamic = "force-dynamic";
 
@@ -133,14 +133,14 @@ function parseFeed(xml: string): ParsedItem[] {
 
 async function fetchFeed(source: (typeof SOURCES)[number]): Promise<ParsedItem[]> {
   // In-memory cache — cache each source's parsed items for 5 minutes
-  // This dramatically reduces redundant upstream fetches when multiple
-  // users hit the API concurrently or when the same user navigates between
-  // categories that share sources.
   const cacheKey = source.id;
   const cached = feedCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
     return cached.items;
   }
+
+  // Lazy cleanup of expired entries (replaces setInterval which doesn't work on Edge)
+  cleanupExpiredCache();
 
   const controller = new AbortController();
   // Reduced from 9s to 5s — fail fast for slow sources
@@ -171,16 +171,19 @@ async function fetchFeed(source: (typeof SOURCES)[number]): Promise<ParsedItem[]
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const feedCache = new Map<string, { items: ParsedItem[]; timestamp: number }>();
 
-// Periodically clean expired cache entries (every 10 minutes)
-if (typeof setInterval !== "undefined") {
-  setInterval(() => {
-    const now = Date.now();
-    for (const [key, value] of feedCache.entries()) {
-      if (now - value.timestamp > CACHE_TTL_MS * 2) {
-        feedCache.delete(key);
-      }
+// Lazy cleanup — on each cache MISS, remove a few expired entries.
+// This avoids setInterval (which doesn't exist in Edge Runtime).
+function cleanupExpiredCache() {
+  const now = Date.now();
+  let count = 0;
+  for (const [key, value] of feedCache.entries()) {
+    if (now - value.timestamp > CACHE_TTL_MS * 2) {
+      feedCache.delete(key);
+      count++;
+      // Only clean up to 5 entries per call to avoid blocking
+      if (count >= 5) break;
     }
-  }, 10 * 60 * 1000);
+  }
 }
 
 /**
