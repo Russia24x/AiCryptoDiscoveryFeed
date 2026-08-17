@@ -1,6 +1,11 @@
 # Cloudflare Pages configuration for Ai Crypto Discovery
 # This file is used by Wrangler CLI for local preview and deployment.
 # For dashboard-based deployment, see DEPLOYMENT.md.
+#
+# NOTE: Pages projects have a restricted wrangler.toml schema.
+# Do NOT include `build` or `headers` fields here — use the
+# Cloudflare dashboard for build settings, and public/_headers
+# for custom HTTP headers.
 
 name = "ai-crypto-discovery"
 compatibility_date = "2024-09-25"
@@ -8,22 +13,3 @@ pages_build_output_dir = ".vercel/output/static"
 
 # Node.js compatibility mode — allows use of Node.js APIs in Pages Functions
 compatibility_flags = ["nodejs_compat"]
-
-# Build configuration
-[build]
-command = "npx @cloudflare/next-on-pages@1"
-
-# Environment variables (set in Cloudflare dashboard for production)
-# None required for basic operation.
-
-# Headers for better security and caching
-# These are applied by Cloudflare Pages automatically
-[headers]
-# Cache static assets aggressively
-"/_next/static/*" = { "Cache-Control" = "public, max-age=31536000, immutable" }
-# Cache API responses briefly at the edge
-"/api/feed*" = { "Cache-Control" = "public, s-maxage=300, stale-while-revalidate=600" }
-"/api/og-image*" = { "Cache-Control" = "public, s-maxage=3600, stale-while-revalidate=86400" }
-"/api/article*" = { "Cache-Control" = "public, s-maxage=600, stale-while-revalidate=1200" }
-"/api/channel*" = { "Cache-Control" = "public, s-maxage=300, stale-while-revalidate=600" }
-"/api/prices*" = { "Cache-Control" = "public, s-maxage=60, stale-while-revalidate=300" }
