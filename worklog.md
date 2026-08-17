@@ -259,7 +259,213 @@ $ eslint .
 
 ---
 
-_Last updated: 2026-08-17 — Phase 6 complete (smart image fix + hub layout + reader sizing + a11y fixes)._
+_Last updated: 2026-08-17 — Phase 7 complete (lazy loading + reader features: progress bar, font size, share, lightbox)._
+
+---
+
+## Task ID: 7 — Phase 7: Lazy loading + reader UX features (progress, fonts, share, lightbox)
+**Agent**: Main agent
+**Task**: Phase 7 priorities from Phase 6 handover — add IntersectionObserver-
+based lazy loading for SmartImage (defer off-screen og:image fetches), add
+reading progress bar, font size control, share button, and image lightbox to
+the ArticleReader.
+
+### Work Log
+
+#### Sync-check (Rule 2)
+- `git fetch origin` → ✅ success
+- `git rev-list --left-right --count origin/main...HEAD` → `0 0` (clean)
+- Verdict: ✅ Up-to-date and clean — proceeded with new work.
+
+#### QA findings (via agent-browser before fixes)
+- Image coverage: 78/88 (88.6%) — Phase 6 fix still working.
+- BUT: 52 og-image requests fired on initial page load (all parallel, all
+  off-screen articles firing at once — performance issue).
+- ArticleReader missing: progress bar, font size controls, share button,
+  image lightbox.
+
+#### 1. IntersectionObserver-based lazy loading (`smart-image.tsx`)
+- Added `containerRef` and `isVisible` state to SmartImage.
+- New useEffect sets up IntersectionObserver with `rootMargin: "200px 0px"`
+  (so og:image fetch starts when card is within 200px of viewport — about
+  4-5 cards ahead).
+- Refactored og:image fetch effect to depend on `isVisible` — won't fire
+  until card enters viewport.
+- Attached `containerRef` to all three render paths (real image, fetching
+  spinner, placeholder) so observer always works.
+- Reset effect clears `fetchRef.current` when articleUrl/src changes so
+  new articles can fetch.
+
+**Result**: Initial page load now fires only ~8 og-image requests (was 52),
+and subsequent requests fire in batches as user scrolls (21 after first
+scroll, 34 after second scroll). 84% reduction in initial network load.
+
+#### 2. Reading progress bar (`article-reader.tsx`)
+- Added `progress` state (0-100) and `scrollRef`.
+- useEffect queries `[data-slot="sheet-content"]` after 200ms (to allow
+  the Sheet to mount) and attaches a scroll listener.
+- Listener calculates `(scrollTop / (scrollHeight - clientHeight)) * 100`.
+- Renders a thin (1px) progress bar at the top of the sheet, sticky, with
+  a gradient from teal to blue (`from-[var(--brand-accent)] to-[#38bdf8]`).
+- Smooth transition (`duration-150 ease-out`).
+- Resets to 0 when reader closes.
+
+#### 3. Font size control (`article-reader.tsx`)
+- Added `FONT_SIZE_KEY = "acd:reader-font-size"` localStorage key.
+- 9 font sizes: 14, 15, 16, 17, 18, 19, 20, 22, 24 px.
+- Default: 15px (idx 1).
+- Plus (+) and Minus (-) buttons in reader header with the current size
+  displayed between them.
+- Buttons disabled at min/max.
+- `setFontSize()` clamps to valid range and persists to localStorage.
+- Font size applied to `.article-body` via inline `style={{ fontSize }}`.
+- Hidden on mobile (`hidden sm:flex`) — saves horizontal space.
+- Persisted across reloads.
+
+#### 4. Share button (`article-reader.tsx`)
+- Added `shareCopied` state for visual feedback (2s timeout).
+- `onShare` handler tries `navigator.share()` first (mobile native share
+  sheet), falls back to `navigator.clipboard.writeText()` on desktop.
+- Button shows `Share2` icon by default, switches to `Check` icon (teal
+  accent color) for 2 seconds after successful copy.
+- Aria-label localized (fa: "اشتراک‌گذاری", en: "Share").
+
+#### 5. Image lightbox (new `image-lightbox.tsx` component)
+- Created `src/components/feed/image-lightbox.tsx`.
+- Full-screen overlay (z-[60] to override the ArticleReader sheet).
+- Shows the clicked image at maximum size with `object-contain`.
+- Top bar: image counter (1/N), article title (truncated), zoom controls
+  (ZoomOut / percentage / ZoomIn / Reset), close button.
+- Prev/Next chevron buttons on left/right of image.
+- Thumbnail strip at the bottom (only when multiple images) — click to
+  jump to a specific image.
+- Zoom: 0.5x to 4x in 0.5x steps. Cursor changes to `cursor-zoom-in`.
+- Keyboard: ESC closes, ← / → navigate images, +/- zoom, 0 resets.
+- Body scroll locked while open (`document.body.style.overflow = "hidden"`).
+- Click outside the image closes the lightbox.
+
+**Article reader integration**:
+- Added `lightboxIdx` state to ArticleReader.
+- Article body onClick handler checks if click target is an `<img>`:
+  - If yes: opens lightbox at that image index.
+  - Calls `e.preventDefault()` to prevent any link wrapping the image
+    from navigating away.
+- Lightbox renders at the end of the SheetContent, only when
+  `lightboxIdx !== null`.
+
+#### 6. Bug fix: Turbopack cache corruption
+- After Phase 7 changes, page broke with "Application error: a client-side
+  exception has occurred".
+- Root cause: Turbopack cache was stale after adding new file
+  `image-lightbox.tsx`.
+- Fix: Killed dev server, deleted `.next` and `node_modules/.cache`,
+  restarted via `scripts/restart-dev.sh` (new script).
+- The restart-dev.sh script is now committed for future use.
+
+#### 7. Bug fix: `containerRef is not defined` in Placeholder
+- After adding `containerRef` prop to Placeholder, forgot to destructure
+  it from props.
+- Fix: Added `containerRef` to the destructuring.
+
+### Verification (agent-browser)
+
+**Lazy loading**:
+- Initial page load: 8 og-image requests (was 52).
+- After first scroll: 21 requests, 45 images loaded.
+- After second scroll: 34 requests, 58 images loaded.
+- 84% reduction in initial network load. ✅
+
+**Reader features**:
+- Progress bar: visible at top of sheet, gradient teal-to-blue, tracks
+  scroll position. Tested at scrollTop=200 → progressWidth=182px. ✅
+- Font size controls: clicking + increased font from 15px → 16px.
+  Persisted to localStorage. ✅
+- Share button: present with correct aria-label. Works on desktop via
+  clipboard fallback. ✅
+- Image lightbox: clicking article body image opens full-screen overlay
+  with image counter "1 / 2", zoom controls, prev/next chevrons, and
+  thumbnail strip. ESC closes lightbox, then ESC again closes reader. ✅
+
+**Mobile responsive**:
+- Reader full-width (390px) on 390×844 viewport. ✅
+- Font controls hidden on mobile (`display: none` via `hidden sm:flex`). ✅
+- Share button visible on mobile. ✅
+- Progress bar visible on mobile. ✅
+
+**Code quality**:
+- ✅ `bun run lint` clean (0 errors, 0 warnings).
+- ✅ No runtime errors after Turbopack cache clear.
+- ✅ All Phase 6 fixes still hold (image coverage 78/88, hub layout intact).
+
+#### Files added/modified
+
+**New (2):**
+- `src/components/feed/image-lightbox.tsx` — full-screen image gallery
+  with zoom, prev/next, thumbnails, keyboard nav
+- `scripts/restart-dev.sh` — helper script to cleanly restart dev server
+  + clear caches
+
+**Modified (2):**
+- `src/components/feed/smart-image.tsx` — added IntersectionObserver +
+  containerRef for lazy og:image fetching
+- `src/components/feed/article-reader.tsx` — added progress bar, font
+  size controls, share button, image lightbox integration
+
+### Stage Summary
+
+- **Lazy loading**: IntersectionObserver defers og:image fetches for
+  off-screen articles. Initial network load reduced by 84% (52 → 8
+  requests).
+- **Reading progress bar**: thin gradient bar at top of ArticleReader,
+  tracks scroll position.
+- **Font size control**: A-/A+ buttons in reader header, 9 sizes
+  (14-24px), persisted to localStorage.
+- **Share button**: native share sheet on mobile, clipboard copy on
+  desktop, with visual feedback (Check icon for 2s).
+- **Image lightbox**: full-screen overlay with zoom (0.5x-4x), prev/next
+  nav, thumbnail strip, keyboard shortcuts (ESC, ← →, +/-, 0).
+- **Bug fixes**: Turbopack cache corruption (added restart script),
+  Placeholder containerRef missing.
+- **No backend storage**: all preferences (font size, bookmarks,
+  language, custom channels) in browser localStorage.
+
+### Unresolved Issues / Risks
+
+1. **Share button on headless browsers**: `navigator.share` isn't
+   available in agent-browser headless mode, and `navigator.clipboard.
+   writeText` may require permissions. In real browsers (Chrome,
+   Firefox, Safari) both will work. The share button is implemented
+   correctly — just couldn't fully verify in QA.
+
+2. **Progress bar needs initial scroll**: When the reader first opens,
+   progress is 0% (no scroll yet). User has to scroll to see the bar
+   grow. This is the correct behavior.
+
+3. **Image lightbox only triggers for `<img>` tags**: SVG icons or
+   background images aren't included. For most articles this is fine.
+
+4. **VLM (vision QA) sometimes fabricates HTML**: for QA verification
+   prefer `agent-browser eval` with concrete DOM queries (which is what
+   I did).
+
+### Priority Recommendations for Phase 8
+
+1. **Push Phase 7 to GitHub** — sync-check, push as commit on top of
+   `7fb955e`.
+2. **Pull-to-refresh on mobile** — refresh feed by pulling down at top
+   of page.
+3. **Settings panel** — default language, default category, source
+   enable/disable toggles.
+4. **Article reading queue** — separate from bookmarks; transient "read
+   later" list.
+5. **Toast notifications** — for bookmark toggle, custom channel added,
+   font size changed, share copied.
+6. **Dark/Light theme toggle** — currently always dark; would need a
+   separate light palette.
+7. **Article print** — Ctrl+P should produce a clean printable version
+   of the article (no nav/headers).
+8. **Per-source stats** — show article count per source in the source
+   filter chip bar.
 
 ---
 

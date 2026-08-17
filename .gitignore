@@ -60,8 +60,9 @@ server.log
 # Agent Browser screenshots (test artifacts, not for git)
 /screenshots/
 
-# Local scripts (working dir for build scripts)
-/scripts/
+# Local scripts (working dir for build scripts) — keep restart-dev.sh
+/scripts/*
+!/scripts/restart-dev.sh
 
 # Dev-server PID files
 .zscripts/*.pid

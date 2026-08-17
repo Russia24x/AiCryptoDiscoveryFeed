@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   X,
   ExternalLink,
@@ -15,6 +15,11 @@ import {
   ArrowLeft,
   ArrowRight,
   AlertTriangle,
+  Share2,
+  Check,
+  Minus,
+  Plus,
+  Image as ImageIcon,
 } from "lucide-react";
 import type { FeedItem } from "@/types/feed";
 import { CATEGORY_META, categoryLabel } from "@/lib/sources";
@@ -29,7 +34,12 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { SmartImage } from "./smart-image";
+import { ImageLightbox } from "./image-lightbox";
 import { cn } from "@/lib/utils";
+
+const FONT_SIZE_KEY = "acd:reader-font-size";
+const FONT_SIZES = [14, 15, 16, 17, 18, 19, 20, 22, 24];
+const DEFAULT_FONT_SIZE_IDX = 1; // 15px
 
 interface ArticleReaderProps {
   item: FeedItem | null;
@@ -76,6 +86,101 @@ export function ArticleReader({
   const [article, setArticle] = useState<ArticleData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Reading progress (0-100)
+  const [progress, setProgress] = useState(0);
+  // Font size index into FONT_SIZES
+  const [fontSizeIdx, setFontSizeIdx] = useState(DEFAULT_FONT_SIZE_IDX);
+  // Share feedback
+  const [shareCopied, setShareCopied] = useState(false);
+  // Image lightbox
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+
+  // Ref to the scrollable sheet content for progress tracking
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  // Load font size from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(FONT_SIZE_KEY);
+      if (raw) {
+        const idx = parseInt(raw, 10);
+        if (!isNaN(idx) && idx >= 0 && idx < FONT_SIZES.length) {
+          setFontSizeIdx(idx);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const setFontSize = useCallback((idx: number) => {
+    const clamped = Math.max(0, Math.min(FONT_SIZES.length - 1, idx));
+    setFontSizeIdx(clamped);
+    try {
+      window.localStorage.setItem(FONT_SIZE_KEY, String(clamped));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Track scroll position for progress bar
+  // We query the DOM directly because ref forwarding to SheetPrimitive can be finicky
+  useEffect(() => {
+    if (!open) {
+      setProgress(0);
+      return;
+    }
+    const id = window.setTimeout(() => {
+      // The sheet content is the element with data-slot="sheet-content"
+      const el = document.querySelector(
+        '[data-slot="sheet-content"]'
+      ) as HTMLElement | null;
+      if (!el) return;
+      scrollRef.current = el;
+      const onScroll = () => {
+        const scrollTop = el.scrollTop;
+        const scrollHeight = el.scrollHeight - el.clientHeight;
+        if (scrollHeight > 0) {
+          setProgress(
+            Math.min(100, Math.max(0, (scrollTop / scrollHeight) * 100))
+          );
+        }
+      };
+      el.addEventListener("scroll", onScroll, { passive: true });
+      onScroll();
+      // Store cleanup on the el for the return below
+      (el as any)._cleanupScroll = () => el.removeEventListener("scroll", onScroll);
+    }, 200);
+
+    return () => {
+      window.clearTimeout(id);
+      const el = scrollRef.current;
+      if (el && (el as any)._cleanupScroll) {
+        (el as any)._cleanupScroll();
+        delete (el as any)._cleanupScroll;
+      }
+    };
+  }, [open, article]);
+
+  // Share handler
+  const onShare = useCallback(async () => {
+    if (!item?.link) return;
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: article?.title || item.title,
+          url: item.link,
+        });
+      } else {
+        await navigator.clipboard.writeText(item.link);
+        setShareCopied(true);
+        setTimeout(() => setShareCopied(false), 2000);
+      }
+    } catch {
+      // user cancelled or copy failed
+    }
+  }, [item, article]);
 
   // Fetch full article content via /api/article proxy
   const fetchArticle = useCallback(async (url: string) => {
@@ -168,8 +273,16 @@ export function ArticleReader({
           </SheetTitle>
         </SheetHeader>
 
+        {/* Reading progress bar — fixed at top of sheet */}
+        <div className="sticky top-0 z-30 h-1 bg-[var(--brand-bg)]/95">
+          <div
+            className="h-full bg-gradient-to-l from-[var(--brand-accent)] to-[#38bdf8] transition-[width] duration-150 ease-out"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+
         {/* Sticky header bar with close + nav */}
-        <div className="sticky top-0 z-20 flex items-center justify-between px-4 py-3 bg-[var(--brand-bg)]/95 backdrop-blur-xl border-b border-[var(--brand-border)]">
+        <div className="sticky top-1 z-20 flex items-center justify-between px-4 py-3 bg-[var(--brand-bg)]/95 backdrop-blur-xl border-b border-[var(--brand-border)]">
           <div className="flex items-center gap-2 min-w-0">
             {meta && (
               <span
@@ -220,6 +333,43 @@ export function ArticleReader({
               ) : (
                 <Bookmark className="w-4 h-4" />
               )}
+            </button>
+
+            {/* Font size controls — hidden on mobile (compact) */}
+            <div className="hidden sm:flex items-center bg-[var(--brand-surface)] border border-[var(--brand-border)] rounded-full p-0.5">
+              <button
+                onClick={() => setFontSize(fontSizeIdx - 1)}
+                disabled={fontSizeIdx === 0}
+                aria-label={lang === "fa" ? "کاهش اندازه فونت" : "Decrease font size"}
+                className="p-1 rounded-full text-[var(--brand-muted)] hover:text-[var(--brand-text)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <Minus className="w-3 h-3" />
+              </button>
+              <span className="text-[10px] font-latin text-[var(--brand-muted)] px-1 min-w-[24px] text-center">
+                {FONT_SIZES[fontSizeIdx]}
+              </span>
+              <button
+                onClick={() => setFontSize(fontSizeIdx + 1)}
+                disabled={fontSizeIdx === FONT_SIZES.length - 1}
+                aria-label={lang === "fa" ? "افزایش اندازه فونت" : "Increase font size"}
+                className="p-1 rounded-full text-[var(--brand-muted)] hover:text-[var(--brand-text)] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+            </div>
+
+            {/* Share button */}
+            <button
+              onClick={onShare}
+              aria-label={lang === "fa" ? "اشتراک‌گذاری" : "Share"}
+              className={cn(
+                "p-2 rounded-full transition-colors",
+                shareCopied
+                  ? "text-[var(--brand-accent)]"
+                  : "text-[var(--brand-muted)] hover:text-[var(--brand-text)] hover:bg-[var(--brand-surface)]"
+              )}
+            >
+              {shareCopied ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
             </button>
 
             {/* Prev / Next chevrons */}
@@ -356,9 +506,35 @@ export function ArticleReader({
             <>
               {article.html ? (
                 <div
-                  className="article-body mt-6 text-[15px] md:text-base text-[var(--brand-text)] leading-[1.85]"
+                  className="article-body mt-6 text-[var(--brand-text)] leading-[1.85]"
+                  style={{ fontSize: `${FONT_SIZES[fontSizeIdx]}px` }}
                   dir="auto"
                   dangerouslySetInnerHTML={{ __html: article.html }}
+                  onClick={(e) => {
+                    const target = e.target as HTMLElement;
+                    // Open image lightbox when clicking article body images
+                    // — but only if the image is NOT inside a link (otherwise
+                    // we let the link click go through with target=_blank).
+                    const isImg = target.tagName === "IMG";
+                    const isInsideLink = target.closest("a");
+                    if (isImg && !isInsideLink) {
+                      e.preventDefault();
+                      const allImgs = Array.from(
+                        e.currentTarget.querySelectorAll("img")
+                      );
+                      const idx = allImgs.indexOf(target as HTMLImageElement);
+                      if (idx >= 0) setLightboxIdx(idx);
+                    }
+                    // For images inside links: open lightbox instead of following link
+                    if (isImg && isInsideLink) {
+                      e.preventDefault();
+                      const allImgs = Array.from(
+                        e.currentTarget.querySelectorAll("img")
+                      );
+                      const idx = allImgs.indexOf(target as HTMLImageElement);
+                      if (idx >= 0) setLightboxIdx(idx);
+                    }
+                  }}
                 />
               ) : (
                 <div className="mt-6">
@@ -434,6 +610,16 @@ export function ArticleReader({
               : "ESC to close · ← → to navigate"}
           </p>
         </article>
+
+        {/* Image lightbox — opens when clicking article body image */}
+        {article?.images && article.images.length > 0 && lightboxIdx !== null && (
+          <ImageLightbox
+            images={article.images}
+            startIndex={lightboxIdx}
+            onClose={() => setLightboxIdx(null)}
+            title={article.title || item.title}
+          />
+        )}
       </SheetContent>
     </Sheet>
   );

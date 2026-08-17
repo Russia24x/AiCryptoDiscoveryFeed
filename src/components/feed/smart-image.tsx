@@ -88,13 +88,46 @@ export function SmartImage({
 
   // Use a ref to track the current articleUrl so we don't re-fetch on every render
   const fetchRef = useRef<string | null>(null);
+  // Ref to the container element, used for IntersectionObserver
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  // Track whether the card has entered the viewport at least once
+  const [isVisible, setIsVisible] = useState(false);
+
+  // IntersectionObserver — defer og:image fetch until card is near viewport
+  useEffect(() => {
+    if (isVisible) return; // already visible once, no need to re-observe
+    if (!containerRef.current) return;
+    if (typeof IntersectionObserver === "undefined") {
+      // SSR or old browser fallback — just mark visible
+      setIsVisible(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            setIsVisible(true);
+            observer.disconnect();
+            break;
+          }
+        }
+      },
+      {
+        // Start fetching when card is within 200px of viewport (4-5 cards ahead)
+        rootMargin: "200px 0px",
+        threshold: 0,
+      }
+    );
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [isVisible]);
 
   // If src is missing but articleUrl is provided, lazily fetch og:image
+  // BUT only after the card has entered the viewport (IntersectionObserver)
   useEffect(() => {
-    // Skip if we already have an image source
     if (src && !imgError) return;
     if (!articleUrl) return;
-    // Skip if we already fetched for this URL
+    if (!isVisible) return; // wait until in view
     if (fetchRef.current === articleUrl) return;
     fetchRef.current = articleUrl;
 
@@ -125,7 +158,7 @@ export function SmartImage({
     return () => {
       cancelled = true;
     };
-  }, [src, articleUrl, imgError]);
+  }, [src, articleUrl, imgError, isVisible]);
 
   // Reset state when articleUrl or src changes
   useEffect(() => {
@@ -142,7 +175,7 @@ export function SmartImage({
   // Show real image (from RSS or fetched og:image)
   if (effectiveSrc && !imgError) {
     return (
-      <div className={cn("relative overflow-hidden", aspectClass, className)}>
+      <div ref={containerRef} className={cn("relative overflow-hidden", aspectClass, className)}>
         <img
           src={effectiveSrc}
           alt={alt}
@@ -159,6 +192,7 @@ export function SmartImage({
   if (!src && articleUrl && fetchingOG && !showPlaceholder) {
     return (
       <div
+        ref={containerRef}
         className={cn(
           "relative overflow-hidden flex items-center justify-center",
           aspectClass,
@@ -185,6 +219,7 @@ export function SmartImage({
       lang={lang}
       aspectClass={aspectClass}
       className={className}
+      containerRef={containerRef}
     />
   );
 }
@@ -198,6 +233,7 @@ function Placeholder({
   lang,
   aspectClass,
   className,
+  containerRef,
 }: {
   gradient: string[];
   Icon: React.ComponentType<{ className?: string }>;
@@ -207,6 +243,7 @@ function Placeholder({
   lang: "fa" | "en";
   aspectClass: string;
   className?: string;
+  containerRef?: React.RefObject<HTMLDivElement | null>;
 }) {
   const meta = CATEGORY_META[category];
   const label = categoryLabel(category, lang);
@@ -217,6 +254,7 @@ function Placeholder({
 
   return (
     <div
+      ref={containerRef}
       className={cn(
         "relative overflow-hidden flex items-center justify-center",
         aspectClass,
