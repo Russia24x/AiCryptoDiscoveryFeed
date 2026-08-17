@@ -1,0 +1,12 @@
+{
+  "$schema": "https://developers.cloudflare.com/pages/functions/routes-config/schema",
+  "version": 1,
+  "include": ["/*"],
+  "exclude": [
+    "/_next/static/*",
+    "/favicon.ico",
+    "/robots.txt",
+    "/logo.svg",
+    "/sitemap.xml"
+  ]
+}

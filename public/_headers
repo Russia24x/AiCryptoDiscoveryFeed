@@ -1,0 +1,33 @@
+# Cloudflare Pages custom headers
+# https://developers.cloudflare.com/pages/configuration/headers/
+
+# Security headers
+/*
+  X-Frame-Options: SAMEORIGIN
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+# Cache static assets aggressively (1 year)
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Cache API responses at the edge
+/api/feed*
+  Cache-Control: public, s-maxage=300, stale-while-revalidate=600
+
+/api/og-image*
+  Cache-Control: public, s-maxage=3600, stale-while-revalidate=86400
+
+/api/article*
+  Cache-Control: public, s-maxage=600, stale-while-revalidate=1200
+
+/api/channel*
+  Cache-Control: public, s-maxage=300, stale-while-revalidate=600
+
+/api/prices*
+  Cache-Control: public, s-maxage=60, stale-while-revalidate=300
+
+# Don't cache HTML pages (always fresh)
+/*.html
+  Cache-Control: no-cache

@@ -1,16 +1,15 @@
 {
-  "name": "nextjs_tailwind_shadcn_ts",
-  "version": "0.2.1",
+  "name": "ai-crypto-discovery",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000 2>&1 | tee dev.log",
-    "build": "next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
-    "start": "NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log",
+    "build": "next build",
+    "build:pages": "npx @cloudflare/next-on-pages@1",
+    "start": "NODE_ENV=production next start -p 3000",
     "lint": "eslint .",
-    "db:push": "prisma db push --accept-data-loss",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
-    "db:reset": "prisma migrate reset"
+    "audit": "python3 scripts/audit-sources.py",
+    "restart": "bash scripts/restart-dev.sh"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -81,6 +80,7 @@
     "zustand": "^5.0.6"
   },
   "devDependencies": {
+    "@cloudflare/next-on-pages": "^1.13.16",
     "@tailwindcss/postcss": "^4",
     "@types/react": "^19",
     "@types/react-dom": "^19",
