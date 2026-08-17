@@ -132,8 +132,19 @@ function parseFeed(xml: string): ParsedItem[] {
 }
 
 async function fetchFeed(source: (typeof SOURCES)[number]): Promise<ParsedItem[]> {
+  // In-memory cache — cache each source's parsed items for 5 minutes
+  // This dramatically reduces redundant upstream fetches when multiple
+  // users hit the API concurrently or when the same user navigates between
+  // categories that share sources.
+  const cacheKey = source.id;
+  const cached = feedCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return cached.items;
+  }
+
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 9000);
+  // Reduced from 9s to 5s — fail fast for slow sources
+  const timeout = setTimeout(() => controller.abort(), 5000);
   try {
     const res = await fetch(source.feed, {
       headers: {
@@ -147,10 +158,61 @@ async function fetchFeed(source: (typeof SOURCES)[number]): Promise<ParsedItem[]
       throw new Error(`HTTP ${res.status}`);
     }
     const xml = await res.text();
-    return parseFeed(xml);
+    const items = parseFeed(xml);
+    // Cache successful result
+    feedCache.set(cacheKey, { items, timestamp: Date.now() });
+    return items;
   } finally {
     clearTimeout(timeout);
   }
+}
+
+// Simple in-memory feed cache (5 minute TTL)
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const feedCache = new Map<string, { items: ParsedItem[]; timestamp: number }>();
+
+// Periodically clean expired cache entries (every 10 minutes)
+if (typeof setInterval !== "undefined") {
+  setInterval(() => {
+    const now = Date.now();
+    for (const [key, value] of feedCache.entries()) {
+      if (now - value.timestamp > CACHE_TTL_MS * 2) {
+        feedCache.delete(key);
+      }
+    }
+  }, 10 * 60 * 1000);
+}
+
+/**
+ * Run async tasks with a concurrency limit.
+ * Avoids overwhelming upstream RSS servers when fetching many feeds at once.
+ */
+async function withConcurrencyLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<PromiseSettledResult<R>[]> {
+  const results: Promise<PromiseSettledResult<R>>[] = [];
+  const executing = new Set<Promise<void>>();
+
+  for (const item of items) {
+    const p = Promise.resolve()
+      .then(() => fn(item))
+      .then(
+        (value) => ({ status: "fulfilled", value }) as PromiseSettledResult<R>,
+        (reason) => ({ status: "rejected", reason }) as PromiseSettledResult<R>
+      );
+
+    results.push(p);
+    const e = p.then(() => executing.delete(e));
+    executing.add(e);
+
+    if (executing.size >= limit) {
+      await Promise.race(executing);
+    }
+  }
+
+  return Promise.all(results);
 }
 
 /** Try to detect if a string is mostly Persian / Arabic characters. */
@@ -185,11 +247,15 @@ export async function GET(request: Request) {
     sources = sources.filter((s) => s.id === sourceFilter);
   }
 
-  const results = await Promise.allSettled(
-    sources.map(async (src) => {
+  // Use concurrency limit of 5 — avoids overwhelming upstream RSS servers
+  // and prevents connection pool exhaustion on slow sources
+  const results = await withConcurrencyLimit(
+    sources,
+    5,
+    async (src) => {
       const items = await fetchFeed(src);
       return { src, items };
-    })
+    }
   );
 
   const allItems: FeedItem[] = [];

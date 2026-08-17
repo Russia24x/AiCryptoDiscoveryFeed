@@ -60,9 +60,10 @@ server.log
 # Agent Browser screenshots (test artifacts, not for git)
 /screenshots/
 
-# Local scripts (working dir for build scripts) — keep restart-dev.sh
+# Local scripts (working dir for build scripts) — keep restart-dev.sh + audit-sources.py
 /scripts/*
 !/scripts/restart-dev.sh
+!/scripts/audit-sources.py
 
 # Dev-server PID files
 .zscripts/*.pid

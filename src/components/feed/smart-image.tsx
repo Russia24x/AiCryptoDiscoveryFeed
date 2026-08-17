@@ -113,8 +113,8 @@ export function SmartImage({
         }
       },
       {
-        // Start fetching when card is within 200px of viewport (4-5 cards ahead)
-        rootMargin: "200px 0px",
+        // Start fetching when card is within 500px of viewport (~8 cards ahead)
+        rootMargin: "500px 0px",
         threshold: 0,
       }
     );

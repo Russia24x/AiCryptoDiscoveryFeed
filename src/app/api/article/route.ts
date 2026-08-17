@@ -68,7 +68,17 @@ function decodeEntities(s: string): string {
 function extractArticleHtml(html: string): { html: string; strategy: string } {
   // Strategy 1: common content class patterns (highest priority — most sites use these)
   const contentPatterns = [
+    // WordPress + standard patterns
     /<div[^>]*class=["'][^"']*(?:entry-content|post-content|article-content|content-body|article__body|post__content|post-body|content__article|story-body|article-body|rich-text|markdown-body|td-post-content|single-content)[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*(?:<div|<footer|<section|<\/main|<aside)/i,
+    // Vigiato-specific patterns (Persian gaming/entertainment site)
+    /<div[^>]*class=["'][^"']*articleContent[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*(?:<div|<footer|<section|<\/main|<aside)/i,
+    /<div[^>]*class=["'][^"']*articlePost__pictureType2--paragraphs[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*(?:<div|<footer|<section|<\/main|<aside)/i,
+    // Arzdigital-specific patterns (Persian crypto site)
+    /<div[^>]*class=["'][^"']*post__content[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*(?:<div|<footer|<section|<\/main|<aside)/i,
+    /<div[^>]*class=["'][^"']*article__body[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*(?:<div|<footer|<section|<\/main|<aside)/i,
+    // Mihanblockchain patterns
+    /<div[^>]*class=["'][^"']*entry-content[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*(?:<div|<footer|<section|<\/main|<aside)/i,
+    // Article tag with content classes
     /<article\b[^>]*class=["'][^"']*(?:entry-content|post-content|article-content|content-body|article__body|post__content|post-body)[^"']*["'][^>]*>([\s\S]*?)<\/article>/i,
   ];
 
