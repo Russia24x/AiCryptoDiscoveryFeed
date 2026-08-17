@@ -143,8 +143,8 @@ async function fetchFeed(source: (typeof SOURCES)[number]): Promise<ParsedItem[]
   cleanupExpiredCache();
 
   const controller = new AbortController();
-  // Reduced from 9s to 5s — fail fast for slow sources
-  const timeout = setTimeout(() => controller.abort(), 5000);
+  // 10s timeout — Digiato feeds take ~5-6s in Edge runtime (slower than direct curl)
+  const timeout = setTimeout(() => controller.abort(), 10000);
   try {
     const res = await fetch(source.feed, {
       headers: {
@@ -250,11 +250,10 @@ export async function GET(request: Request) {
     sources = sources.filter((s) => s.id === sourceFilter);
   }
 
-  // Use concurrency limit of 5 — avoids overwhelming upstream RSS servers
-  // and prevents connection pool exhaustion on slow sources
+  // Use concurrency limit of 8 — balances speed with upstream rate limits
   const results = await withConcurrencyLimit(
     sources,
-    5,
+    8,
     async (src) => {
       const items = await fetchFeed(src);
       return { src, items };

@@ -41,17 +41,41 @@ export const metadata: Metadata = {
     "DeFi",
   ],
   authors: [{ name: "Ai Crypto Discovery" }],
+  manifest: "/manifest.json",
+  icons: {
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/icon-192.png", type: "image/png", sizes: "192x192" },
+      { url: "/icon-512.png", type: "image/png", sizes: "512x512" },
+    ],
+    apple: [{ url: "/icon-192.png", sizes: "192x192" }],
+    shortcut: ["/favicon.svg"],
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Ai Crypto Discovery",
+  },
   openGraph: {
     title: "Ai Crypto Discovery",
     description:
       "کشف هوشمند محتوای ارز دیجیتال، هوش مصنوعی، فناوری و بازی — آینده‌نگر، داده‌محور، مینیمال.",
     type: "website",
     locale: "fa_IR",
+    images: [
+      {
+        url: "/icon-512.png",
+        width: 512,
+        height: 512,
+        alt: "Ai Crypto Discovery",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "Ai Crypto Discovery",
     description: "کشف هوشمند محتوای آینده‌نگر",
+    images: ["/icon-512.png"],
   },
 };
 
@@ -59,6 +83,8 @@ export const viewport: Viewport = {
   themeColor: "#0d0f12",
   width: "device-width",
   initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
 };
 
 export default function RootLayout({

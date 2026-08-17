@@ -85,19 +85,29 @@ export const SOURCES: Source[] = [
     language: "fa",
     icon: "graduation-cap",
   },
-  // ----- Digiato via Feedburner (much faster than digiato.com directly) -----
+  // ----- Digiato — category-specific feeds (tested: ~4.6s, 10 items each) -----
   {
-    id: "digiato-main",
-    name: "Digiato Feed",
-    nameFa: "دیجیاتو",
-    url: "https://www.digiato.com/",
-    feed: "https://feeds.feedburner.com/digiato",
-    category: "tech",
+    id: "digiato-crypto",
+    name: "Digiato Crypto",
+    nameFa: "دیجیاتو — ارز دیجیتال",
+    url: "https://digiato.com/topic/tech/cryptocurrency",
+    feed: "https://digiato.com/topic/tech/cryptocurrency/feed/",
+    category: "crypto",
     language: "fa",
-    icon: "cpu",
+    icon: "bitcoin",
   },
 
   // ----- AI (هوش مصنوعی) -----
+  {
+    id: "digiato-ai",
+    name: "Digiato AI",
+    nameFa: "دیجیاتو — هوش مصنوعی",
+    url: "https://digiato.com/topic/tech/artificial-intelligence",
+    feed: "https://digiato.com/topic/tech/artificial-intelligence/feed/",
+    category: "ai",
+    language: "fa",
+    icon: "brain-circuit",
+  },
   {
     id: "zoomit-main",
     name: "Zoomit Feed",
@@ -111,6 +121,16 @@ export const SOURCES: Source[] = [
 
   // ----- Tech (فناوری) -----
   // NOTE: Shahrsakhtafzar RSS feed is broken (404 + 403). Removed.
+  {
+    id: "digiato-tech",
+    name: "Digiato Tech",
+    nameFa: "دیجیاتو — فناوری",
+    url: "https://digiato.com/topic/tech",
+    feed: "https://digiato.com/topic/tech/feed/",
+    category: "tech",
+    language: "fa",
+    icon: "cpu",
+  },
   {
     id: "sakhtafzarmag",
     name: "SakhtAfzarMag",
