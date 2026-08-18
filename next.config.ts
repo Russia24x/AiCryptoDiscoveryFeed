@@ -4,11 +4,11 @@ const nextConfig: NextConfig = {
   // Cloudflare Pages compatibility — don't use standalone output
   // (CF Pages uses @cloudflare/next-on-pages to build the worker)
   // output: "standalone",
-  /* config options here */
   typescript: {
-    ignoreBuildErrors: true,
+    // Fail the build on TypeScript errors — production safety.
+    ignoreBuildErrors: false,
   },
-  reactStrictMode: false,
+  reactStrictMode: true,
   // Enable experimental features needed for CF Pages
   experimental: {
     // Needed for @cloudflare/next-on-pages

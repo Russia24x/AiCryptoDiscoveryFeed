@@ -84,39 +84,37 @@ export function Channels() {
     return () => window.removeEventListener("acd:custom-channels-changed", load);
   }, []);
 
-  const tgChannels: (TelegramChannel | (CustomChannel & { type: "telegram" }))[] =
-    [
-      ...TELEGRAM_CHANNELS,
-      ...customChannels
-        .filter((c) => c.type === "telegram")
-        .map((c) => ({
-          id: `custom-tg-${c.handle}`,
-          handle: c.handle,
-          name: c.name,
-          nameFa: c.name,
-          category: c.category,
-          language: c.language,
-          description: c.name,
-          descriptionFa: c.name,
-          isCustom: true,
-        })),
-    ];
+  const tgChannels: TelegramChannel[] = [
+    ...TELEGRAM_CHANNELS,
+    ...customChannels
+      .filter((c) => c.type === "telegram")
+      .map((c): TelegramChannel => ({
+        id: `custom-tg-${c.handle}`,
+        handle: c.handle,
+        name: c.name,
+        nameFa: c.name,
+        category: c.category,
+        language: c.language,
+        description: c.name,
+        descriptionFa: c.name,
+        isCustom: true,
+      })),
+  ];
 
-  const xAccounts: (TwitterAccount | (CustomChannel & { type: "twitter" }))[] =
-    [
-      ...TWITTER_ACCOUNTS,
-      ...customChannels
-        .filter((c) => c.type === "twitter")
-        .map((c) => ({
-          id: `custom-x-${c.handle}`,
-          handle: c.handle,
-          name: c.name,
-          nameFa: c.name,
-          category: c.category,
-          language: c.language,
-          isCustom: true,
-        })),
-    ];
+  const xAccounts: TwitterAccount[] = [
+    ...TWITTER_ACCOUNTS,
+    ...customChannels
+      .filter((c) => c.type === "twitter")
+      .map((c): TwitterAccount => ({
+        id: `custom-x-${c.handle}`,
+        handle: c.handle,
+        name: c.name,
+        nameFa: c.name,
+        category: c.category,
+        language: c.language,
+        isCustom: true,
+      })),
+  ];
 
   const filterFn = (
     item: { category: Exclude<Category, "all">; language: Language }

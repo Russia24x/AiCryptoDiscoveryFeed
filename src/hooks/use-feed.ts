@@ -1,13 +1,35 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { FeedResponse } from "@/types/feed";
 import type { Language } from "@/lib/sources";
 
-// Cache TTL on client — 5 minutes (matches server cache)
-const CLIENT_CACHE_TTL = 5 * 60 * 1000;
+/**
+ * Feed data hook — backed by TanStack Query.
+ *
+ * This is a thin wrapper around `useQuery` that:
+ *   - Builds the API URL from category/search/sourceFilter/lang
+ *   - Persists the latest successful response to localStorage so it can
+ *     be used as `initialData` on the next page load (instant render)
+ *   - Exposes the same shape as the old hand-rolled hook: `{ data, loading,
+ *     error, refetch, stale }` so callers don't need to change.
+ *
+ * Why keep localStorage on top of TanStack Query?
+ *   - TanStack Query's in-memory cache is lost on full page reload.
+ *   - localStorage survives reloads, so users get instant content even on
+ *     a fresh visit (if they've visited before).
+ *   - The `initialData` option tells TanStack Query to start with this data
+ *     immediately, then refetch in the background.
+ *
+ * Stale-while-revalidate behavior comes for free from TanStack Query:
+ *   - `staleTime: 60s` — data is considered fresh for 1 min
+ *   - After that, the next mount triggers a background refetch but the
+ *     stale data is shown immediately
+ *   - `gcTime: 5min` — cached data is kept for 5 min after the last
+ *     observer unsubscribes
+ */
 
-// localStorage key prefix for feed cache
 const CACHE_PREFIX = "acd:feed-cache:";
 
 interface CacheEntry {
@@ -38,51 +60,23 @@ function writeCache(key: string, data: FeedResponse) {
   }
 }
 
-/**
- * Stale-while-revalidate hook for fetching feed data.
- *
- * Strategy:
- * 1. On mount: instantly render cached data if available (even if stale).
- * 2. Then fetch fresh data in the background.
- * 3. When fresh data arrives, replace the stale data.
- *
- * This gives users instant page loads on repeat visits while still
- * keeping content fresh.
- */
 export function useFeed(
   category: string,
   search: string,
   sourceFilter?: string | null,
   lang?: Language
 ) {
+  const queryClient = useQueryClient();
   const cacheKey = `${category}:${lang || "all"}:${sourceFilter || "all"}`;
+  const queryKey = ["feed", category, lang || "all", sourceFilter || "all", search.trim()] as const;
 
-  const [data, setData] = useState<FeedResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [stale, setStale] = useState(false);
+  // Read initial data from localStorage so the first render is instant.
+  // This is the key to the "instant page load on repeat visits" UX.
+  const initialCacheEntry = readCache(cacheKey);
 
-  const refetch = useCallback(async () => {
-    setError(null);
-
-    // Check client cache first — instant render if available
-    const cached = readCache(cacheKey);
-    if (cached) {
-      setData(cached.data);
-      setLoading(false);
-      // If cache is fresh enough, don't bother revalidating
-      const age = Date.now() - cached.timestamp;
-      if (age < CLIENT_CACHE_TTL) {
-        setStale(false);
-        return;
-      }
-      // Cache is stale — show cached data, but revalidate in background
-      setStale(true);
-    } else {
-      setLoading(true);
-    }
-
-    try {
+  const query = useQuery<FeedResponse>({
+    queryKey,
+    queryFn: async () => {
       const params = new URLSearchParams({
         category,
         limit: "80",
@@ -95,23 +89,43 @@ export function useFeed(
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json: FeedResponse = await res.json();
-      setData(json);
-      setError(null);
-      setStale(false);
-      // Persist to client cache
+      // Persist to localStorage for next visit
       writeCache(cacheKey, json);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "خطا در دریافت داده");
-      // Don't clear cached data on error — keep showing stale
-    } finally {
-      setLoading(false);
-    }
-  }, [category, search, sourceFilter, lang, cacheKey]);
+      return json;
+    },
+    initialData: initialCacheEntry?.data,
+    initialDataUpdatedAt: initialCacheEntry?.timestamp,
+    staleTime: 60 * 1000,       // 1 min — data is fresh
+    gcTime: 5 * 60 * 1000,      // 5 min — keep cache after unmount
+    retry: 1,
+    refetchOnWindowFocus: true,
+  });
 
-  useEffect(() => {
-    const t = setTimeout(() => refetch(), 50);
-    return () => clearTimeout(t);
-  }, [refetch]);
+  // `refetch` — manually trigger a fresh fetch (e.g., user clicked "Refresh"
+  // button or pulled to refresh on mobile).
+  const refetch = useCallback(async () => {
+    await query.refetch();
+  }, [query]);
 
-  return { data, loading, error, refetch, stale };
+  // `stale` — true when the data is older than staleTime (used by the UI to
+  // show a "stale" badge if desired).
+  const stale = query.isStale;
+
+  // Translate TanStack's `error` (Error | null) to a string for the UI.
+  const error = query.error instanceof Error
+    ? query.error.message
+    : query.error
+    ? "خطا در دریافت داده"
+    : null;
+
+  return {
+    data: query.data ?? null,
+    loading: query.isLoading && !query.data, // hide skeleton if we have stale data
+    error,
+    refetch,
+    stale,
+    // Expose the queryClient so callers can invalidate the cache after
+    // mutations (e.g., after adding a custom channel).
+    invalidate: () => queryClient.invalidateQueries({ queryKey: ["feed"] }),
+  };
 }

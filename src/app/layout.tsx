@@ -5,6 +5,7 @@ import "@fontsource/estedad/900.css";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
+import { Providers } from "./providers";
 
 // Vazirmatn — primary Persian UI font (clean, modern, readable for body text).
 const vazirmatn = Vazirmatn({
@@ -101,7 +102,9 @@ export default function RootLayout({
       <body
         className={`${vazirmatn.variable} ${inter.variable} ${jetbrainsMono.variable} antialiased bg-background text-foreground`}
       >
-        {children}
+        <Providers>
+          {children}
+        </Providers>
         <Toaster />
         <SonnerToaster
           position="bottom-center"

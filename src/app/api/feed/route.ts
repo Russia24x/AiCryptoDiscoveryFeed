@@ -244,7 +244,11 @@ async function withConcurrencyLimit<T, R>(
       );
 
     results.push(p);
-    const e = p.then(() => executing.delete(e));
+    // The cleanup promise removes itself from the executing set when done.
+    // We use `p.then(...)` because `e` isn't defined yet at declaration time.
+    const e: Promise<void> = p.then(() => {
+      executing.delete(e);
+    });
     executing.add(e);
 
     if (executing.size >= limit) {

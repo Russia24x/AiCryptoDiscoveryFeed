@@ -133,9 +133,9 @@ export function ArticleReader({
     }
     const id = window.setTimeout(() => {
       // The sheet content is the element with data-slot="sheet-content"
-      const el = document.querySelector(
+      const el = document.querySelector<HTMLDivElement>(
         '[data-slot="sheet-content"]'
-      ) as HTMLElement | null;
+      );
       if (!el) return;
       scrollRef.current = el;
       const onScroll = () => {
@@ -237,7 +237,7 @@ export function ArticleReader({
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent
           side={isRTL ? "left" : "right"}
-          className="w-full sm:w-[680px] md:w-[800px] bg-[var(--brand-bg)] border-l border-[var(--brand-border)] p-0"
+          className="w-full sm:w-[680px] md:w-[800px] bg-[var(--brand-bg)] border-s border-[var(--brand-border)] p-0"
         >
           <div className="p-8 text-center text-[var(--brand-muted)]">
             <AlertCircle className="w-8 h-8 mx-auto mb-3 opacity-50" />
@@ -264,7 +264,7 @@ export function ArticleReader({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side={isRTL ? "left" : "right"}
-        className="w-full sm:w-[90vw] md:w-[85vw] lg:w-[75vw] xl:w-[1200px] sm:max-w-none h-full sm:h-full bg-[var(--brand-bg)] border-l border-[var(--brand-border)] p-0 overflow-y-auto"
+        className="w-full sm:w-[90vw] md:w-[85vw] lg:w-[75vw] xl:w-[1200px] sm:max-w-none h-full sm:h-full bg-[var(--brand-bg)] border-s border-[var(--brand-border)] p-0 overflow-y-auto"
       >
         {/* Visually-hidden title for accessibility (per Radix Dialog requirement) */}
         <SheetHeader className="sr-only">
@@ -273,11 +273,14 @@ export function ArticleReader({
           </SheetTitle>
         </SheetHeader>
 
-        {/* Reading progress bar — fixed at top of sheet */}
+        {/* Reading progress bar — fixed at top of sheet.
+            Uses scaleX instead of width so it automatically mirrors in RTL
+            (the parent has dir="rtl" via <html> and scaleX transforms are
+            direction-aware when using `transform-origin: start`). */}
         <div className="sticky top-0 z-30 h-1 bg-[var(--brand-bg)]/95">
           <div
-            className="h-full bg-gradient-to-l from-[var(--brand-accent)] to-[#38bdf8] transition-[width] duration-150 ease-out"
-            style={{ width: `${progress}%` }}
+            className="h-full bg-gradient-to-r from-[var(--brand-accent)] to-[#38bdf8] transition-transform duration-150 ease-out origin-start"
+            style={{ transform: `scaleX(${progress / 100})` }}
           />
         </div>
 

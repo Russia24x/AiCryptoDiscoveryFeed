@@ -168,7 +168,7 @@ export function SettingsPanel({ open, onOpenChange }: SettingsPanelProps) {
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side={lang === "fa" ? "right" : "left"}
-        className="w-full sm:w-[440px] bg-[var(--brand-surface)] border-l border-[var(--brand-border)] p-0 overflow-y-auto"
+        className="w-full sm:w-[440px] bg-[var(--brand-surface)] border-s border-[var(--brand-border)] p-0 overflow-y-auto"
       >
         {/* Header */}
         <SheetHeader className="px-5 pt-5 pb-3 border-b border-[var(--brand-border)] sticky top-0 bg-[var(--brand-surface)] z-10">

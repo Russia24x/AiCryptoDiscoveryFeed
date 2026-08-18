@@ -9,8 +9,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { useBookmarks } from "@/hooks/use-bookmarks";
-import { useReadLater, formatExpiry } from "@/hooks/use-read-later";
+import { useBookmarks, type BookmarkEntry } from "@/hooks/use-bookmarks";
+import { useReadLater, formatExpiry, type ReadLaterEntry } from "@/hooks/use-read-later";
 import { useLanguage } from "@/hooks/use-language";
 import { CATEGORY_META, categoryLabel } from "@/lib/sources";
 import { relativeTime } from "@/hooks/use-feed-state";
@@ -65,7 +65,7 @@ export function BookmarksDrawer({ open, onOpenChange }: BookmarksDrawerProps) {
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side={lang === "fa" ? "left" : "right"}
-        className="w-full sm:w-[440px] bg-[var(--brand-surface)] border-l border-[var(--brand-border)] p-0 overflow-y-auto"
+        className="w-full sm:w-[440px] bg-[var(--brand-surface)] border-s border-[var(--brand-border)] p-0 overflow-y-auto"
       >
         {/* Header — with Back button + tab switcher */}
         <SheetHeader className="px-5 pt-4 pb-3 border-b border-[var(--brand-border)] sticky top-0 bg-[var(--brand-surface)] z-10">
@@ -172,6 +172,12 @@ export function BookmarksDrawer({ open, onOpenChange }: BookmarksDrawerProps) {
                 ? CATEGORY_META[b.category as keyof typeof CATEGORY_META]
                 : null;
               const isReadLater = activeTab === "readlater";
+              // Both BookmarkEntry and ReadLaterEntry have the same shared fields,
+              // but differ in their timestamp field name (savedAt vs addedAt).
+              // Since we know which tab we're on, we can safely narrow.
+              const timestamp = isReadLater
+                ? (b as ReadLaterEntry).addedAt
+                : (b as BookmarkEntry).savedAt;
               return (
                 <article
                   key={b.id}
@@ -218,14 +224,14 @@ export function BookmarksDrawer({ open, onOpenChange }: BookmarksDrawerProps) {
                           <>
                             <Clock3 className="w-3 h-3 text-amber-400" />
                             <span className="text-amber-400/80">
-                              {formatExpiry(b as any, lang)}
+                              {formatExpiry(b as ReadLaterEntry, lang)}
                             </span>
                           </>
                         ) : (
                           <>
                             <Clock className="w-3 h-3" />
                             {t.bookmarksDrawer.savedAt}{" "}
-                            {relativeTime(b.savedAt, lang, t.feed)}
+                            {relativeTime(timestamp, lang, t.feed)}
                           </>
                         )}
                       </span>

@@ -2677,3 +2677,191 @@ Each CategoryPage has a simpler hero (no global widgets yet - that's the
 ---
 
 _Last updated: 2026-08-18 - Phase 14 complete (2 critical production bug fixes + 4 new features + 1 architectural change + 1 styling improvement)._
+
+---
+
+## Task ID: 15 — Phase 15: TypeScript Strict + TanStack Query Migration + RTL Fixes
+**Agent**: Main agent (Z.ai)
+**Task**: After strategic discussion, user agreed to modernize the stack:
+  - TypeScript strict mode (was half-broken)
+  - TanStack Query v5 for server state (replacing manual useState/useEffect/setInterval)
+  - RTL fixes using Tailwind logical properties
+  - Clean, professional, modern tech stack — no patches, no over-engineering
+
+### Work Log
+
+#### Sync-check (Rule 2)
+- ✅ Up-to-date with origin/main (0/0 divergence)
+
+#### 1. TypeScript Strict Mode — Fixed
+**Files**: `tsconfig.json`, `next.config.ts`
+
+**Root cause**: Two conflicting settings:
+- `strict: true` was ON, but `noImplicitAny: false` overrode it
+- `typescript.ignoreBuildErrors: true` in next.config.ts meant the production
+  build silently ignored ALL TypeScript errors
+- `reactStrictMode: false` disabled React's strict mode (double-effect detection)
+
+**Fix**:
+- `tsconfig.json`: `noImplicitAny: true`, added `noImplicitReturns`, `noFallthroughCasesInSwitch`
+- `next.config.ts`: `ignoreBuildErrors: false`, `reactStrictMode: true`
+
+**Type errors fixed**:
+1. `article-reader.tsx:140` — Changed `as HTMLElement | null` to `document.querySelector<HTMLDivElement>()`
+2. `bookmarks-drawer.tsx:228` — Fixed union type `BookmarkEntry | ReadLaterEntry` by using tab-aware type narrowing with `timestamp` variable
+3. `channels-hub.tsx` (3 errors) — Changed `allTg: (TelegramChannel | CustomChannel)[]` to `allTg: TelegramChannel[]` with explicit return type annotation in `.map()`
+4. `channels.tsx` (6 errors) — Same fix for both `tgChannels` and `xAccounts`
+5. `feed/route.ts:247` — Fixed self-referencing `e` variable in concurrency limiter by declaring type explicitly: `const e: Promise<void> = p.then(() => { executing.delete(e); })`
+
+**Cleanup**: Removed 12 unused shadcn/ui components that had missing dependencies:
+- calendar, carousel, chart, command, context-menu, drawer, form, hover-card,
+  input-otp, aspect-ratio, toggle, toggle-group
+
+**Result**: Zero TypeScript errors. `npx tsc --noEmit` returns clean.
+
+#### 2. TanStack Query v5 — Installed + Configured
+**New files**:
+- `src/lib/query-client.ts` — Singleton QueryClient with sensible defaults:
+  - staleTime: 30s (data considered fresh for 30s)
+  - gcTime: 5min (cache kept 5min after last observer)
+  - retry: 1 (one retry on failure)
+  - refetchOnWindowFocus: true (refresh when tab becomes visible)
+  - refetchOnReconnect: true (refresh when network reconnects)
+- `src/app/providers.tsx` — Client-side QueryClientProvider with DevTools
+
+**Updated file**: `src/app/layout.tsx` — wrapped children with `<Providers>`
+
+**DevTools**: `@tanstack/react-query-devtools` included, only renders in
+`NODE_ENV === "development"`. Shows query cache, status, timing. Button
+positioned bottom-left (doesn't overlap existing UI).
+
+#### 3. Hero Widgets — Migrated to useQuery
+**File**: `src/components/brand/hero.tsx`
+
+All 5 widgets (BtcWidget, TetherWidget, Sp500Widget, FearGreedWidget, WeatherWidget)
+migrated from manual `useState + useEffect + setInterval` to `useQuery`:
+
+**Before** (per widget, ~30 lines):
+```typescript
+const [data, setData] = useState(null);
+const [loading, setLoading] = useState(true);
+useEffect(() => {
+  let cancelled = false;
+  const load = async () => { /* fetch, setData, setLoading */ };
+  load();
+  const id = setInterval(load, 10_000);
+  return () => { cancelled = true; clearInterval(id); };
+}, []);
+```
+
+**After** (per widget, ~10 lines):
+```typescript
+const { data, isLoading } = useQuery({
+  queryKey: ["market", "binance-ticker", "BTC"],
+  queryFn: async () => { /* fetch */ },
+  refetchInterval: 10_000,
+  staleTime: 5_000,
+});
+```
+
+**Benefits**:
+- Automatic deduplication (if two widgets fetch the same API, one request)
+- Automatic pause when tab hidden (refetchOnWindowFocus)
+- Automatic retry on failure (retry: 1)
+- Centralized cache (navigating between pages doesn't refetch if data is fresh)
+- DevTools visibility (see all queries in real-time)
+- ~200 lines of duplicated boilerplate removed
+
+#### 4. useFeed — Migrated to useQuery
+**File**: `src/hooks/use-feed.ts` — complete rewrite
+
+Kept the same public API (`{ data, loading, error, refetch, stale }`) so
+callers don't need changes. Internally uses TanStack Query:
+
+- `initialData` from localStorage — instant render on repeat visits
+- `staleTime: 60s` — data is fresh for 1 min
+- `gcTime: 5min` — cache kept after unmount
+- `queryKey` includes category, lang, sourceFilter, and search — so
+  different filters get separate cache entries
+- Added `invalidate()` method for future mutations (e.g., after adding a
+  custom channel, we can invalidate the feed to force a refetch)
+
+**localStorage cache preserved** for instant page load on repeat visits.
+TanStack Query's `initialDataUpdatedAt` option is set from the localStorage
+timestamp so the query knows if the initial data is stale.
+
+#### 5. RTL Fixes — Tailwind Logical Properties
+**Files**: `src/components/feed/article-reader.tsx`, `bookmarks-drawer.tsx`,
+`settings-panel.tsx`, `header.tsx`
+
+**Problem**: All Sheet components used `border-l` (physical left border).
+In RTL mode, the sheet opens from the left, but the border was on the left
+side — which is the OUTER edge, not the inner edge. Visually wrong.
+
+**Fix**: Replaced `border-l` with `border-s` (logical start border).
+In LTR: `border-s` = `border-left` (correct, sheet opens from right, border on left/inner)
+In RTL: `border-s` = `border-right` (correct, sheet opens from left, border on right/inner)
+
+**Reading progress bar**: Changed from `width: ${progress}%` to
+`transform: scaleX(${progress/100})` with `origin-start` class. This
+automatically mirrors in RTL because `transform-origin: start` is
+direction-aware. Also changed gradient direction from `to-l` to `to-r`
+(mirrors automatically).
+
+#### Verification Results
+- ✅ All 6 pages return HTTP 200 (/, /crypto, /ai, /tech, /gaming, /entertainment)
+- ✅ All 6 API routes return 200 (feed, prices, binance-ticker, iran-tether, fear-greed, sp500)
+- ✅ Zero TypeScript errors (`npx tsc --noEmit` clean)
+- ✅ Zero runtime errors in dev server log
+- ✅ React Query DevTools visible in development (bottom-left floating button)
+- ✅ BTC price: $64,777 (live from Binance, refreshes every 10s)
+- ✅ Tether price: 187,167 Toman (live from Wallex, refreshes every 30s)
+- ✅ SP500: 7,702 (live from Yahoo Finance, refreshes every 60s)
+- ✅ &rlm; bug from Phase 11 still fixed
+
+#### Files Modified / Created
+- **New files**:
+  - `src/lib/query-client.ts` (QueryClient singleton + defaults)
+  - `src/app/providers.tsx` (QueryClientProvider + DevTools wrapper)
+- **Modified files**:
+  - `tsconfig.json` (strict: true, noImplicitAny: true, removed noImplicitAny: false override)
+  - `next.config.ts` (ignoreBuildErrors: false, reactStrictMode: true)
+  - `src/app/layout.tsx` (wrapped children with <Providers>)
+  - `src/hooks/use-feed.ts` (complete rewrite using useQuery)
+  - `src/components/brand/hero.tsx` (5 widgets migrated to useQuery)
+  - `src/components/feed/article-reader.tsx` (border-l → border-s, progress bar scaleX)
+  - `src/components/feed/bookmarks-drawer.tsx` (border-l → border-s)
+  - `src/components/brand/settings-panel.tsx` (border-l → border-s)
+  - `src/components/brand/header.tsx` (border-l → border-s)
+  - `src/components/feed/channels-hub.tsx` (type narrowing fix)
+  - `src/components/feed/channels.tsx` (type narrowing fix)
+  - `src/app/api/feed/route.ts` (concurrency limiter type fix)
+- **Deleted files** (12 unused shadcn/ui components):
+  - calendar, carousel, chart, command, context-menu, drawer, form, hover-card,
+    input-otp, aspect-ratio, toggle, toggle-group
+- **New dependencies**:
+  - `@tanstack/react-query` (v5)
+  - `@tanstack/react-query-devtools`
+
+### Architectural Improvement Summary
+
+**Before Phase 15**:
+- 5 widgets × ~30 lines of boilerplate = 150 lines of duplicated fetch logic
+- Manual setInterval/cleanup in every widget
+- No request deduplication
+- No automatic retry
+- No automatic focus refetch
+- TypeScript errors silently ignored in production builds
+- Physical CSS properties (border-l) broke in RTL
+
+**After Phase 15**:
+- 5 widgets × ~10 lines using useQuery = 50 lines (67% reduction)
+- TanStack Query handles interval, cleanup, retry, dedup automatically
+- Zero TypeScript errors (enforced in build)
+- Logical CSS properties (border-s) work in both LTR and RTL
+- DevTools for debugging all queries
+- Ready for future mutations (useMutation) and infinite scroll (useInfiniteQuery)
+
+---
+
+_Last updated: 2026-08-18 — Phase 15 complete (TypeScript strict + TanStack Query migration + RTL fixes + cleanup)._

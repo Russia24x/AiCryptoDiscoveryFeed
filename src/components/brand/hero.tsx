@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Sparkles,
   ArrowLeft,
@@ -329,56 +330,45 @@ function CtaButton({
 /* ============= BTC widget ============= */
 function BtcWidget() {
   const { lang } = useLanguage();
-  const [data, setData] = useState<BtcData | null>(null);
-  const [loading, setLoading] = useState(true);
   const prevRef = useRef<number | undefined>(undefined);
 
-  // Fetch real-time BTC price from Binance via our edge-cached API.
-  // Binance ticker updates every 1s; we refresh every 10s for a good
-  // balance of freshness vs edge-cache hit rate.
-  useEffect(() => {
-    let cancelled = false;
-    let id: ReturnType<typeof setInterval>;
-    const load = async () => {
-      try {
-        const res = await fetch("/api/market/binance-ticker", { cache: "no-store" });
-        if (!res.ok) return;
-        const json = await res.json();
-        if (cancelled) return;
-        // Find BTC in the response
-        const btc = json?.coins?.find((c: { symbol: string }) => c.symbol === "BTC");
-        if (btc && typeof btc.price === "number") {
-          prevRef.current = data?.price;
-          setData({
-            price: btc.price,
-            change24h: btc.change24h,
-            high24h: btc.high24h,
-            low24h: btc.low24h,
-          });
-        }
-      } catch {
-        // ignore — keep stale price
-      } finally {
-        if (!cancelled) setLoading(false);
+  // Real-time BTC price from Binance (with Coinbase + CoinGecko fallbacks
+  // configured in the API route). Refreshes every 10s via TanStack Query's
+  // refetchInterval — automatically paused when the tab is hidden and
+  // resumed when visible (refetchOnWindowFocus is set globally).
+  const { data, isLoading } = useQuery({
+    queryKey: ["market", "binance-ticker", "BTC"],
+    queryFn: async () => {
+      const res = await fetch("/api/market/binance-ticker", { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      const btc = json?.coins?.find((c: { symbol: string }) => c.symbol === "BTC");
+      if (!btc || typeof btc.price !== "number") {
+        throw new Error("BTC not found in ticker response");
       }
-    };
-    load();
-    // Refresh every 10s — Binance ticker is real-time so this gives the
-    // "live" feeling the user requested.
-    id = setInterval(load, 10_000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+      return {
+        price: btc.price as number,
+        change24h: btc.change24h as number,
+        high24h: btc.high24h as number | undefined,
+        low24h: btc.low24h as number | undefined,
+      };
+    },
+    refetchInterval: 10_000,
+    staleTime: 5_000,
+    select: (data) => {
+      // Track previous price for the flash animation
+      const prev = prevRef.current;
+      prevRef.current = data.price;
+      return { ...data, prev };
+    },
+  });
 
   const up = (data?.change24h ?? 0) >= 0;
   const flash =
-    prevRef.current !== undefined && data?.price !== undefined
-      ? data.price > prevRef.current
+    data?.prev !== undefined && data?.price !== undefined
+      ? data.price > data.prev
         ? "ticker-flash-up"
-        : data.price < prevRef.current
+        : data.price < data.prev
         ? "ticker-flash-down"
         : ""
       : "";
@@ -390,7 +380,7 @@ function BtcWidget() {
       accent="#f7931a"
       className={flash}
     >
-      {loading ? (
+      {isLoading ? (
         <SkeletonRow />
       ) : data ? (
         <>
@@ -431,33 +421,20 @@ function BtcWidget() {
 /* ============= Tether widget ============= */
 function TetherWidget() {
   const { lang } = useLanguage();
-  const [data, setData] = useState<TetherData | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let cancelled = false;
-    let id: ReturnType<typeof setInterval>;
-    const load = async () => {
-      try {
-        const res = await fetch("/api/market/iran-tether", { cache: "no-store" });
-        const json = await res.json();
-        if (cancelled) return;
-        if (json?.price) {
-          setData(json);
-        }
-      } catch {
-        // ignore
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    load();
-    id = setInterval(load, 30_000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, []);
+  // Tether/Toman price from Wallex (with Nobitex fallback). Refreshes every
+  // 30s. Returns `unavailable: true` when Iranian exchanges are unreachable
+  // (e.g., from Cloudflare US PoPs) — the UI shows "ناموجود" in that case.
+  const { data, isLoading } = useQuery<TetherData>({
+    queryKey: ["market", "iran-tether"],
+    queryFn: async () => {
+      const res = await fetch("/api/market/iran-tether", { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return (await res.json()) as TetherData;
+    },
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
 
   const change = data?.change24h;
   const up = (change ?? 0) >= 0;
@@ -468,7 +445,7 @@ function TetherWidget() {
       icon={<span className="text-[10px] font-bold font-latin">₮</span>}
       accent="#26a17b"
     >
-      {loading ? (
+      {isLoading ? (
         <SkeletonRow />
       ) : data?.unavailable ? (
         <div className="flex items-center gap-1.5 text-[11px] text-[var(--brand-muted)]">
@@ -519,36 +496,19 @@ function TetherWidget() {
 /* ============= S&P 500 widget (English mode only — replaces Tether/Toman) ============= */
 function Sp500Widget() {
   const { lang } = useLanguage();
-  const [data, setData] = useState<Sp500Data | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let cancelled = false;
-    let id: ReturnType<typeof setInterval>;
-    const load = async () => {
-      try {
-        const res = await fetch("/api/market/sp500", { cache: "no-store" });
-        if (!res.ok) return;
-        const json = await res.json();
-        if (cancelled) return;
-        if (json && (json.price || json.unavailable)) {
-          setData(json);
-        }
-      } catch {
-        // ignore
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    load();
-    // Refresh every 60s — Yahoo Finance data doesn't change faster than that
-    // during market hours; after hours it's static anyway.
-    id = setInterval(load, 60_000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, []);
+  // S&P 500 index from Yahoo Finance. Refreshes every 60s — Yahoo data
+  // doesn't change faster than that during market hours.
+  const { data, isLoading } = useQuery<Sp500Data>({
+    queryKey: ["market", "sp500"],
+    queryFn: async () => {
+      const res = await fetch("/api/market/sp500", { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return (await res.json()) as Sp500Data;
+    },
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  });
 
   const change = data?.change24h;
   const up = (change ?? 0) >= 0;
@@ -559,7 +519,7 @@ function Sp500Widget() {
       icon={<span className="text-[10px] font-bold font-latin">$</span>}
       accent="#10b981"
     >
-      {loading ? (
+      {isLoading ? (
         <SkeletonRow />
       ) : data?.unavailable ? (
         <div className="flex items-center gap-1.5 text-[11px] text-[var(--brand-muted)]">
@@ -616,33 +576,23 @@ function Sp500Widget() {
 /* ============= Fear & Greed widget ============= */
 function FearGreedWidget() {
   const { lang } = useLanguage();
-  const [data, setData] = useState<FngData | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let cancelled = false;
-    let id: ReturnType<typeof setInterval>;
-    const load = async () => {
-      try {
-        const res = await fetch("/api/market/fear-greed", { cache: "no-store" });
-        const json = await res.json();
-        if (cancelled) return;
-        if (json?.value !== undefined) {
-          setData(json);
-        }
-      } catch {
-        // ignore
-      } finally {
-        if (!cancelled) setLoading(false);
+  // Crypto Fear & Greed Index from alternative.me. Updates hourly upstream,
+  // so we refresh every 5 min — plenty fresh.
+  const { data, isLoading } = useQuery<FngData>({
+    queryKey: ["market", "fear-greed"],
+    queryFn: async () => {
+      const res = await fetch("/api/market/fear-greed", { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      if (json?.value === undefined) {
+        throw new Error("F&G value missing in response");
       }
-    };
-    load();
-    id = setInterval(load, 5 * 60_000); // every 5 min — F&G updates hourly upstream
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, []);
+      return json as FngData;
+    },
+    refetchInterval: 5 * 60_000,
+    staleTime: 2 * 60_000,
+  });
 
   return (
     <WidgetCard
@@ -650,7 +600,7 @@ function FearGreedWidget() {
       icon={<Thermometer className="w-3.5 h-3.5" />}
       accent="#a78bfa"
     >
-      {loading ? (
+      {isLoading ? (
         <SkeletonRow />
       ) : data ? (
         <>
@@ -730,8 +680,6 @@ function readCity(): CityChoice {
 function WeatherWidget({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const { lang } = useLanguage();
   const [city, setCity] = useState<CityChoice>(DEFAULT_CITY);
-  const [data, setData] = useState<WeatherData | null>(null);
-  const [loading, setLoading] = useState(true);
   const [hydrated, setHydrated] = useState(false);
 
   // Hydrate from localStorage
@@ -750,31 +698,25 @@ function WeatherWidget({ onOpenSettings }: { onOpenSettings?: () => void }) {
     };
   }, []);
 
-  // Fetch weather whenever city changes
-  useEffect(() => {
-    if (!hydrated) return;
-    let cancelled = false;
-    let id: ReturnType<typeof setInterval>;
-    const load = async () => {
-      try {
-        const url = `/api/weather?lat=${city.lat}&lon=${city.lon}`;
-        const res = await fetch(url, { cache: "no-store" });
-        const json = await res.json();
-        if (cancelled) return;
-        if (json?.temperature !== undefined) setData(json);
-      } catch {
-        // ignore
-      } finally {
-        if (!cancelled) setLoading(false);
+  // Fetch weather whenever city changes — TanStack Query automatically
+  // refetches when the queryKey changes (i.e., when city.lat/lon change).
+  // Also refreshes every 10 min.
+  const { data, isLoading } = useQuery<WeatherData>({
+    queryKey: ["weather", city.lat, city.lon],
+    queryFn: async () => {
+      const url = `/api/weather?lat=${city.lat}&lon=${city.lon}`;
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      if (json?.temperature === undefined) {
+        throw new Error("Temperature missing in weather response");
       }
-    };
-    load();
-    id = setInterval(load, 10 * 60_000); // 10 min refresh
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [city, hydrated]);
+      return json as WeatherData;
+    },
+    enabled: hydrated, // Don't fetch until we've hydrated city from localStorage
+    refetchInterval: 10 * 60_000,
+    staleTime: 5 * 60_000,
+  });
 
   return (
     <WidgetCard
@@ -784,7 +726,7 @@ function WeatherWidget({ onOpenSettings }: { onOpenSettings?: () => void }) {
       onHeaderClick={onOpenSettings}
       headerTitle={lang === "fa" ? "تغییر شهر" : "Change city"}
     >
-      {loading ? (
+      {isLoading ? (
         <SkeletonRow />
       ) : data ? (
         <>

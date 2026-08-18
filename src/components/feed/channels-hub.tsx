@@ -127,11 +127,11 @@ export function ChannelsHub({ lang, onOpenBookmarks }: ChannelsHubProps) {
     return () => window.removeEventListener("acd:custom-channels-changed", load);
   }, []);
 
-  const allTg: (TelegramChannel | (CustomChannel & { type: "telegram" }))[] = [
+  const allTg: TelegramChannel[] = [
     ...TELEGRAM_CHANNELS,
     ...customChannels
       .filter((c) => c.type === "telegram")
-      .map((c) => ({
+      .map((c): TelegramChannel => ({
         id: `custom-tg-${c.handle}`,
         handle: c.handle,
         name: c.name,

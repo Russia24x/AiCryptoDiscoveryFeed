@@ -258,7 +258,7 @@ export function Header({
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent
           side={lang === "fa" ? "right" : "left"}
-          className="w-[300px] bg-[var(--brand-surface)] border-l border-[var(--brand-border)] p-0 overflow-y-auto"
+          className="w-[300px] bg-[var(--brand-surface)] border-s border-[var(--brand-border)] p-0 overflow-y-auto"
         >
           <SheetHeader className="px-5 pt-5 pb-4 border-b border-[var(--brand-border)] sticky top-0 bg-[var(--brand-surface)] z-10">
             <SheetTitle className="flex items-center justify-between">
