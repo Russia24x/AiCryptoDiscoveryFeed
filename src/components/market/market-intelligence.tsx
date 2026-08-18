@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Search,
   ArrowUpDown,
@@ -114,7 +115,7 @@ const fmtCompact = (n: number) => {
 
 /* ============= Main Component ============= */
 export function MarketIntelligence() {
-  const { lang } = useLanguage();
+  const { lang, isRTL } = useLanguage();
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState<SortField>("market_cap_rank");
@@ -475,16 +476,28 @@ export function MarketIntelligence() {
                       </tr>
                     </thead>
                     <tbody>
-                      {sorted.map((coin) => {
+                      <AnimatePresence mode="popLayout">
+                      {sorted.map((coin, idx) => {
                         const change = coin.price_change_percentage_24h || 0;
                         const up = change >= 0;
                         return (
-                          <tr key={coin.id} onClick={() => onCoinClick(coin)} className="border-b border-[var(--brand-border)]/50 hover:bg-[var(--brand-surface-2)]/50 cursor-pointer transition-colors group">
+                          <motion.tr
+                            key={coin.id}
+                            layout
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -8 }}
+                            transition={{ duration: 0.2, delay: Math.min(idx * 0.015, 0.3) }}
+                            whileHover={{ backgroundColor: "rgba(45, 212, 191, 0.05)" }}
+                            onClick={() => onCoinClick(coin)}
+                            className="border-b border-[var(--brand-border)]/50 cursor-pointer transition-colors group"
+                          >
                             <td className="px-3 py-2.5 text-start">
                               <div className="flex items-center gap-1.5">
                                 <span className="text-[var(--brand-muted)] font-latin">{fa(coin.market_cap_rank || "-", lang)}</span>
                                 {watchHydrated && (
-                                  <button
+                                  <motion.button
+                                    whileTap={{ scale: 0.8 }}
                                     onClick={(e) => { e.stopPropagation(); toggleWatch(coin.id); }}
                                     className={cn(
                                       "shrink-0 transition-colors",
@@ -493,7 +506,7 @@ export function MarketIntelligence() {
                                     aria-label={isWatched(coin.id) ? "Remove from watchlist" : "Add to watchlist"}
                                   >
                                     <Star className={cn("w-3 h-3", isWatched(coin.id) && "fill-current")} />
-                                  </button>
+                                  </motion.button>
                                 )}
                               </div>
                             </td>
@@ -513,19 +526,30 @@ export function MarketIntelligence() {
                             <td className="px-3 py-2.5 text-end font-latin tabular-nums text-[var(--brand-muted)]">{fa(fmtCompact(coin.total_volume), lang)}</td>
                             <td className="px-3 py-2.5 text-end font-latin tabular-nums text-[var(--brand-muted)]">{fa(fmtCompact(coin.market_cap), lang)}</td>
                             <td className="px-3 py-2.5 text-end"><ExternalLink className="w-3.5 h-3.5 text-[var(--brand-muted)] opacity-0 group-hover:opacity-100 transition-opacity" /></td>
-                          </tr>
+                          </motion.tr>
                         );
                       })}
+                      </AnimatePresence>
                     </tbody>
                   </table>
                 </div>
                 {/* Mobile: cards */}
                 <div className="md:hidden space-y-2">
-                  {sorted.map((coin) => {
+                  <AnimatePresence mode="popLayout">
+                  {sorted.map((coin, idx) => {
                     const change = coin.price_change_percentage_24h || 0;
                     const up = change >= 0;
                     return (
-                      <div key={coin.id} className="w-full flex items-center gap-3 p-3 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)] hover:border-[var(--brand-accent)]/40 transition-colors">
+                      <motion.div
+                        key={coin.id}
+                        layout
+                        initial={{ opacity: 0, x: isRTL ? 20 : -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: isRTL ? -20 : 20 }}
+                        transition={{ duration: 0.2, delay: Math.min(idx * 0.02, 0.4) }}
+                        whileTap={{ scale: 0.98 }}
+                        className="w-full flex items-center gap-3 p-3 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)] hover:border-[var(--brand-accent)]/40 transition-colors"
+                      >
                         <button onClick={() => onCoinClick(coin)} className="flex items-center gap-3 flex-1 min-w-0 text-start">
                           <span className="text-[10px] font-latin text-[var(--brand-muted)] w-5 text-center shrink-0">{fa(coin.market_cap_rank || "-", lang)}</span>
                           {coin.image && <img src={coin.image} alt={coin.name} className="w-8 h-8 rounded-full shrink-0" loading="lazy" />}
@@ -539,7 +563,8 @@ export function MarketIntelligence() {
                           </div>
                         </button>
                         {watchHydrated && (
-                          <button
+                          <motion.button
+                            whileTap={{ scale: 0.8 }}
                             onClick={() => toggleWatch(coin.id)}
                             className={cn(
                               "p-1 rounded-full shrink-0 transition-colors",
@@ -548,11 +573,12 @@ export function MarketIntelligence() {
                             aria-label={isWatched(coin.id) ? "Remove from watchlist" : "Add to watchlist"}
                           >
                             <Star className={cn("w-4 h-4", isWatched(coin.id) && "fill-current")} />
-                          </button>
+                          </motion.button>
                         )}
-                      </div>
+                      </motion.div>
                     );
                   })}
+                  </AnimatePresence>
                 </div>
               </>
             )}
