@@ -16,8 +16,11 @@ import {
   Flame,
   Activity,
   BarChart3,
+  Star,
+  StarOff,
 } from "lucide-react";
 import { useLanguage } from "@/hooks/use-language";
+import { useWatchlist } from "@/hooks/use-watchlist";
 import { cn } from "@/lib/utils";
 
 /* ============= Types ============= */
@@ -103,6 +106,8 @@ export function MarketIntelligence() {
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState<SortField>("market_cap_rank");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [showWatchlistOnly, setShowWatchlistOnly] = useState(false);
+  const { watchlist, isWatched, toggle: toggleWatch, hydrated: watchHydrated } = useWatchlist();
 
   // --- Coin list (top 100) ---
   const { data: marketData, isLoading, error, refetch, isFetching } = useQuery<{ coins: Coin[] }>({
@@ -165,22 +170,37 @@ export function MarketIntelligence() {
   const coins = marketData?.coins || [];
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return coins;
-    const q = search.toLowerCase().trim();
-    return coins.filter(
-      (c) => c.name.toLowerCase().includes(q) || c.symbol.toLowerCase().includes(q) || c.id.toLowerCase().includes(q)
-    );
-  }, [coins, search]);
+    let result = coins;
+    // Filter by watchlist toggle
+    if (showWatchlistOnly && watchHydrated) {
+      result = result.filter((c) => watchlist.includes(c.id));
+    }
+    // Filter by search query
+    if (search.trim()) {
+      const q = search.toLowerCase().trim();
+      result = result.filter(
+        (c) => c.name.toLowerCase().includes(q) || c.symbol.toLowerCase().includes(q) || c.id.toLowerCase().includes(q)
+      );
+    }
+    return result;
+  }, [coins, search, showWatchlistOnly, watchlist, watchHydrated]);
 
+  // Sort: watchlist coins first (when not in "watchlist only" mode), then by selected field
   const sorted = useMemo(() => {
     const arr = [...filtered];
     arr.sort((a, b) => {
+      // If not in watchlist-only mode, pin watched coins to top
+      if (!showWatchlistOnly && watchHydrated) {
+        const aWatched = watchlist.includes(a.id) ? 0 : 1;
+        const bWatched = watchlist.includes(b.id) ? 0 : 1;
+        if (aWatched !== bWatched) return aWatched - bWatched;
+      }
       const av = a[sortField] ?? 0;
       const bv = b[sortField] ?? 0;
       return sortDir === "asc" ? av - bv : bv - av;
     });
     return arr;
-  }, [filtered, sortField, sortDir]);
+  }, [filtered, sortField, sortDir, showWatchlistOnly, watchlist, watchHydrated]);
 
   const onSort = (field: SortField) => {
     if (field === sortField) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -203,6 +223,29 @@ export function MarketIntelligence() {
                 {lang === "fa" ? "هوش بازار" : "Market Intelligence"}
               </h1>
             </div>
+            {/* Watchlist toggle */}
+            <button
+              onClick={() => setShowWatchlistOnly((v) => !v)}
+              className={cn(
+                "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all",
+                showWatchlistOnly
+                  ? "bg-[var(--brand-accent)] text-[#04201d] shadow-md shadow-[var(--brand-accent)]/20"
+                  : "bg-[var(--brand-surface)] border border-[var(--brand-border)] text-[var(--brand-muted)] hover:text-[var(--brand-text)] hover:border-[var(--brand-accent)]/40"
+              )}
+              aria-label={lang === "fa" ? "واچ‌لیست" : "Watchlist"}
+            >
+              {showWatchlistOnly ? <Star className="w-3.5 h-3.5 fill-current" /> : <Star className="w-3.5 h-3.5" />}
+              <span className="hidden sm:inline">{lang === "fa" ? "واچ‌لیست" : "Watch"}</span>
+              {watchlist.length > 0 && (
+                <span className={cn(
+                  "min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full text-[9px] font-latin",
+                  showWatchlistOnly ? "bg-[#04201d]/20 text-[#04201d]" : "bg-[var(--brand-accent-soft)] text-[var(--brand-accent)]"
+                )}>
+                  {fa(watchlist.length, lang)}
+                </span>
+              )}
+            </button>
+            {/* Search */}
             <div className="relative flex items-center">
               <Search className="absolute left-3 w-3.5 h-3.5 text-[var(--brand-muted)] pointer-events-none" />
               <input
@@ -247,11 +290,43 @@ export function MarketIntelligence() {
           {/* LEFT: Coin table */}
           <div className="min-w-0">
             {isLoading ? (
-              <div className="flex flex-col items-center justify-center py-20 gap-3">
-                <Loader2 className="w-6 h-6 animate-spin text-[var(--brand-accent)]" />
-                <span className="text-sm text-[var(--brand-muted)]">
-                  {lang === "fa" ? "در حال بارگذاری..." : "Loading..."}
-                </span>
+              <div className="space-y-2">
+                {/* Skeleton table rows */}
+                <div className="hidden md:block rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)] overflow-hidden">
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                    <div key={i} className="flex items-center gap-3 px-3 py-2.5 border-b border-[var(--brand-border)]/30">
+                      <div className="h-3 w-4 shimmer rounded" />
+                      <div className="flex items-center gap-2 flex-1">
+                        <div className="w-5 h-5 rounded-full shimmer" />
+                        <div className="h-3 w-20 shimmer rounded" />
+                      </div>
+                      <div className="h-3 w-16 shimmer rounded ms-auto" />
+                      <div className="h-3 w-12 shimmer rounded" />
+                      <div className="h-3 w-14 shimmer rounded" />
+                      <div className="h-3 w-16 shimmer rounded" />
+                    </div>
+                  ))}
+                </div>
+                {/* Mobile skeleton cards */}
+                <div className="md:hidden space-y-2">
+                  {[1, 2, 3, 4, 5].map((i) => (
+                    <div key={i} className="flex items-center gap-3 p-3 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
+                      <div className="w-5 h-5 rounded-full shimmer" />
+                      <div className="w-8 h-8 rounded-full shimmer" />
+                      <div className="flex-1 space-y-1.5">
+                        <div className="h-3 w-24 shimmer rounded" />
+                        <div className="h-2 w-12 shimmer rounded" />
+                      </div>
+                      <div className="space-y-1.5 text-end">
+                        <div className="h-3 w-16 shimmer rounded" />
+                        <div className="h-2 w-10 shimmer rounded" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="text-center text-xs text-[var(--brand-muted)] py-2">
+                  {lang === "fa" ? "در حال بارگذاری داده‌های بازار..." : "Loading market data..."}
+                </div>
               </div>
             ) : error ? (
               <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
@@ -262,9 +337,28 @@ export function MarketIntelligence() {
                 </button>
               </div>
             ) : sorted.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 gap-3">
-                <AlertCircle className="w-8 h-8 text-[var(--brand-muted)] opacity-50" />
-                <p className="text-sm text-[var(--brand-muted)]">{lang === "fa" ? "یافت نشد" : "Not found"}</p>
+              <div className="flex flex-col items-center justify-center py-20 gap-4">
+                {showWatchlistOnly ? (
+                  <>
+                    <div className="w-16 h-16 rounded-full bg-[var(--brand-surface)] border border-[var(--brand-border)] flex items-center justify-center">
+                      <Star className="w-7 h-7 text-[var(--brand-muted)] opacity-50" />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm font-bold text-[var(--brand-text)]">{lang === "fa" ? "واچ‌لیست خالی است" : "Watchlist is empty"}</p>
+                      <p className="text-xs text-[var(--brand-muted)] mt-1">{lang === "fa" ? "روی آیکن ستاره هر ارز بزن تا اینجا اضافه شود" : "Tap the star icon on any coin to add it here"}</p>
+                    </div>
+                    <button onClick={() => setShowWatchlistOnly(false)} className="px-4 py-2 rounded-full bg-[var(--brand-accent)] text-[#04201d] text-xs font-bold hover:brightness-110 transition-all">
+                      {lang === "fa" ? "نمایش همه ارزها" : "Show all coins"}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-16 h-16 rounded-full bg-[var(--brand-surface)] border border-[var(--brand-border)] flex items-center justify-center">
+                      <Search className="w-7 h-7 text-[var(--brand-muted)] opacity-50" />
+                    </div>
+                    <p className="text-sm text-[var(--brand-muted)]">{lang === "fa" ? "ارزی یافت نشد" : "No coins found"}</p>
+                  </>
+                )}
               </div>
             ) : (
               <>
@@ -288,7 +382,23 @@ export function MarketIntelligence() {
                         const up = change >= 0;
                         return (
                           <tr key={coin.id} onClick={() => onCoinClick(coin)} className="border-b border-[var(--brand-border)]/50 hover:bg-[var(--brand-surface-2)]/50 cursor-pointer transition-colors group">
-                            <td className="px-3 py-2.5 text-start text-[var(--brand-muted)] font-latin">{fa(coin.market_cap_rank || "-", lang)}</td>
+                            <td className="px-3 py-2.5 text-start">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[var(--brand-muted)] font-latin">{fa(coin.market_cap_rank || "-", lang)}</span>
+                                {watchHydrated && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); toggleWatch(coin.id); }}
+                                    className={cn(
+                                      "shrink-0 transition-colors",
+                                      isWatched(coin.id) ? "text-[var(--brand-accent)]" : "text-[var(--brand-muted)] opacity-0 group-hover:opacity-100 hover:text-[var(--brand-accent)]"
+                                    )}
+                                    aria-label={isWatched(coin.id) ? "Remove from watchlist" : "Add to watchlist"}
+                                  >
+                                    <Star className={cn("w-3 h-3", isWatched(coin.id) && "fill-current")} />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
                             <td className="px-3 py-2.5">
                               <div className="flex items-center gap-2">
                                 {coin.image && <img src={coin.image} alt={coin.name} className="w-5 h-5 rounded-full shrink-0" loading="lazy" />}
@@ -317,18 +427,32 @@ export function MarketIntelligence() {
                     const change = coin.price_change_percentage_24h || 0;
                     const up = change >= 0;
                     return (
-                      <button key={coin.id} onClick={() => onCoinClick(coin)} className="w-full flex items-center gap-3 p-3 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)] hover:border-[var(--brand-accent)]/40 transition-colors text-start">
-                        <span className="text-[10px] font-latin text-[var(--brand-muted)] w-5 text-center shrink-0">{fa(coin.market_cap_rank || "-", lang)}</span>
-                        {coin.image && <img src={coin.image} alt={coin.name} className="w-8 h-8 rounded-full shrink-0" loading="lazy" />}
-                        <div className="min-w-0 flex-1">
-                          <div className="font-bold text-sm text-[var(--brand-text)] truncate">{coin.name}</div>
-                          <div className="text-[10px] text-[var(--brand-muted)] font-latin uppercase">{coin.symbol}</div>
-                        </div>
-                        <div className="text-end shrink-0">
-                          <div className="font-latin tabular-nums text-sm font-bold text-[var(--brand-text)]">{fa(fmtPrice(coin.current_price), lang)}</div>
-                          <div className={cn("font-latin tabular-nums text-[10px] font-bold", up ? "text-[var(--brand-accent)]" : "text-red-400")}>{up ? "+" : ""}{fa(change.toFixed(2), lang)}%</div>
-                        </div>
-                      </button>
+                      <div key={coin.id} className="w-full flex items-center gap-3 p-3 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)] hover:border-[var(--brand-accent)]/40 transition-colors">
+                        <button onClick={() => onCoinClick(coin)} className="flex items-center gap-3 flex-1 min-w-0 text-start">
+                          <span className="text-[10px] font-latin text-[var(--brand-muted)] w-5 text-center shrink-0">{fa(coin.market_cap_rank || "-", lang)}</span>
+                          {coin.image && <img src={coin.image} alt={coin.name} className="w-8 h-8 rounded-full shrink-0" loading="lazy" />}
+                          <div className="min-w-0 flex-1">
+                            <div className="font-bold text-sm text-[var(--brand-text)] truncate">{coin.name}</div>
+                            <div className="text-[10px] text-[var(--brand-muted)] font-latin uppercase">{coin.symbol}</div>
+                          </div>
+                          <div className="text-end shrink-0">
+                            <div className="font-latin tabular-nums text-sm font-bold text-[var(--brand-text)]">{fa(fmtPrice(coin.current_price), lang)}</div>
+                            <div className={cn("font-latin tabular-nums text-[10px] font-bold", up ? "text-[var(--brand-accent)]" : "text-red-400")}>{up ? "+" : ""}{fa(change.toFixed(2), lang)}%</div>
+                          </div>
+                        </button>
+                        {watchHydrated && (
+                          <button
+                            onClick={() => toggleWatch(coin.id)}
+                            className={cn(
+                              "p-1 rounded-full shrink-0 transition-colors",
+                              isWatched(coin.id) ? "text-[var(--brand-accent)]" : "text-[var(--brand-muted)] hover:text-[var(--brand-accent)]"
+                            )}
+                            aria-label={isWatched(coin.id) ? "Remove from watchlist" : "Add to watchlist"}
+                          >
+                            <Star className={cn("w-4 h-4", isWatched(coin.id) && "fill-current")} />
+                          </button>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
