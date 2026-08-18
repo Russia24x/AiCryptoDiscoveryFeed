@@ -101,6 +101,11 @@ interface DefiLlamaFees {
   change1m: number;
   logo: string;
   methodologyURL: string;
+  // Rich data from /summary/fees/{slug}
+  description?: string;
+  methodology?: Record<string, string>;
+  breakdownMethodology?: Record<string, Record<string, string>>;
+  feesChart?: Array<{ timestamp: number; value: number }>;
 }
 
 /**
@@ -153,12 +158,15 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
     enabled: !!coinId,
   });
 
-  // --- Tertiary: DefiLlama fees/revenue ---
-  // Runs in parallel with the TVL query. If no fees data exists, silently skips.
+  // --- Tertiary: DefiLlama fees/revenue summary ---
+  // Uses /api/market/defillama-summary which fetches /v2/protocols +
+  // /overview/fees + /summary/fees/{slug} in one call. Returns fees,
+  // methodology text (Revenue, HoldersRevenue, SupplySideRevenue), and
+  // 30-day historical chart data.
   const { data: defiFees } = useQuery<DefiLlamaFees | null>({
-    queryKey: ["market", "defillama-fees", coinId],
+    queryKey: ["market", "defillama-summary", coinId],
     queryFn: async () => {
-      const res = await fetch(`/api/market/defillama-fees?gecko_id=${encodeURIComponent(coinId)}`, { cache: "no-store" });
+      const res = await fetch(`/api/market/defillama-summary?gecko_id=${encodeURIComponent(coinId)}`, { cache: "no-store" });
       if (!res.ok) return null;
       const json = await res.json();
       if (json?.found && (json.fees24h > 0 || json.fees30d > 0)) return json as DefiLlamaFees;
@@ -313,6 +321,36 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
             <DefiStat label={lang === "fa" ? "کل تاریخچه" : "All Time"} value={fa(fmtCompact(defiFees!.feesAllTime))} />
             <DefiStat label={lang === "fa" ? "تغییر ۳۰ روز" : "30d Change"} value={`${fa(defiFees!.change30d.toFixed(2))}%`} change={defiFees!.change30d} />
           </div>
+
+          {/* Fees history chart (30 days) */}
+          {defiFees!.feesChart && defiFees!.feesChart.length > 0 && (
+            <div className="mt-3">
+              <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-1">
+                {lang === "fa" ? "نمودار کارمزد ۳۰ روز" : "30-day fees chart"}
+              </div>
+              <Sparkline
+                prices={defiFees!.feesChart.map((d) => d.value)}
+                accent="#f59e0b"
+              />
+            </div>
+          )}
+
+          {/* Methodology (Revenue, HoldersRevenue, SupplySideRevenue descriptions) */}
+          {defiFees!.methodology && Object.keys(defiFees!.methodology).length > 0 && (
+            <div className="mt-3 pt-3 border-t border-[#f59e0b]/20">
+              <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-2">
+                {lang === "fa" ? "متدولوژی درآمد" : "Revenue Methodology"}
+              </div>
+              <div className="space-y-1.5">
+                {Object.entries(defiFees!.methodology).map(([key, value]) => (
+                  <div key={key} className="text-[10px] leading-relaxed">
+                    <span className="font-bold text-amber-400">{key}: </span>
+                    <span className="text-[var(--brand-muted)]">{value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
