@@ -36,9 +36,25 @@ export function FeedGrid({
     sourceFilter,
     lang
   );
+  // Separate fetch for source counts — only when no source filter is applied
+  // (otherwise counts would be misleading). Uses the existing cache so it's
+  // basically free if the user has already fetched this category.
+  const { data: allData } = useFeed(category, "", null, lang);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [readerOpen, setReaderOpen] = useState(false);
   const [view, setView] = useState<ViewMode>("grid");
+
+  // Compute per-source counts from allData (the un-filtered fetch)
+  const sourceCounts = useMemo(() => {
+    if (!allData?.items) return undefined;
+    const counts: Record<string, number> = {};
+    for (const item of allData.items) {
+      const sid = item.source.id;
+      if (sid) counts[sid] = (counts[sid] || 0) + 1;
+    }
+    return counts;
+  }, [allData]);
+  const totalItems = allData?.items?.length;
 
   const onOpen = (item: FeedItem) => {
     const idx = data?.items.findIndex((it) => it.id === item.id) ?? -1;
@@ -134,6 +150,8 @@ export function FeedGrid({
         category={category}
         activeSourceId={sourceFilter}
         onSourceChange={onSourceChange}
+        sourceCounts={sourceCounts}
+        totalItems={totalItems}
       />
 
       {/* Body */}

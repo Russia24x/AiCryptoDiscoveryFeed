@@ -10,6 +10,10 @@ interface SourceFilterProps {
   category: string;
   activeSourceId: string | null;
   onSourceChange: (sourceId: string | null) => void;
+  /** Optional: counts of items per source, used to display a small badge. */
+  sourceCounts?: Record<string, number>;
+  /** Optional: total count of items (used for the "All sources" badge). */
+  totalItems?: number;
 }
 
 /**
@@ -27,6 +31,8 @@ export function SourceFilter({
   category,
   activeSourceId,
   onSourceChange,
+  sourceCounts,
+  totalItems,
 }: SourceFilterProps) {
   const { t, lang, isRTL } = useLanguage();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -40,21 +46,35 @@ export function SourceFilter({
     return true;
   });
 
-  // Update scroll indicators based on current scroll position
+  // Update scroll indicators based on current scroll position.
+  //
+  // Cross-browser RTL handling:
+  //   - Modern browsers (Chrome 85+, Firefox 64+, Safari 14+): in RTL mode,
+  //     scrollLeft goes from 0 (right-most) to scrollWidth - clientWidth (left-most),
+  //     i.e. NEGATIVE direction is reversed but the value is positive.
+  //   - Older browsers: scrollLeft was negative in RTL.
+  // We normalize by computing a "scroll progress" in [0, 1] which is
+  // direction-independent.
   const updateScrollState = () => {
     const el = scrollRef.current;
     if (!el) return;
-    // In RTL, scrollLeft is negative or starts at right side.
-    // Use scrollWidth + scrollLeft to compute right edge in LTR,
-    // and left edge in RTL via Math.abs(scrollLeft).
-    const scrollStart = isRTL
-      ? el.scrollLeft > 0
-      : el.scrollLeft > 4;
-    const scrollEnd = isRTL
-      ? el.scrollLeft > -(el.scrollWidth - el.clientWidth - 4)
-      : el.scrollLeft < el.scrollWidth - el.clientWidth - 4;
-    setCanScrollStart(scrollStart);
-    setCanScrollEnd(scrollEnd);
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    if (maxScroll <= 0) {
+      setCanScrollStart(false);
+      setCanScrollEnd(false);
+      return;
+    }
+    // Normalize scrollLeft: always in [0, maxScroll] regardless of direction.
+    // In LTR: scrollLeft goes 0 → maxScroll.
+    // In RTL (modern): scrollLeft goes 0 → maxScroll (positive, but the
+    //   visual direction is reversed).
+    // In RTL (old): scrollLeft goes 0 → -maxScroll.
+    const sl = el.scrollLeft;
+    const progress = Math.abs(sl); // works for both positive (LTR+modern RTL) and negative (old RTL)
+    const atStart = progress <= 2;
+    const atEnd = progress >= maxScroll - 2;
+    setCanScrollStart(!atStart);
+    setCanScrollEnd(!atEnd);
   };
 
   useEffect(() => {
@@ -68,27 +88,68 @@ export function SourceFilter({
       el.removeEventListener("scroll", updateScrollState);
       window.removeEventListener("resize", updateScrollState);
     };
-  }, [isRTL, sources.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRTL, sources.length, category, lang]);
 
-  // Click on scroll indicator → scroll the container
+  // When the language changes (LTR↔RTL), reset scroll to the start so the
+  // indicators are in the correct initial state.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ left: 0, behavior: "auto" });
+    // Defer state update so the new scroll position is reflected.
+    requestAnimationFrame(updateScrollState);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRTL]);
+
+  // Click on scroll indicator → scroll the container by ~70% of viewport.
+  //
+  // Direction handling:
+  //   - "start" = visually scroll toward the beginning of content
+  //   - "end"   = visually scroll toward the end of content
+  //
+  // In RTL mode (modern browsers): scrollLeft=0 is at the right edge of content
+  // (visually the start), and scrollLeft=maxScroll is at the left edge (visually
+  // the end). So scrolling "end" means INCREASING scrollLeft, same as LTR.
+  //
+  // To be robust across browser variants (old RTL where scrollLeft is negative),
+  // we compute the target scroll position from |scrollLeft| and re-apply with
+  // the correct sign for the current browser.
   const scrollByDir = (dir: "start" | "end") => {
     const el = scrollRef.current;
     if (!el) return;
-    const amount = el.clientWidth * 0.7;
-    const dirSign = dir === "start" ? -1 : 1;
-    const rtlSign = isRTL ? -1 : 1;
-    el.scrollBy({ left: amount * dirSign * rtlSign, behavior: "smooth" });
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    if (maxScroll <= 0) return;
+    const step = el.clientWidth * 0.7;
+    const currentProgress = Math.abs(el.scrollLeft);
+    const sign = el.scrollLeft < 0 ? -1 : 1; // detect old-RTL negative mode
+    const target =
+      dir === "end"
+        ? Math.min(maxScroll, currentProgress + step)
+        : Math.max(0, currentProgress - step);
+    el.scrollTo({ left: target * sign, behavior: "smooth" });
   };
 
-  // Mouse wheel: convert vertical wheel → horizontal scroll on the strip
+  // Mouse wheel: convert vertical wheel → horizontal scroll on the strip.
+  //
+  // In RTL mode (modern browsers), scrolling down should move content to the
+  // right visually, which means scrollLeft should DECREASE. But wheel deltaY
+  // is positive when scrolling down, so we need to invert it in RTL.
+  // (In old RTL where scrollLeft is negative, the same logic applies because
+  // we use the sign-detection approach in scrollByDir.)
+  //
+  // To keep this simple and consistent, we detect the current "direction sign"
+  // by reading scrollLeft after the user starts scrolling, and apply the
+  // correct delta direction.
   const onWheel = (e: React.WheelEvent) => {
     if (Math.abs(e.deltaY) < Math.abs(e.deltaX)) return; // user already scrolling horizontally
     const el = scrollRef.current;
     if (!el) return;
     // Only hijack wheel if the strip can scroll horizontally
     if (el.scrollWidth <= el.clientWidth + 2) return;
-    e.preventDefault?.();
-    el.scrollBy({ left: e.deltaY, behavior: "auto" });
+    // In RTL mode, the visual direction is reversed, so we flip the delta.
+    const delta = isRTL ? -e.deltaY : e.deltaY;
+    el.scrollBy({ left: delta, behavior: "auto" });
   };
 
   if (sources.length === 0) return null;
@@ -169,6 +230,20 @@ export function SourceFilter({
           >
             {activeSourceId === null && <Check className="w-3 h-3" />}
             {t.feed.allSources}
+            {typeof totalItems === "number" && totalItems > 0 && (
+              <span
+                className={cn(
+                  "min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full text-[9px] font-latin font-bold",
+                  activeSourceId === null
+                    ? "bg-[#04201d]/20 text-[#04201d]"
+                    : "bg-[var(--brand-bg)]/40 text-[var(--brand-muted)]"
+                )}
+              >
+                {lang === "fa"
+                  ? totalItems.toString().replace(/[0-9]/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[+d])
+                  : totalItems}
+              </span>
+            )}
           </button>
 
           {/* Per-source pills with colored dots */}
@@ -176,6 +251,7 @@ export function SourceFilter({
             const meta = CATEGORY_META[src.category];
             const active = activeSourceId === src.id;
             const displayName = lang === "fa" ? src.nameFa : src.name;
+            const count = sourceCounts?.[src.id];
 
             return (
               <button
@@ -207,6 +283,20 @@ export function SourceFilter({
                   }}
                 />
                 {displayName}
+                {typeof count === "number" && count > 0 && (
+                  <span
+                    className={cn(
+                      "min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full text-[9px] font-latin font-bold",
+                      active
+                        ? "bg-[#04201d]/20 text-[#04201d]"
+                        : "bg-[var(--brand-bg)]/40 text-[var(--brand-muted)]"
+                    )}
+                  >
+                    {lang === "fa"
+                      ? count.toString().replace(/[0-9]/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[+d])
+                      : count}
+                  </span>
+                )}
                 {active && <Check className="w-3 h-3" />}
               </button>
             );

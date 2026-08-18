@@ -7,11 +7,14 @@ import {
   Bookmark,
   BookmarkCheck,
   BookOpen,
+  Clock3,
+  Check,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import type { FeedItem } from "@/types/feed";
 import { CATEGORY_META, categoryLabel } from "@/lib/sources";
 import { useBookmarks } from "@/hooks/use-bookmarks";
+import { useReadLater } from "@/hooks/use-read-later";
 import { useLanguage } from "@/hooks/use-language";
 import { relativeTime, formatNumber } from "@/hooks/use-feed-state";
 import { SmartImage } from "./smart-image";
@@ -44,8 +47,10 @@ const CATEGORY_GRADIENTS: Record<string, string> = {
 export function FeedCard({ item, onOpen, index = 0 }: FeedCardProps) {
   const meta = CATEGORY_META[item.source.category];
   const { isBookmarked, toggleBookmark, hydrated } = useBookmarks();
+  const { isInQueue, addToQueue, removeFromQueue, hydrated: queueHydrated } = useReadLater();
   const { t, lang } = useLanguage();
   const bookmarked = hydrated && isBookmarked(item.id);
+  const queued = queueHydrated && isInQueue(item.id);
 
   const onBookmarkClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -82,6 +87,50 @@ export function FeedCard({ item, onOpen, index = 0 }: FeedCardProps) {
         );
       }
     });
+  };
+
+  const onReadLaterClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const wasQueued = queued;
+    if (wasQueued) {
+      removeFromQueue(item.id);
+      import("sonner").then(({ toast }) => {
+        toast(
+          lang === "fa"
+            ? "از صف خواندن حذف شد"
+            : "Removed from read-later",
+          { duration: 1800 }
+        );
+      });
+    } else {
+      const added = addToQueue({
+        id: item.id,
+        title: item.title,
+        link: item.link,
+        description: item.description,
+        image: item.image,
+        pubDate: item.pubDate,
+        sourceName: item.source.name,
+        sourceNameFa: item.source.nameFa,
+        category: item.source.category,
+      });
+      if (added) {
+        import("sonner").then(({ toast }) => {
+          toast.success(
+            lang === "fa"
+              ? "به صف خواندن اضافه شد"
+              : "Added to read-later",
+            {
+              duration: 2200,
+              description:
+                lang === "fa"
+                  ? "به‌طور خودکار پس از ۷ روز حذف می‌شود"
+                  : "Auto-expires after 7 days",
+            }
+          );
+        });
+      }
+    }
   };
 
   const sourceDisplayName =
@@ -133,24 +182,53 @@ export function FeedCard({ item, onOpen, index = 0 }: FeedCardProps) {
           </span>
         </div>
 
-        {/* Bookmark button */}
-        <button
-          onClick={onBookmarkClick}
-          aria-label={bookmarked ? t.detail.unbookmark : t.detail.bookmark}
-          className={cn(
-            "absolute top-2.5 right-2.5 p-1.5 rounded-md backdrop-blur-md transition-all",
-            "bg-[rgba(13,15,18,0.7)] hover:bg-[rgba(13,15,18,0.9)]",
-            bookmarked
-              ? "text-[var(--brand-accent)]"
-              : "text-white/80 opacity-0 group-hover:opacity-100"
-          )}
-        >
-          {bookmarked ? (
-            <BookmarkCheck className="w-3.5 h-3.5 fill-[var(--brand-accent)]" />
-          ) : (
-            <Bookmark className="w-3.5 h-3.5" />
-          )}
-        </button>
+        {/* Action buttons cluster (top-right): bookmark + read-later */}
+        <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5">
+          {/* Read Later button */}
+          <button
+            onClick={onReadLaterClick}
+            aria-label={
+              queued
+                ? lang === "fa"
+                  ? "حذف از صف خواندن"
+                  : "Remove from read-later"
+                : lang === "fa"
+                ? "افزودن به صف خواندن"
+                : "Add to read-later"
+            }
+            className={cn(
+              "p-1.5 rounded-md backdrop-blur-md transition-all",
+              "bg-[rgba(13,15,18,0.7)] hover:bg-[rgba(13,15,18,0.9)]",
+              queued
+                ? "text-amber-400"
+                : "text-white/80 opacity-0 group-hover:opacity-100"
+            )}
+          >
+            {queued ? (
+              <Check className="w-3.5 h-3.5" />
+            ) : (
+              <Clock3 className="w-3.5 h-3.5" />
+            )}
+          </button>
+          {/* Bookmark button */}
+          <button
+            onClick={onBookmarkClick}
+            aria-label={bookmarked ? t.detail.unbookmark : t.detail.bookmark}
+            className={cn(
+              "p-1.5 rounded-md backdrop-blur-md transition-all",
+              "bg-[rgba(13,15,18,0.7)] hover:bg-[rgba(13,15,18,0.9)]",
+              bookmarked
+                ? "text-[var(--brand-accent)]"
+                : "text-white/80 opacity-0 group-hover:opacity-100"
+            )}
+          >
+            {bookmarked ? (
+              <BookmarkCheck className="w-3.5 h-3.5 fill-[var(--brand-accent)]" />
+            ) : (
+              <Bookmark className="w-3.5 h-3.5" />
+            )}
+          </button>
+        </div>
 
         {/* Read-time badge — bottom-right of image */}
         <div className="absolute bottom-2.5 right-2.5 pointer-events-none">

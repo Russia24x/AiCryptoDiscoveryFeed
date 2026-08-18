@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useRef } from "react";
 import { Header } from "@/components/brand/header";
 import { Ticker } from "@/components/brand/ticker";
 import { Hero } from "@/components/brand/hero";
@@ -12,9 +12,12 @@ import { ChannelsHub } from "@/components/feed/channels-hub";
 import { BookmarksDrawer } from "@/components/feed/bookmarks-drawer";
 import { TrendingTags } from "@/components/feed/trending-tags";
 import { SettingsPanel } from "@/components/brand/settings-panel";
+import { OfflineBanner } from "@/components/brand/offline-banner";
+import { UpdateBanner } from "@/components/brand/update-banner";
 import { useFeedState } from "@/hooks/use-feed-state";
 import { useFeed } from "@/hooks/use-feed";
 import { useLanguage } from "@/hooks/use-language";
+import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 
 export default function Home() {
   const {
@@ -28,9 +31,9 @@ export default function Home() {
   const { lang } = useLanguage();
   const [bookmarksOpen, setBookmarksOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-
   // Local feed hook used only to feed trending tags (always "all" but localized)
-  const { data: allData } = useFeed("all", "", null, lang);
+  // and to provide a refresh trigger for pull-to-refresh.
+  const { data: allData, refetch } = useFeed("all", "", null, lang);
 
   const onTagClick = useCallback(
     (tag: string) => {
@@ -42,8 +45,36 @@ export default function Home() {
     [setSearch]
   );
 
+  // Pull-to-refresh: triggers a full feed refetch when the user drags down
+  // from the top of the page on a touch device.
+  const { touchHandlers, PullIndicator } = usePullToRefresh({
+    onRefresh: async () => {
+      // Clear all client-side feed caches so the refetch is fresh.
+      try {
+        const keys = Object.keys(window.localStorage).filter((k) =>
+          k.startsWith("acd:feed-cache:")
+        );
+        keys.forEach((k) => window.localStorage.removeItem(k));
+      } catch {
+        // ignore
+      }
+      await refetch();
+      // Also reload the page after a successful pull-to-refresh to refresh
+      // the hero widgets (BTC, Tether, Fear & Greed, Weather) — they fetch
+      // independently and wouldn't pick up the cleared cache.
+      // We use a soft reload so scroll position is preserved.
+      setTimeout(() => window.location.reload(), 200);
+    },
+  });
+
   return (
-    <div className="min-h-screen flex flex-col bg-[var(--brand-bg)]">
+    <div
+      {...touchHandlers}
+      className="min-h-screen flex flex-col bg-[var(--brand-bg)] relative"
+    >
+      {/* Pull-to-refresh indicator overlay */}
+      <PullIndicator />
+
       <Header
         activeCategory={category}
         onCategoryChange={onCategoryChange}
@@ -53,6 +84,7 @@ export default function Home() {
         onOpenSettings={() => setSettingsOpen(true)}
       />
       <Ticker />
+      <OfflineBanner />
 
       <main className="flex-1">
         <Hero
@@ -105,6 +137,7 @@ export default function Home() {
       <BackToTop />
       <BookmarksDrawer open={bookmarksOpen} onOpenChange={setBookmarksOpen} />
       <SettingsPanel open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <UpdateBanner />
     </div>
   );
 }

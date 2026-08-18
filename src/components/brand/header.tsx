@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Search, Menu, X, Settings, Home, Bitcoin, Brain, Cpu, Gamepad2, Film } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { LanguageToggle } from "@/components/brand/language-toggle";
 import { BookmarksButton } from "@/components/feed/bookmarks-drawer";
+import { SearchHistoryDropdown } from "@/components/brand/search-history-dropdown";
 import { useBookmarks } from "@/hooks/use-bookmarks";
 import { useLanguage } from "@/hooks/use-language";
+import { useSearchHistory, useSearchDebounce } from "@/hooks/use-search-history";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,8 +48,14 @@ export function Header({
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const { count, hydrated: bookmarksHydrated } = useBookmarks();
   const { t, lang } = useLanguage();
+  const { addEntry } = useSearchHistory();
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Track search queries for history (debounced 1.5s after typing stops)
+  useSearchDebounce(search, addEntry);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -121,16 +129,33 @@ export function Header({
 
           {/* Right cluster */}
           <div className="flex items-center gap-1">
-            {/* Search (expandable on desktop) */}
-            <div className="hidden sm:flex items-center">
+            {/* Search (expandable on desktop, with history dropdown) */}
+            <div className="hidden sm:flex items-center relative">
               {searchOpen ? (
-                <div className="flex items-center gap-2 bg-[var(--brand-surface)] border border-[var(--brand-border)] rounded-full px-3 py-1.5">
+                <div className="relative flex items-center gap-2 bg-[var(--brand-surface)] border border-[var(--brand-border)] rounded-full px-3 py-1.5">
                   <Search className="w-4 h-4 text-[var(--brand-muted)]" />
                   <input
+                    ref={searchInputRef}
                     autoFocus
                     value={search}
                     onChange={(e) => onSearchChange(e.target.value)}
-                    onBlur={() => !search && setSearchOpen(false)}
+                    onFocus={() => setHistoryOpen(true)}
+                    onBlur={() => {
+                      // Delay to allow click on history item
+                      setTimeout(() => {
+                        if (!search) setSearchOpen(false);
+                      }, 150);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && search.trim()) {
+                        addEntry(search);
+                        setHistoryOpen(false);
+                      }
+                      if (e.key === "Escape") {
+                        setHistoryOpen(false);
+                        if (!search) setSearchOpen(false);
+                      }
+                    }}
                     placeholder={t.nav.searchPlaceholder}
                     className="bg-transparent outline-none text-sm w-32 lg:w-48 placeholder:text-[var(--brand-muted)]"
                   />
@@ -138,11 +163,23 @@ export function Header({
                     onClick={() => {
                       onSearchChange("");
                       setSearchOpen(false);
+                      setHistoryOpen(false);
                     }}
                     className="text-[var(--brand-muted)] hover:text-[var(--brand-text)]"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
+                  <SearchHistoryDropdown
+                    query={search}
+                    onPick={(q) => {
+                      onSearchChange(q);
+                      setHistoryOpen(false);
+                      searchInputRef.current?.focus();
+                    }}
+                    onClear={() => {}}
+                    open={historyOpen}
+                    onOpenChange={setHistoryOpen}
+                  />
                 </div>
               ) : (
                 <button
@@ -188,13 +225,30 @@ export function Header({
 
         {/* Mobile search row (when not in mobile menu) */}
         <div className="sm:hidden pb-3 -mt-1">
-          <div className="flex items-center gap-2 bg-[var(--brand-surface)] border border-[var(--brand-border)] rounded-full px-3 py-2">
+          <div className="relative flex items-center gap-2 bg-[var(--brand-surface)] border border-[var(--brand-border)] rounded-full px-3 py-2">
             <Search className="w-4 h-4 text-[var(--brand-muted)] shrink-0" />
             <input
               value={search}
               onChange={(e) => onSearchChange(e.target.value)}
+              onFocus={() => setHistoryOpen(true)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && search.trim()) {
+                  addEntry(search);
+                  setHistoryOpen(false);
+                }
+              }}
               placeholder={t.nav.searchPlaceholder}
               className="bg-transparent outline-none text-sm w-full placeholder:text-[var(--brand-muted)]"
+            />
+            <SearchHistoryDropdown
+              query={search}
+              onPick={(q) => {
+                onSearchChange(q);
+                setHistoryOpen(false);
+              }}
+              onClear={() => {}}
+              open={historyOpen}
+              onOpenChange={setHistoryOpen}
             />
           </div>
         </div>
@@ -306,7 +360,7 @@ export function Header({
               <span className="font-latin uppercase tracking-wider">
                 Ai Crypto Discovery
               </span>
-              <span className="font-latin">v1.1</span>
+              <span className="font-latin">v1.2</span>
             </div>
           </div>
         </SheetContent>

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Bookmark, X, ExternalLink, Clock, ArrowRight, ArrowLeft, Trash2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Bookmark, X, ExternalLink, Clock, ArrowRight, ArrowLeft, Trash2, Clock3, Check } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { useBookmarks } from "@/hooks/use-bookmarks";
+import { useReadLater, formatExpiry } from "@/hooks/use-read-later";
 import { useLanguage } from "@/hooks/use-language";
 import { CATEGORY_META, categoryLabel } from "@/lib/sources";
 import { relativeTime } from "@/hooks/use-feed-state";
@@ -21,21 +22,54 @@ interface BookmarksDrawerProps {
   onOpenChange: (open: boolean) => void;
 }
 
+type Tab = "bookmarks" | "readlater";
+
 export function BookmarksDrawer({ open, onOpenChange }: BookmarksDrawerProps) {
   const { bookmarks, removeBookmark, clearAll } = useBookmarks();
+  const { entries, removeFromQueue, clearAll: clearQueue, pruneNow, count: queueCount } = useReadLater();
   const { t, lang, isRTL } = useLanguage();
+  const [activeTab, setActiveTab] = useState<Tab>("bookmarks");
   const [confirmingClear, setConfirmingClear] = useState(false);
+
   const Back = isRTL ? ArrowLeft : ArrowRight;
+
+  // Periodically prune expired read-later entries while the drawer is open.
+  useEffect(() => {
+    if (!open) return;
+    pruneNow();
+    const id = setInterval(pruneNow, 60_000);
+    return () => clearInterval(id);
+  }, [open, pruneNow]);
+
+  const onClearAll = () => {
+    if (activeTab === "bookmarks") {
+      clearAll();
+      toast.success(
+        lang === "fa" ? "همه نشانک‌ها پاک شدند" : "All bookmarks cleared",
+        { duration: 1800 }
+      );
+    } else {
+      clearQueue();
+      toast.success(
+        lang === "fa" ? "صف خواندن پاک شد" : "Read-later queue cleared",
+        { duration: 1800 }
+      );
+    }
+    setConfirmingClear(false);
+  };
+
+  const entriesList = activeTab === "bookmarks" ? bookmarks : entries;
+  const isEmpty = entriesList.length === 0;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side={lang === "fa" ? "left" : "right"}
-        className="w-full sm:w-[420px] bg-[var(--brand-surface)] border-l border-[var(--brand-border)] p-0 overflow-y-auto"
+        className="w-full sm:w-[440px] bg-[var(--brand-surface)] border-l border-[var(--brand-border)] p-0 overflow-y-auto"
       >
-        {/* Header — with a prominent Back button */}
+        {/* Header — with Back button + tab switcher */}
         <SheetHeader className="px-5 pt-4 pb-3 border-b border-[var(--brand-border)] sticky top-0 bg-[var(--brand-surface)] z-10">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 mb-3">
             <button
               onClick={() => onOpenChange(false)}
               className="flex items-center gap-1 px-2 py-1.5 rounded-full hover:bg-[var(--brand-surface-2)] text-[var(--brand-muted)] hover:text-[var(--brand-text)] transition-colors group"
@@ -47,28 +81,21 @@ export function BookmarksDrawer({ open, onOpenChange }: BookmarksDrawerProps) {
               </span>
             </button>
             <div className="h-4 w-px bg-[var(--brand-border)]" />
-            <SheetTitle className="flex items-center gap-2 flex-1">
-              <Bookmark className="w-4 h-4 text-[var(--brand-accent)] fill-[var(--brand-accent)]" />
-              <span>{t.bookmarksDrawer.title}</span>
-              <span className="font-latin text-xs text-[var(--brand-muted)] bg-[var(--brand-surface-2)] px-2 py-0.5 rounded-md">
-                {bookmarks.length.toLocaleString(lang === "fa" ? "fa-IR" : "en-US")}
-              </span>
+            <SheetTitle className="flex-1 text-sm">
+              {activeTab === "bookmarks"
+                ? t.bookmarksDrawer.title
+                : lang === "fa"
+                ? "صف خواندن"
+                : "Read Later"}
             </SheetTitle>
-            {bookmarks.length > 0 && (
+            {entriesList.length > 0 && (
               <Button
                 variant="ghost"
                 size="sm"
                 className="text-[var(--brand-muted)] hover:text-red-400 h-7 text-xs px-2"
                 onClick={() => {
                   if (confirmingClear) {
-                    clearAll();
-                    setConfirmingClear(false);
-                    toast.success(
-                      lang === "fa"
-                        ? "همه نشانک‌ها پاک شدند"
-                        : "All bookmarks cleared",
-                      { duration: 1800 }
-                    );
+                    onClearAll();
                   } else {
                     setConfirmingClear(true);
                     setTimeout(() => setConfirmingClear(false), 4000);
@@ -89,27 +116,62 @@ export function BookmarksDrawer({ open, onOpenChange }: BookmarksDrawerProps) {
               </Button>
             )}
           </div>
+
+          {/* Tab switcher */}
+          <div className="flex gap-1 p-1 bg-[var(--brand-surface-2)] rounded-lg">
+            <TabButton
+              active={activeTab === "bookmarks"}
+              onClick={() => setActiveTab("bookmarks")}
+              icon={<Bookmark className="w-3.5 h-3.5" />}
+              label={t.bookmarksDrawer.title}
+              count={bookmarks.length}
+              lang={lang}
+              accent="var(--brand-accent)"
+            />
+            <TabButton
+              active={activeTab === "readlater"}
+              onClick={() => setActiveTab("readlater")}
+              icon={<Clock3 className="w-3.5 h-3.5" />}
+              label={lang === "fa" ? "صف خواندن" : "Read Later"}
+              count={queueCount}
+              lang={lang}
+              accent="#f59e0b"
+            />
+          </div>
         </SheetHeader>
 
         {/* Body */}
         <div className="px-5 py-4 space-y-3">
-          {bookmarks.length === 0 ? (
+          {isEmpty ? (
             <div className="py-16 text-center">
               <div className="mx-auto w-12 h-12 rounded-full bg-[var(--brand-surface-2)] flex items-center justify-center mb-3">
-                <Bookmark className="w-5 h-5 text-[var(--brand-muted)]" />
+                {activeTab === "bookmarks" ? (
+                  <Bookmark className="w-5 h-5 text-[var(--brand-muted)]" />
+                ) : (
+                  <Clock3 className="w-5 h-5 text-[var(--brand-muted)]" />
+                )}
               </div>
               <p className="text-sm text-[var(--brand-text)]">
-                {t.bookmarksDrawer.empty}
+                {activeTab === "bookmarks"
+                  ? t.bookmarksDrawer.empty
+                  : lang === "fa"
+                  ? "صف خواندن خالی است"
+                  : "Read-later queue is empty"}
               </p>
               <p className="text-xs text-[var(--brand-muted)] mt-1">
-                {t.bookmarksDrawer.emptyHint}
+                {activeTab === "bookmarks"
+                  ? t.bookmarksDrawer.emptyHint
+                  : lang === "fa"
+                  ? "روی آیکن ساعت هر مقاله بزن تا اینجا اضافه شود. پس از ۷ روز خودکار حذف می‌شود."
+                  : "Tap the clock icon on any article to add it here. Auto-expires after 7 days."}
               </p>
             </div>
           ) : (
-            bookmarks.map((b) => {
+            entriesList.map((b) => {
               const meta = b.category
                 ? CATEGORY_META[b.category as keyof typeof CATEGORY_META]
                 : null;
+              const isReadLater = activeTab === "readlater";
               return (
                 <article
                   key={b.id}
@@ -152,9 +214,20 @@ export function BookmarksDrawer({ open, onOpenChange }: BookmarksDrawerProps) {
                     </h3>
                     <div className="flex items-center justify-between mt-1">
                       <span className="text-[10px] text-[var(--brand-muted)] flex items-center gap-1 font-latin">
-                        <Clock className="w-3 h-3" />
-                        {t.bookmarksDrawer.savedAt}{" "}
-                        {relativeTime(b.savedAt, lang, t.feed)}
+                        {isReadLater ? (
+                          <>
+                            <Clock3 className="w-3 h-3 text-amber-400" />
+                            <span className="text-amber-400/80">
+                              {formatExpiry(b as any, lang)}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <Clock className="w-3 h-3" />
+                            {t.bookmarksDrawer.savedAt}{" "}
+                            {relativeTime(b.savedAt, lang, t.feed)}
+                          </>
+                        )}
                       </span>
                       <div className="flex items-center gap-1">
                         <a
@@ -168,13 +241,21 @@ export function BookmarksDrawer({ open, onOpenChange }: BookmarksDrawerProps) {
                         </a>
                         <button
                           onClick={() => {
-                            removeBookmark(b.id);
-                            toast(
-                              lang === "fa"
-                                ? "نشانک حذف شد"
-                                : "Bookmark removed",
-                              { duration: 1500 }
-                            );
+                            if (isReadLater) {
+                              removeFromQueue(b.id);
+                              toast(
+                                lang === "fa"
+                                  ? "از صف خواندن حذف شد"
+                                  : "Removed from read-later",
+                                { duration: 1500 }
+                              );
+                            } else {
+                              removeBookmark(b.id);
+                              toast(
+                                lang === "fa" ? "نشانک حذف شد" : "Bookmark removed",
+                                { duration: 1500 }
+                              );
+                            }
                           }}
                           className="p-1.5 rounded hover:bg-[var(--brand-surface)] text-[var(--brand-muted)] hover:text-red-400 transition-colors"
                           aria-label={t.bookmarksDrawer.remove}
@@ -191,6 +272,55 @@ export function BookmarksDrawer({ open, onOpenChange }: BookmarksDrawerProps) {
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  icon,
+  label,
+  count,
+  lang,
+  accent,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  count: number;
+  lang: "fa" | "en";
+  accent: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition-all",
+        active
+          ? "bg-[var(--brand-surface)] text-[var(--brand-text)] shadow-sm"
+          : "text-[var(--brand-muted)] hover:text-[var(--brand-text)]"
+      )}
+      style={active ? { color: accent } : undefined}
+    >
+      {icon}
+      <span>{label}</span>
+      {count > 0 && (
+        <span
+          className={cn(
+            "min-w-[18px] h-4 px-1 flex items-center justify-center rounded-full text-[10px] font-latin",
+            active ? "text-white" : ""
+          )}
+          style={{ backgroundColor: accent, color: active ? "#04201d" : "white" }}
+        >
+          {count > 99
+            ? "99+"
+            : lang === "fa"
+            ? count.toString().replace(/[0-9]/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[+d])
+            : count}
+        </span>
+      )}
+    </button>
   );
 }
 
