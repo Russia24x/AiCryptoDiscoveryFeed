@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import {
@@ -151,7 +151,56 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
     retry: 1,
   });
 
-  // --- Secondary: DefiLlama protocol TVL ---
+  // --- Secondary: CMC coin metadata (tags, logo, description, URLs) ---
+  // Uses /api/market/cmc-listings (edge-cached 60s, already fetched by
+  // the market table) to find the CMC slug by matching CoinGecko symbol.
+  // Then fetches /api/market/cmc-coin?slug={slug} for rich metadata.
+  // Local-first: CMC listings data is shared via TanStack Query cache.
+  const { data: cmcListings } = useQuery<{ coins: Array<{ symbol: string; slug: string }> }>({
+    queryKey: ["market", "cmc-listings", "top100"],
+    queryFn: async () => {
+      const res = await fetch("/api/market/cmc-listings?limit=100", { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      return { coins: (json?.coins || []).map((c: { symbol: string; slug: string }) => ({ symbol: c.symbol, slug: c.slug })) };
+    },
+    staleTime: 2 * 60_000,
+  });
+
+  // Find CMC slug by matching CoinGecko coin symbol
+  const cmcSlug = useMemo(() => {
+    if (!coin?.symbol || !cmcListings?.coins) return null;
+    const match = cmcListings.coins.find(
+      (c) => c.symbol.toUpperCase() === coin.symbol.toUpperCase()
+    );
+    return match?.slug || null;
+  }, [coin?.symbol, cmcListings]);
+
+  const { data: cmcCoin } = useQuery<{
+    name: string;
+    symbol: string;
+    slug: string;
+    description: string;
+    tags: Array<{ slug: string; name: string }>;
+    category: string;
+    logo: string;
+    urls?: { website?: string[]; twitter?: string[]; reddit?: string[]; sourceCode?: string[] };
+  } | null>({
+    queryKey: ["market", "cmc-coin", cmcSlug],
+    queryFn: async () => {
+      if (!cmcSlug) return null;
+      const res = await fetch(`/api/market/cmc-coin?slug=${encodeURIComponent(cmcSlug)}`, { cache: "no-store" });
+      if (!res.ok) return null;
+      const json = await res.json();
+      if (json?.error) return null;
+      return json;
+    },
+    staleTime: 5 * 60_000,
+    retry: 0,
+    enabled: !!cmcSlug,
+  });
+
+  // --- Tertiary: DefiLlama protocol TVL ---
   const { data: defiProtocol } = useQuery<DefiLlamaProtocol | null>({
     queryKey: ["market", "defillama-protocol", coinId],
     queryFn: async () => {
@@ -440,7 +489,7 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
         {coin.links?.subreddit_url && <ExtLink href={coin.links.subreddit_url} icon={<MessageCircle className="w-3.5 h-3.5" />} label="Reddit" />}
         {coin.links?.repos_url?.github?.[0] && <ExtLink href={coin.links.repos_url.github[0]} icon={<Github className="w-3.5 h-3.5" />} label="GitHub" />}
         <ExtLink href={`https://www.coingecko.com/en/coins/${coin.id}`} icon={<ExternalLink className="w-3.5 h-3.5" />} label="CoinGecko" />
-        <ExtLink href={`https://coinmarketcap.com/currencies/${coin.id}/`} icon={<ExternalLink className="w-3.5 h-3.5" />} label="CMC" />
+        <ExtLink href={`https://coinmarketcap.com/currencies/${cmcSlug || coin.id}/`} icon={<ExternalLink className="w-3.5 h-3.5" />} label="CMC" />
         {hasDefi && <ExtLink href={`https://defillama.com/protocol/${coinId}`} icon={<ExternalLink className="w-3.5 h-3.5" />} label="DefiLlama" />}
       </div>
 
@@ -507,13 +556,20 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
         )}
       </div>
 
-      {/* Categories */}
-      {coin.categories && coin.categories.length > 0 && (
+      {/* Categories — from CoinGecko + CMC tags */}
+      {((coin.categories && coin.categories.length > 0) || (cmcCoin?.tags && cmcCoin.tags.length > 0)) && (
         <div className="mb-6 p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
-          <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-2">{lang === "fa" ? "دسته‌ها" : "Categories"}</div>
+          <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-2">{lang === "fa" ? "دسته‌ها و برچسب‌ها" : "Categories & Tags"}</div>
           <div className="flex flex-wrap gap-1.5">
-            {coin.categories.filter(c => c && c.length > 0).slice(0, 10).map((cat) => (
+            {/* CoinGecko categories */}
+            {coin.categories?.filter(c => c && c.length > 0).slice(0, 10).map((cat) => (
               <span key={cat} className="text-[10px] px-2 py-1 rounded-full bg-[var(--brand-surface-2)] text-[var(--brand-muted)] border border-[var(--brand-border)]">{cat}</span>
+            ))}
+            {/* CMC tags (if not already shown from CoinGecko) */}
+            {cmcCoin?.tags?.filter(t => t.name).slice(0, 10).map((tag) => (
+              <span key={tag.slug} className="text-[10px] px-2 py-1 rounded-full bg-[var(--brand-accent-soft)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/20">
+                {tag.name}
+              </span>
             ))}
           </div>
         </div>
