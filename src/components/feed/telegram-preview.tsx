@@ -9,6 +9,8 @@ import {
   Play,
   Loader2,
   AlertCircle,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { useLanguage } from "@/hooks/use-language";
 import { relativeTime } from "@/hooks/use-feed-state";
@@ -28,6 +30,7 @@ interface TelegramPost {
   id: string;
   text: string;
   html: string;
+  rawHtml?: string;
   timestamp?: string;
   datetime?: string;
   views?: string;
@@ -59,6 +62,7 @@ export function TelegramPreview({
   const [data, setData] = useState<ChannelData | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
+  const [expandedPosts, setExpandedPosts] = useState<Record<string, boolean>>({});
   const [imgErrors, setImgErrors] = useState<Record<string, boolean>>({});
 
   const fetchChannel = useCallback(async () => {
@@ -163,85 +167,154 @@ export function TelegramPreview({
         ) : (
           <>
             <div className="space-y-2">
-              {posts.map((post) => (
-                <article
-                  key={post.id}
-                  className="rounded-lg border border-[var(--brand-border)] bg-[var(--brand-surface-2)]/60 overflow-hidden hover:border-[var(--brand-accent)]/30 transition-colors"
-                >
-                  {/* Media */}
-                  {post.hasMedia && post.images[0] && !imgErrors[post.id] && (
-                    <a
-                      href={post.link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block relative aspect-[16/9] overflow-hidden bg-[var(--brand-bg)]"
-                    >
-                      <img
-                        src={post.images[0]}
-                        alt={post.text?.slice(0, 80) || "Telegram post"}
-                        referrerPolicy="no-referrer"
-                        onError={() =>
-                          setImgErrors((p) => ({ ...p, [post.id]: true }))
-                        }
-                        className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
-                        loading="lazy"
-                      />
-                      {post.videos.length > 0 && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                          <div className="w-10 h-10 rounded-full bg-[var(--brand-accent)] flex items-center justify-center">
-                            <Play className="w-4 h-4 text-[#04201d] fill-[#04201d]" />
-                          </div>
-                        </div>
-                      )}
-                    </a>
-                  )}
-
-                  {/* Text */}
-                  <div className="p-3">
-                    {post.text && (
-                      <p className="text-xs md:text-[13px] text-[var(--brand-text)] leading-relaxed line-clamp-3">
-                        {post.text}
-                      </p>
+              {posts.map((post) => {
+                const isPostExpanded = expandedPosts[post.id];
+                return (
+                  <article
+                    key={post.id}
+                    className="rounded-lg border border-[var(--brand-border)] bg-[var(--brand-surface-2)]/60 overflow-hidden hover:border-[var(--brand-accent)]/30 transition-colors"
+                  >
+                    {/* Media gallery — show up to 4 images in a grid */}
+                    {post.hasMedia && post.images.length > 0 && (
+                      <div
+                        className={cn(
+                          "grid gap-0.5",
+                          post.images.length === 1
+                            ? "grid-cols-1"
+                            : post.images.length === 2
+                            ? "grid-cols-2"
+                            : "grid-cols-2"
+                        )}
+                      >
+                        {post.images.slice(0, isPostExpanded ? 4 : 1).map((img, idx) => {
+                          const err = imgErrors[`${post.id}-${idx}`];
+                          if (err) return null;
+                          return (
+                            <a
+                              key={idx}
+                              href={post.link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={cn(
+                                "block relative overflow-hidden bg-[var(--brand-bg)]",
+                                post.images.length === 1 ? "aspect-[16/9]" : "aspect-square"
+                              )}
+                            >
+                              <img
+                                src={img}
+                                alt={post.text?.slice(0, 80) || `Telegram image ${idx + 1}`}
+                                referrerPolicy="no-referrer"
+                                onError={() =>
+                                  setImgErrors((p) => ({ ...p, [`${post.id}-${idx}`]: true }))
+                                }
+                                className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
+                                loading="lazy"
+                              />
+                              {post.videos.length > 0 && idx === 0 && (
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                                  <div className="w-10 h-10 rounded-full bg-[var(--brand-accent)] flex items-center justify-center">
+                                    <Play className="w-4 h-4 text-[#04201d] fill-[#04201d]" />
+                                  </div>
+                                </div>
+                              )}
+                            </a>
+                          );
+                        })}
+                      </div>
                     )}
 
-                    {/* Meta */}
-                    <div className="flex items-center justify-between mt-2 text-[10px] text-[var(--brand-muted)]">
-                      <a
-                        href={post.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-latin flex items-center gap-1 hover:text-[var(--brand-accent)] transition-colors"
-                      >
-                        <Clock className="w-2.5 h-2.5" />
-                        {post.datetime
-                          ? relativeTime(post.datetime, lang, t.feed)
-                          : post.timestamp || ""}
-                      </a>
-                      {post.views && (
-                        <span className="font-latin flex items-center gap-1">
-                          <Eye className="w-2.5 h-2.5" />
-                          {post.views}
-                        </span>
+                    {/* Text — render sanitized HTML when available, plain text otherwise */}
+                    <div className="p-3">
+                      {post.html ? (
+                        <div
+                          className={cn(
+                            "text-xs md:text-[13px] text-[var(--brand-text)] leading-relaxed",
+                            !isPostExpanded && "line-clamp-3"
+                          )}
+                          dir="auto"
+                          dangerouslySetInnerHTML={{ __html: post.html }}
+                        />
+                      ) : (
+                        post.text && (
+                          <p
+                            className={cn(
+                              "text-xs md:text-[13px] text-[var(--brand-text)] leading-relaxed",
+                              !isPostExpanded && "line-clamp-3"
+                            )}
+                            dir="auto"
+                          >
+                            {post.text}
+                          </p>
+                        )
                       )}
+
+                      {/* Expand/collapse for long posts */}
+                      {(post.text?.length > 200 || post.html?.length > 400) && (
+                        <button
+                          onClick={() =>
+                            setExpandedPosts((p) => ({ ...p, [post.id]: !p[post.id] }))
+                          }
+                          className="mt-1 text-[10px] text-[var(--brand-accent)] hover:underline flex items-center gap-0.5"
+                        >
+                          {isPostExpanded ? (
+                            <>
+                              {lang === "fa" ? "نمایش کمتر" : "Show less"}
+                              <ChevronUp className="w-3 h-3" />
+                            </>
+                          ) : (
+                            <>
+                              {lang === "fa" ? "نمایش بیشتر" : "Show more"}
+                              <ChevronDown className="w-3 h-3" />
+                            </>
+                          )}
+                        </button>
+                      )}
+
+                      {/* Meta */}
+                      <div className="flex items-center justify-between mt-2 text-[10px] text-[var(--brand-muted)]">
+                        <a
+                          href={post.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-latin flex items-center gap-1 hover:text-[var(--brand-accent)] transition-colors"
+                        >
+                          <Clock className="w-2.5 h-2.5" />
+                          {post.datetime
+                            ? relativeTime(post.datetime, lang, t.feed)
+                            : post.timestamp || ""}
+                        </a>
+                        {post.views && (
+                          <span className="font-latin flex items-center gap-1">
+                            <Eye className="w-2.5 h-2.5" />
+                            {post.views}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </article>
-              ))}
+                  </article>
+                );
+              })}
             </div>
 
             {/* Expand / Collapse */}
             {data.postCount > postCount && (
               <button
                 onClick={() => setExpanded((x) => !x)}
-                className="w-full mt-2 text-xs text-[var(--brand-accent)] hover:underline py-2"
+                className="w-full mt-2 text-xs text-[var(--brand-accent)] hover:underline py-2 flex items-center justify-center gap-1"
               >
-                {expanded
-                  ? lang === "fa"
-                    ? "نمایش کمتر"
-                    : "Show less"
-                  : lang === "fa"
-                  ? `نمایش ${data.postCount.toLocaleString("fa-IR")} پست`
-                  : `Show all ${data.postCount} posts`}
+                {expanded ? (
+                  <>
+                    {lang === "fa" ? "نمایش کمتر" : "Show less"}
+                    <ChevronUp className="w-3 h-3" />
+                  </>
+                ) : (
+                  <>
+                    {lang === "fa"
+                      ? `نمایش ${data.postCount.toLocaleString("fa-IR")} پست`
+                      : `Show all ${data.postCount} posts`}
+                    <ChevronDown className="w-3 h-3" />
+                  </>
+                )}
               </button>
             )}
           </>

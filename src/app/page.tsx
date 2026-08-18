@@ -11,8 +11,8 @@ import { FeedGrid } from "@/components/feed/feed-grid";
 import { ChannelsHub } from "@/components/feed/channels-hub";
 import { BookmarksDrawer } from "@/components/feed/bookmarks-drawer";
 import { TrendingTags } from "@/components/feed/trending-tags";
+import { SettingsPanel } from "@/components/brand/settings-panel";
 import { useFeedState } from "@/hooks/use-feed-state";
-import { useFeedStats } from "@/hooks/use-feed-stats";
 import { useFeed } from "@/hooks/use-feed";
 import { useLanguage } from "@/hooks/use-language";
 
@@ -26,8 +26,8 @@ export default function Home() {
     setSourceFilter,
   } = useFeedState();
   const { lang } = useLanguage();
-  const stats = useFeedStats(lang);
   const [bookmarksOpen, setBookmarksOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Local feed hook used only to feed trending tags (always "all" but localized)
   const { data: allData } = useFeed("all", "", null, lang);
@@ -50,18 +50,20 @@ export default function Home() {
         search={search}
         onSearchChange={setSearch}
         onOpenBookmarks={() => setBookmarksOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
       <Ticker />
 
       <main className="flex-1">
         <Hero
-          totalItems={stats.totalItems}
-          sourcesOk={stats.sourcesOk}
-          sourcesTried={stats.sourcesTried}
+          onOpenSettings={() => setSettingsOpen(true)}
+          totalItems={0}
+          sourcesOk={0}
+          sourcesTried={0}
         />
 
         {/* HUB LAYOUT — feed + channels side-by-side on desktop */}
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 md:py-12">
+        <div id="feed" className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 md:py-12 scroll-mt-20">
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] xl:grid-cols-[1fr_400px] gap-6 lg:gap-8 items-start">
             {/* LEFT — Live feed (main content) */}
             <div className="min-w-0">
@@ -74,7 +76,10 @@ export default function Home() {
             </div>
 
             {/* RIGHT — Sticky channels sidebar */}
-            <aside className="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-1 lg:pl-0 -mx-4 px-4 lg:mx-0 lg:px-0">
+            <aside
+              id="channels"
+              className="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-1 lg:pl-0 -mx-4 px-4 lg:mx-0 lg:px-0 scroll-mt-20"
+            >
               <ChannelsHub
                 lang={lang}
                 onOpenBookmarks={() => setBookmarksOpen(true)}
@@ -91,12 +96,15 @@ export default function Home() {
         </div>
 
         {/* Future vision — full-width below the hub */}
-        <FutureVision />
+        <div id="vision" className="scroll-mt-20">
+          <FutureVision />
+        </div>
       </main>
 
       <Footer />
       <BackToTop />
       <BookmarksDrawer open={bookmarksOpen} onOpenChange={setBookmarksOpen} />
+      <SettingsPanel open={settingsOpen} onOpenChange={setSettingsOpen} />
     </div>
   );
 }

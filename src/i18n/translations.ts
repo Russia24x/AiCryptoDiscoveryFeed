@@ -300,8 +300,8 @@ export const translations: Record<Language, TranslationKeys> = {
       },
     },
     channels: {
-      title: "منابع",
-      titleAccent: "دنبال‌شده",
+      title: "بازتاب",
+      titleAccent: "شبکه‌ها",
       description:
         "کانال‌های تلگرام و اکانت‌های توییتر منتخب در حوزه‌های تخصصی پلتفرم. می‌توانید فیلتر کنید تا فقط دسته یا زبان خاص را ببینید.",
       telegramTitle: "Telegram Channels",
@@ -470,8 +470,8 @@ export const translations: Record<Language, TranslationKeys> = {
       },
     },
     channels: {
-      title: "Curated",
-      titleAccent: "sources",
+      title: "Social",
+      titleAccent: "Feed",
       description:
         "Selected Telegram channels and X accounts across the platform's specialized fields. Filter by category or language to narrow down.",
       telegramTitle: "Telegram Channels",

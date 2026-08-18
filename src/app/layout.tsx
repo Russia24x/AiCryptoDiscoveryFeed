@@ -2,7 +2,10 @@ import type { Metadata, Viewport } from "next";
 import { Vazirmatn, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
+import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 
+// Vazirmatn — modern, slightly humanist Persian font (next/font/google only
+// has v1 available; v2 requires a manual @fontsource setup if needed).
 const vazirmatn = Vazirmatn({
   subsets: ["arabic", "latin"],
   variable: "--font-vazirmatn",
@@ -99,6 +102,19 @@ export default function RootLayout({
       >
         {children}
         <Toaster />
+        <SonnerToaster
+          position="bottom-center"
+          richColors
+          closeButton
+          theme="dark"
+          toastOptions={{
+            style: {
+              background: "var(--brand-surface)",
+              border: "1px solid var(--brand-border)",
+              color: "var(--brand-text)",
+            },
+          }}
+        />
       </body>
     </html>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Bookmark, X, ExternalLink, Clock } from "lucide-react";
+import { Bookmark, X, ExternalLink, Clock, ArrowRight, ArrowLeft, Trash2 } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -14,6 +14,7 @@ import { useLanguage } from "@/hooks/use-language";
 import { CATEGORY_META, categoryLabel } from "@/lib/sources";
 import { relativeTime } from "@/hooks/use-feed-state";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 interface BookmarksDrawerProps {
   open: boolean;
@@ -22,8 +23,9 @@ interface BookmarksDrawerProps {
 
 export function BookmarksDrawer({ open, onOpenChange }: BookmarksDrawerProps) {
   const { bookmarks, removeBookmark, clearAll } = useBookmarks();
-  const { t, lang } = useLanguage();
+  const { t, lang, isRTL } = useLanguage();
   const [confirmingClear, setConfirmingClear] = useState(false);
+  const Back = isRTL ? ArrowLeft : ArrowRight;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -31,10 +33,21 @@ export function BookmarksDrawer({ open, onOpenChange }: BookmarksDrawerProps) {
         side={lang === "fa" ? "left" : "right"}
         className="w-full sm:w-[420px] bg-[var(--brand-surface)] border-l border-[var(--brand-border)] p-0 overflow-y-auto"
       >
-        {/* Header */}
-        <SheetHeader className="px-5 pt-5 pb-3 border-b border-[var(--brand-border)] sticky top-0 bg-[var(--brand-surface)] z-10">
-          <div className="flex items-center justify-between">
-            <SheetTitle className="flex items-center gap-2">
+        {/* Header — with a prominent Back button */}
+        <SheetHeader className="px-5 pt-4 pb-3 border-b border-[var(--brand-border)] sticky top-0 bg-[var(--brand-surface)] z-10">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => onOpenChange(false)}
+              className="flex items-center gap-1 px-2 py-1.5 rounded-full hover:bg-[var(--brand-surface-2)] text-[var(--brand-muted)] hover:text-[var(--brand-text)] transition-colors group"
+              aria-label={lang === "fa" ? "بازگشت" : "Back"}
+            >
+              <Back className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+              <span className="text-xs font-medium">
+                {lang === "fa" ? "بازگشت" : "Back"}
+              </span>
+            </button>
+            <div className="h-4 w-px bg-[var(--brand-border)]" />
+            <SheetTitle className="flex items-center gap-2 flex-1">
               <Bookmark className="w-4 h-4 text-[var(--brand-accent)] fill-[var(--brand-accent)]" />
               <span>{t.bookmarksDrawer.title}</span>
               <span className="font-latin text-xs text-[var(--brand-muted)] bg-[var(--brand-surface-2)] px-2 py-0.5 rounded-md">
@@ -50,6 +63,12 @@ export function BookmarksDrawer({ open, onOpenChange }: BookmarksDrawerProps) {
                   if (confirmingClear) {
                     clearAll();
                     setConfirmingClear(false);
+                    toast.success(
+                      lang === "fa"
+                        ? "همه نشانک‌ها پاک شدند"
+                        : "All bookmarks cleared",
+                      { duration: 1800 }
+                    );
                   } else {
                     setConfirmingClear(true);
                     setTimeout(() => setConfirmingClear(false), 4000);
@@ -58,12 +77,12 @@ export function BookmarksDrawer({ open, onOpenChange }: BookmarksDrawerProps) {
               >
                 {confirmingClear ? (
                   <>
-                    <X className="w-3 h-3 ml-1" />
+                    <Trash2 className="w-3 h-3 ml-1" />
                     {t.bookmarksDrawer.confirmClear}
                   </>
                 ) : (
                   <>
-                    <X className="w-3 h-3 ml-1" />
+                    <Trash2 className="w-3 h-3 ml-1" />
                     {t.bookmarksDrawer.clearAll}
                   </>
                 )}
@@ -148,7 +167,15 @@ export function BookmarksDrawer({ open, onOpenChange }: BookmarksDrawerProps) {
                           <ExternalLink className="w-3.5 h-3.5" />
                         </a>
                         <button
-                          onClick={() => removeBookmark(b.id)}
+                          onClick={() => {
+                            removeBookmark(b.id);
+                            toast(
+                              lang === "fa"
+                                ? "نشانک حذف شد"
+                                : "Bookmark removed",
+                              { duration: 1500 }
+                            );
+                          }}
                           className="p-1.5 rounded hover:bg-[var(--brand-surface)] text-[var(--brand-muted)] hover:text-red-400 transition-colors"
                           aria-label={t.bookmarksDrawer.remove}
                         >

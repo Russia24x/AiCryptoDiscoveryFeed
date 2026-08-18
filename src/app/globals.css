@@ -106,6 +106,48 @@
   --sidebar-ring: var(--brand-accent);
 }
 
+/* ===== Light theme — applied when <html class="light"> is set ===== */
+.light {
+  --brand-bg: #f7f6f1;
+  --brand-surface: #ffffff;
+  --brand-surface-2: #edeae1;
+  --brand-border: #d9d4c5;
+
+  /* Slightly darker teal for better contrast on light bg */
+  --brand-accent: #0d9488;
+  --brand-accent-soft: rgba(13, 148, 136, 0.12);
+
+  --brand-text: #1a1814;
+  --brand-muted: #6b6557;
+
+  --background: var(--brand-bg);
+  --foreground: var(--brand-text);
+  --card: var(--brand-surface);
+  --card-foreground: var(--brand-text);
+  --popover: var(--brand-surface);
+  --popover-foreground: var(--brand-text);
+  --primary: var(--brand-accent);
+  --primary-foreground: #ffffff;
+  --secondary: var(--brand-surface-2);
+  --secondary-foreground: var(--brand-text);
+  --muted: var(--brand-surface-2);
+  --muted-foreground: var(--brand-muted);
+  --accent: var(--brand-accent);
+  --accent-foreground: #ffffff;
+  --destructive: #dc2626;
+  --border: var(--brand-border);
+  --input: var(--brand-border);
+  --ring: var(--brand-accent);
+  --sidebar: var(--brand-surface);
+  --sidebar-foreground: var(--brand-text);
+  --sidebar-primary: var(--brand-accent);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--brand-surface-2);
+  --sidebar-accent-foreground: var(--brand-text);
+  --sidebar-border: var(--brand-border);
+  --sidebar-ring: var(--brand-accent);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

@@ -28,13 +28,50 @@ function stripHtml(input: string): string {
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
     .replace(/<script[\s\S]*?<\/script>/gi, "")
     .replace(/<style[\s\S]*?<\/style>/gi, "")
+    // Replace structural tags with newlines BEFORE stripping (so we don't
+    // merge "end of paragraph" + "start of next paragraph" into one line).
+    .replace(/<br\s*\/?\s*>/gi, "\n")
+    .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "• ")
     .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
+    // Decode HTML entities — covers ALL common named entities + numeric.
+    // This is critical for Persian content because Telegram and many
+    // Persian RSS feeds emit &rlm; (U+200F RIGHT-TO-LEFT MARK) inside
+    // titles, and we want to decode it (not show "&rlm;" as literal text).
+    .replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z][a-zA-Z0-9]*);/g, (m, body: string) => {
+      if (body.startsWith("#")) {
+        const isHex = body[1] === "x" || body[1] === "X";
+        const code = parseInt(body.slice(isHex ? 2 : 1), isHex ? 16 : 10);
+        if (!Number.isNaN(code) && code >= 0 && code <= 0x10ffff) {
+          try {
+            return String.fromCodePoint(code);
+          } catch {
+            return m;
+          }
+        }
+        return m;
+      }
+      // Named entities — small whitelist covers everything Persian + RTL content needs
+      const NAMED: Record<string, string> = {
+        amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ",
+        copy: "©", reg: "®", trade: "™", hellip: "…", mdash: "—", ndash: "–",
+        lrm: "\u200E", rlm: "\u200F",
+        lre: "\u202A", rle: "\u202B", pdf: "\u202C", lro: "\u202D", rlo: "\u202E",
+        lri: "\u2066", rli: "\u2067", fsi: "\u2068", pdi: "\u2069",
+        zwj: "\u200D", zwnj: "\u200C",
+        ldquo: "“", rdquo: "”", lsquo: "‘", rsquo: "’",
+        laquo: "«", raquo: "»", bull: "•", middot: "·",
+        deg: "°", plusmn: "±", times: "×", divide: "÷",
+        euro: "€", pound: "£", yen: "¥", cent: "¢",
+        infin: "∞", ne: "≠", le: "≤", ge: "≥",
+      };
+      return NAMED[body] ?? m;
+    })
+    // Strip bidi control chars (invisible, but cause visual artifacts in
+    // some terminals/editors). Keep \u200C (ZWNJ) because Persian uses it
+    // for compound words like "می‌رود" — removing it would join "می" and
+    // "رود" incorrectly.
+    .replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069\u200B\u200D\uFEFF]/g, "")
     .replace(/\s+/g, " ")
     .trim();
   return out;

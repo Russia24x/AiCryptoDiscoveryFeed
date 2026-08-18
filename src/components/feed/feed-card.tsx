@@ -49,6 +49,7 @@ export function FeedCard({ item, onOpen, index = 0 }: FeedCardProps) {
 
   const onBookmarkClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    const wasBookmarked = bookmarked;
     toggleBookmark({
       id: item.id,
       title: item.title,
@@ -59,6 +60,27 @@ export function FeedCard({ item, onOpen, index = 0 }: FeedCardProps) {
       sourceName: item.source.name,
       sourceNameFa: item.source.nameFa,
       category: item.source.category,
+    });
+    // Toast feedback
+    import("sonner").then(({ toast }) => {
+      if (wasBookmarked) {
+        toast(
+          lang === "fa"
+            ? "از نشانک‌ها حذف شد"
+            : "Removed from bookmarks",
+          { duration: 1800 }
+        );
+      } else {
+        toast.success(
+          lang === "fa"
+            ? "به نشانک‌ها اضافه شد"
+            : "Added to bookmarks",
+          {
+            duration: 1800,
+            description: item.title,
+          }
+        );
+      }
     });
   };
 
