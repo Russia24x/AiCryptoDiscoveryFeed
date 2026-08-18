@@ -48,7 +48,9 @@ export async function GET(request: Request) {
   let url: string;
   if (path) {
     // Sanitize: only allow alphanumeric, hyphens, underscores, slashes
-    const safePath = path.replace(/[^a-z0-9\-_\/]/gi, "").toLowerCase();
+    // DO NOT lowercase — DefiLlama endpoints are case-sensitive
+    // (e.g., "historicalChainTvl/Ethereum" must keep its case)
+    const safePath = path.replace(/[^a-zA-Z0-9\-_/]/g, "");
     if (!safePath || safePath.length > 128) {
       return NextResponse.json(
         { error: "Invalid path parameter" },

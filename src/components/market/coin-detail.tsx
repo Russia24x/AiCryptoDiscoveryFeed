@@ -159,10 +159,6 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
   });
 
   // --- Tertiary: DefiLlama fees/revenue summary ---
-  // Uses /api/market/defillama-summary which fetches /v2/protocols +
-  // /overview/fees + /summary/fees/{slug} in one call. Returns fees,
-  // methodology text (Revenue, HoldersRevenue, SupplySideRevenue), and
-  // 30-day historical chart data.
   const { data: defiFees } = useQuery<DefiLlamaFees | null>({
     queryKey: ["market", "defillama-summary", coinId],
     queryFn: async () => {
@@ -175,6 +171,32 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
     staleTime: 5 * 60_000,
     retry: 0,
     enabled: !!coinId,
+  });
+
+  // --- Quaternary: TVL history chart (only for DeFi protocols) ---
+  // Fetches /v2/historicalChainTvl/{chain} for the protocol's primary chain.
+  // Only runs if defiProtocol has a chain value. Edge-cached 5min.
+  const defiChain = defiProtocol?.chain || defiProtocol?.chains?.[0];
+  const { data: tvlHistory } = useQuery<Array<{ date: number; tvl: number }>>({
+    queryKey: ["market", "defillama-tvl-history", defiChain],
+    queryFn: async () => {
+      if (!defiChain) return [];
+      const res = await fetch(
+        `/api/market/defillama?path=historicalChainTvl/${encodeURIComponent(defiChain)}`,
+        { cache: "no-store" }
+      );
+      if (!res.ok) return [];
+      const json = await res.json();
+      if (!Array.isArray(json)) return [];
+      // Take last 90 days for a nice chart
+      return json.slice(-90).map((entry: { date: number; tvl: number }) => ({
+        date: entry.date * 1000,
+        tvl: entry.tvl,
+      }));
+    },
+    staleTime: 10 * 60_000,
+    retry: 0,
+    enabled: !!defiChain,
   });
 
   const fa = (n: string | number) =>
@@ -295,6 +317,21 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
             <ExternalLink className="w-3 h-3" />
             {lang === "fa" ? "مشاهده در DefiLlama" : "View on DefiLlama"}
           </a>
+
+          {/* TVL History Chart (90 days) */}
+          {tvlHistory && tvlHistory.length > 0 && (
+            <div className="mt-4 pt-3 border-t border-[var(--brand-accent)]/20">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)]">
+                  {lang === "fa" ? "نمودار TVL (۹۰ روز)" : "TVL Chart (90d)"}
+                </div>
+                <div className="text-[10px] font-latin text-[var(--brand-muted)]">
+                  {defiChain && <span>{defiChain}</span>}
+                </div>
+              </div>
+              <TvlChart data={tvlHistory} lang={lang} />
+            </div>
+          )}
         </div>
       )}
 
@@ -447,6 +484,53 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
           <div className="text-xs text-[var(--brand-text)] leading-relaxed prose-sm max-w-none" dir="auto" dangerouslySetInnerHTML={{ __html: description.split("\n").slice(0, 5).join("\n") }} />
         </div>
       )}
+    </div>
+  );
+}
+
+/* ============= TVL Chart (area chart with gradient) ============= */
+function TvlChart({ data, lang }: { data: Array<{ date: number; tvl: number }>; lang: "fa" | "en" }) {
+  if (!data || data.length === 0) return null;
+  const width = 600;
+  const height = 100;
+  const min = Math.min(...data.map((d) => d.tvl));
+  const max = Math.max(...data.map((d) => d.tvl));
+  const range = max - min || 1;
+  const fa = (n: string | number) =>
+    lang === "fa" ? String(n).replace(/[0-9]/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[+d]) : String(n);
+  const fmtCompact = (n: number) => {
+    const abs = Math.abs(n);
+    if (abs >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
+    if (abs >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
+    return `$${(n / 1e3).toFixed(0)}K`;
+  };
+
+  const points = data
+    .map((d, i) => {
+      const x = (i / (data.length - 1)) * width;
+      const y = height - ((d.tvl - min) / range) * height;
+      return `${x},${y}`;
+    })
+    .join(" ");
+
+  return (
+    <div>
+      {/* Chart */}
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-24" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="tvl-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#2dd4bf" stopOpacity="0.4" />
+            <stop offset="100%" stopColor="#2dd4bf" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <polyline points={`0,${height} ${points} ${width},${height}`} fill="url(#tvl-grad)" stroke="none" />
+        <polyline points={points} fill="none" stroke="#2dd4bf" strokeWidth="1.5" />
+      </svg>
+      {/* Min/Max labels */}
+      <div className="flex items-center justify-between text-[10px] font-latin text-[var(--brand-muted)] mt-1">
+        <span>90d low: {fa(fmtCompact(min))}</span>
+        <span>90d high: {fa(fmtCompact(max))}</span>
+      </div>
     </div>
   );
 }
