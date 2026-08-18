@@ -88,6 +88,7 @@ export default function Home() {
         onSearchChange={setSearch}
         onOpenBookmarks={() => setBookmarksOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
+        logoVariant="discovery"
       />
       <Ticker />
       <OfflineBanner />

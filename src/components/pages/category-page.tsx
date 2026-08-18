@@ -2,6 +2,12 @@
 
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  Home as HomeIcon,
+  Activity,
+  Send,
+  LineChart,
+} from "lucide-react";
 import { Header } from "@/components/brand/header";
 import { Ticker } from "@/components/brand/ticker";
 import { Hero } from "@/components/brand/hero";
@@ -20,6 +26,49 @@ import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { motion } from "framer-motion";
 import { CATEGORY_META, categoryLabel, type Category } from "@/lib/sources";
 import { CryptoWidgets } from "@/components/widgets/crypto-widgets";
+import { cn } from "@/lib/utils";
+
+/**
+ * CategoryTab — pill-shaped tab button used in category page hero.
+ * Same visual style as HeroTab in the home page.
+ */
+function CategoryTab({
+  href,
+  label,
+  icon,
+  accent,
+  primary,
+}: {
+  href: string;
+  label: string;
+  icon: React.ReactNode;
+  accent: string;
+  primary?: boolean;
+}) {
+  return (
+    <a
+      href={href}
+      aria-label={label}
+      className={cn(
+        "group relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs md:text-sm font-bold transition-all overflow-hidden",
+        primary
+          ? "text-[#04201d] hover:brightness-110 shadow-md"
+          : "border text-[var(--brand-text)] hover:bg-[var(--brand-surface)] hover:border-[var(--brand-accent)]/40"
+      )}
+      style={
+        primary
+          ? { background: accent, boxShadow: `0 2px 12px ${accent}40` }
+          : { borderColor: `${accent}40` }
+      }
+    >
+      <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/30 to-transparent" />
+      <span className="relative shrink-0" style={{ color: primary ? "#04201d" : accent }}>
+        {icon}
+      </span>
+      <span className="relative whitespace-nowrap">{label}</span>
+    </a>
+  );
+}
 
 interface CategoryPageProps {
   /** The category this page represents. */
@@ -107,6 +156,7 @@ export function CategoryPage({ category }: CategoryPageProps) {
         onSearchChange={setSearch}
         onOpenBookmarks={() => setBookmarksOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
+        logoVariant={category === "crypto" ? "full" : "discovery"}
       />
       <Ticker />
       <OfflineBanner />
@@ -184,25 +234,37 @@ export function CategoryPage({ category }: CategoryPageProps) {
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.18 }}
-              className="flex items-center gap-3 mt-6 text-xs text-[var(--brand-muted)]"
+              className="flex flex-wrap items-center gap-1.5 mt-6 p-1.5 rounded-2xl bg-[var(--brand-surface)]/60 backdrop-blur-sm border border-[var(--brand-border)]"
             >
-              <a
+              {/* Home button — always present, navigates to / */}
+              <CategoryTab
+                href="/"
+                label={lang === "fa" ? "خانه" : "Home"}
+                icon={<HomeIcon className="w-3.5 h-3.5" />}
+                accent="#2dd4bf"
+              />
+              <CategoryTab
                 href="#feed"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold transition-all hover:brightness-110"
-                style={{
-                  backgroundColor: meta.tint,
-                  color: "#04201d",
-                }}
-              >
-                {lang === "fa" ? "مشاهده فید" : "View feed"} →
-              </a>
-              <a
+                label={lang === "fa" ? "فید" : "Feed"}
+                icon={<Activity className="w-3.5 h-3.5" />}
+                accent={meta.tint}
+                primary
+              />
+              <CategoryTab
                 href="#channels"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full border text-xs font-bold transition-all hover:bg-[var(--brand-surface)]"
-                style={{ borderColor: `${meta.tint}40` }}
-              >
-                {lang === "fa" ? "شبکه‌ها" : "Channels"} →
-              </a>
+                label={lang === "fa" ? "شبکه‌ها" : "Channels"}
+                icon={<Send className="w-3.5 h-3.5" />}
+                accent="#38bdf8"
+              />
+              {/* Market Intelligence button — only on crypto page */}
+              {category === "crypto" && (
+                <CategoryTab
+                  href="/crypto/market"
+                  label={lang === "fa" ? "هوش بازار" : "Market Intelligence"}
+                  icon={<LineChart className="w-3.5 h-3.5" />}
+                  accent="#10b981"
+                />
+              )}
             </motion.div>
           </div>
         </section>

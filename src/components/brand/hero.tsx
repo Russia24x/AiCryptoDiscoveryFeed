@@ -9,6 +9,8 @@ import {
   Bitcoin,
   Brain,
   Cpu,
+  Gamepad2,
+  Film,
   Telescope,
   Activity,
   Send,
@@ -271,6 +273,18 @@ export function Hero({ totalItems, sourcesOk, sourcesTried, onOpenSettings }: He
                 label={lang === "fa" ? "فناوری" : "Tech"}
                 icon={<Cpu className="w-3.5 h-3.5" />}
                 accent="#38bdf8"
+              />
+              <HeroTab
+                href="/gaming"
+                label={lang === "fa" ? "بازی" : "Gaming"}
+                icon={<Gamepad2 className="w-3.5 h-3.5" />}
+                accent="#a78bfa"
+              />
+              <HeroTab
+                href="/entertainment"
+                label={lang === "fa" ? "سرگرمی" : "Entertainment"}
+                icon={<Film className="w-3.5 h-3.5" />}
+                accent="#f472b6"
               />
               {onOpenSettings && (
                 <HeroTab

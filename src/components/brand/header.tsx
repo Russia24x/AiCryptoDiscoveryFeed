@@ -26,6 +26,12 @@ interface HeaderProps {
   onSearchChange: (s: string) => void;
   onOpenBookmarks: () => void;
   onOpenSettings: () => void;
+  /**
+   * Logo variant — controls brand name shown in the header.
+   * - "full" (default): "Ai Crypto Discovery" — used on /crypto and crypto sub-pages
+   * - "discovery": "Ai Discovery" — used on the home hub
+   */
+  logoVariant?: "full" | "discovery";
 }
 
 const NAV_ICON: Record<string, React.ReactNode> = {
@@ -44,6 +50,7 @@ export function Header({
   onSearchChange,
   onOpenBookmarks,
   onOpenSettings,
+  logoVariant = "full",
 }: HeaderProps) {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -86,7 +93,7 @@ export function Header({
         <div className="flex h-16 items-center justify-between gap-3">
           {/* Logo */}
           <a href="#" className="flex items-center gap-2 shrink-0">
-            <Logo size="md" lang={lang} />
+            <Logo size="md" lang={lang} variant={logoVariant} />
           </a>
 
           {/* Desktop nav — modern button-style pills */}
