@@ -33,10 +33,18 @@ export const revalidate = 0;
  */
 
 interface TetherData {
-  price: number;
+  price: number;        // Toman per USDT
   change24h?: number;
   high24h?: number;
   low24h?: number;
+  /** 24h base asset volume (USDT) */
+  volume24h?: number;
+  /** 24h quote asset volume (Toman) */
+  quoteVolume24h?: number;
+  /** Best bid price (Toman) */
+  bidPrice?: number;
+  /** Best ask price (Toman) */
+  askPrice?: number;
   source: string;
   fetchedAt: string;
   cached?: boolean;
@@ -121,40 +129,56 @@ async function tryWallex(): Promise<TetherData | null> {
         const m = symbols[k];
         if (!m) continue;
         // Wallex uses different field names across API versions — try a bunch
+        const stats = m.stats || {};
         const price =
-          m.lastPrice != null
-            ? Number(m.lastPrice)
-            : m.latestPrice != null
-            ? Number(m.latestPrice)
-            : m.stats?.lastPrice != null
-            ? Number(m.stats.lastPrice)
-            : m.stats?.latestPrice != null
-            ? Number(m.stats.latestPrice)
-            : null;
+          stats.lastPrice != null ? Number(stats.lastPrice) :
+          m.lastPrice != null ? Number(m.lastPrice) :
+          m.latestPrice != null ? Number(m.latestPrice) :
+          null;
         if (price == null || !Number.isFinite(price) || price <= 0) continue;
+
+        // Wallex's 24h change field is "24h_ch" (a number, not a string)
         const change24h =
-          m.stats?.priceChangePercent != null
-            ? Number(m.stats.priceChangePercent)
-            : m.priceChangePercent != null
-            ? Number(m.priceChangePercent)
-            : undefined;
+          stats["24h_ch"] != null ? Number(stats["24h_ch"]) :
+          stats.priceChangePercent != null ? Number(stats.priceChangePercent) :
+          undefined;
+
         const high24h =
-          m.stats?.highPrice != null
-            ? Number(m.stats.highPrice)
-            : m.highPrice != null
-            ? Number(m.highPrice)
-            : undefined;
+          stats["24h_highPrice"] != null ? Number(stats["24h_highPrice"]) :
+          stats.highPrice != null ? Number(stats.highPrice) :
+          m.highPrice != null ? Number(m.highPrice) :
+          undefined;
+
         const low24h =
-          m.stats?.lowPrice != null
-            ? Number(m.stats.lowPrice)
-            : m.lowPrice != null
-            ? Number(m.lowPrice)
-            : undefined;
+          stats["24h_lowPrice"] != null ? Number(stats["24h_lowPrice"]) :
+          stats.lowPrice != null ? Number(stats.lowPrice) :
+          m.lowPrice != null ? Number(m.lowPrice) :
+          undefined;
+
+        const volume24h =
+          stats["24h_volume"] != null ? Number(stats["24h_volume"]) :
+          stats.volume != null ? Number(stats.volume) :
+          undefined;
+
+        const quoteVolume24h =
+          stats["24h_quoteVolume"] != null ? Number(stats["24h_quoteVolume"]) :
+          stats.quoteVolume != null ? Number(stats.quoteVolume) :
+          undefined;
+
+        const bidPrice =
+          stats.bidPrice != null ? Number(stats.bidPrice) : undefined;
+        const askPrice =
+          stats.askPrice != null ? Number(stats.askPrice) : undefined;
+
         return {
           price: Math.round(price),
           change24h,
           high24h: high24h ? Math.round(high24h) : undefined,
           low24h: low24h ? Math.round(low24h) : undefined,
+          volume24h,
+          quoteVolume24h,
+          bidPrice: bidPrice ? Math.round(bidPrice) : undefined,
+          askPrice: askPrice ? Math.round(askPrice) : undefined,
           source: "wallex",
           fetchedAt: new Date().toISOString(),
         };

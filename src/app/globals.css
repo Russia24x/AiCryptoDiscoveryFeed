@@ -170,6 +170,21 @@
     letter-spacing: -0.01em;
   }
 
+  /* Persian/Farsi digits — use Vazirmatn for proper Persian digit shapes.
+     Inter doesn't have Persian digit glyphs, so it falls back to system
+     fonts which look inconsistent on Windows/Linux. Using Vazirmatn here
+     ensures the Persian digits ۰-۹ render consistently with the rest of
+     the Persian UI text. We still use tabular-nums for alignment in
+     price widgets.
+  */
+  .num-fa,
+  .font-sans {
+    font-family: var(--font-vazirmatn), var(--font-inter), system-ui, sans-serif;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "ss01", "ss02", "cv01", "cv11";
+    letter-spacing: -0.005em;
+  }
+
   /* Custom scrollbars — thin and on-brand */
   ::-webkit-scrollbar {
     width: 8px;
@@ -238,6 +253,12 @@
 }
 .animate-marquee:hover {
   animation-play-state: paused;
+}
+
+/* Hide scrollbar for source-filter (and any element with class "no-scrollbar") */
+.no-scrollbar::-webkit-scrollbar,
+.source-filter-scroll::-webkit-scrollbar {
+  display: none;
 }
 
 /* Card hover lift — improved with multi-layer shadow + glow */

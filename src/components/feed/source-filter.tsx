@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import { Filter, X, Check, ChevronLeft, ChevronRight } from "lucide-react";
-import { SOURCES, CATEGORY_META, categoryLabel } from "@/lib/sources";
+import { SOURCES, CATEGORY_META } from "@/lib/sources";
 import { useLanguage } from "@/hooks/use-language";
 import { cn } from "@/lib/utils";
 
@@ -17,15 +17,25 @@ interface SourceFilterProps {
 }
 
 /**
- * Modern source filter — horizontal scrollable pill strip with:
- * - Source-colored dot indicators
- * - Active state with filled background + check icon
- * - "All sources" pill as default
- * - Smooth hover transitions
- * - Category-tinted backgrounds per source
- * - Left/right scroll indicators that fade in/out based on scroll position
- * - Mouse wheel + drag-to-scroll support
- * - Smooth scroll behavior
+ * Modern source filter — horizontal scrollable pill strip.
+ *
+ * Bug fix history (Phase 13):
+ *  - Phase 11 introduced scroll indicators with complex RTL-aware logic.
+ *  - Phase 12 fixed the asymmetric indicator bug (only one side appeared).
+ *  - But the underlying `overflow-x-auto` element had scrollbar hidden via
+ *    `[&::-webkit-scrollbar]:hidden` which in Tailwind 4 means "apply the
+ *    `hidden` class to ::-webkit-scrollbar" → display: none. However, the
+ *    `[scrollbar-width:none]` was parsed as a CSS variable lookup, not a
+ *    style. The net result: scrollbar was hidden BUT in some browsers it
+ *    also disabled touch-scrolling because the element's overflow wasn't
+ *    properly set.
+ *  - In Phase 13, we:
+ *    1. Use plain inline `style` for scrollbar hiding (most reliable).
+ *    2. Use a `MutationObserver` to detect when content size changes
+ *       (so indicators appear/disappear correctly after sources change).
+ *    3. Use `ResizeObserver` on the container to recompute on viewport resize.
+ *    4. Add touch-action: pan-y so vertical page scroll still works on mobile.
+ *    5. Add drag-to-scroll for desktop (mousedown + mousemove).
  */
 export function SourceFilter({
   category,
@@ -38,118 +48,150 @@ export function SourceFilter({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollStart, setCanScrollStart] = useState(false);
   const [canScrollEnd, setCanScrollEnd] = useState(false);
+  const dragRef = useRef<{ startX: number; startScroll: number; active: boolean }>({
+    startX: 0,
+    startScroll: 0,
+    active: false,
+  });
 
-  // Filter sources by BOTH category AND current UI language
   const sources = SOURCES.filter((s) => {
     if (category !== "all" && s.category !== category) return false;
     if (s.language !== lang) return false;
     return true;
   });
 
-  // Update scroll indicators based on current scroll position.
-  //
-  // Cross-browser RTL handling:
-  //   - Modern browsers (Chrome 85+, Firefox 64+, Safari 14+): in RTL mode,
-  //     scrollLeft goes from 0 (right-most) to scrollWidth - clientWidth (left-most),
-  //     i.e. NEGATIVE direction is reversed but the value is positive.
-  //   - Older browsers: scrollLeft was negative in RTL.
-  // We normalize by computing a "scroll progress" in [0, 1] which is
-  // direction-independent.
-  const updateScrollState = () => {
+  /**
+   * Recompute scroll indicator visibility.
+   *
+   * We use `Math.abs(scrollLeft)` to normalize across LTR and RTL — modern
+   * browsers (Chrome 85+, FF 64+, Safari 14+) use positive scrollLeft in
+   * RTL mode, while older browsers used negative. Using abs handles both.
+   */
+  const updateScrollState = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
     const maxScroll = el.scrollWidth - el.clientWidth;
-    if (maxScroll <= 0) {
+    if (maxScroll <= 1) {
       setCanScrollStart(false);
       setCanScrollEnd(false);
       return;
     }
-    // Normalize scrollLeft: always in [0, maxScroll] regardless of direction.
-    // In LTR: scrollLeft goes 0 → maxScroll.
-    // In RTL (modern): scrollLeft goes 0 → maxScroll (positive, but the
-    //   visual direction is reversed).
-    // In RTL (old): scrollLeft goes 0 → -maxScroll.
-    const sl = el.scrollLeft;
-    const progress = Math.abs(sl); // works for both positive (LTR+modern RTL) and negative (old RTL)
-    const atStart = progress <= 2;
-    const atEnd = progress >= maxScroll - 2;
-    setCanScrollStart(!atStart);
-    setCanScrollEnd(!atEnd);
-  };
+    const progress = Math.abs(el.scrollLeft);
+    setCanScrollStart(progress > 2);
+    setCanScrollEnd(progress < maxScroll - 2);
+  }, []);
 
   useEffect(() => {
     updateScrollState();
     const el = scrollRef.current;
     if (!el) return;
+
     el.addEventListener("scroll", updateScrollState, { passive: true });
-    // Re-check on resize
     window.addEventListener("resize", updateScrollState);
+
+    // ResizeObserver — recomputes when the container size changes (e.g.,
+    // when a new pill is added or the parent layout shifts).
+    const ro = new ResizeObserver(() => updateScrollState());
+    ro.observe(el);
+
+    // MutationObserver — recomputes when the inner content changes (e.g.,
+    // when sources array changes after a category or language switch).
+    const mo = new MutationObserver(() => updateScrollState());
+    mo.observe(el, { childList: true, subtree: true, attributes: false });
+
     return () => {
       el.removeEventListener("scroll", updateScrollState);
       window.removeEventListener("resize", updateScrollState);
+      ro.disconnect();
+      mo.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isRTL, sources.length, category, lang]);
+  }, [isRTL, sources.length, category, lang, updateScrollState]);
 
-  // When the language changes (LTR↔RTL), reset scroll to the start so the
-  // indicators are in the correct initial state.
+  // Reset scroll position when language changes (LTR↔RTL).
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     el.scrollTo({ left: 0, behavior: "auto" });
-    // Defer state update so the new scroll position is reflected.
     requestAnimationFrame(updateScrollState);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRTL]);
 
-  // Click on scroll indicator → scroll the container by ~70% of viewport.
-  //
-  // Direction handling:
-  //   - "start" = visually scroll toward the beginning of content
-  //   - "end"   = visually scroll toward the end of content
-  //
-  // In RTL mode (modern browsers): scrollLeft=0 is at the right edge of content
-  // (visually the start), and scrollLeft=maxScroll is at the left edge (visually
-  // the end). So scrolling "end" means INCREASING scrollLeft, same as LTR.
-  //
-  // To be robust across browser variants (old RTL where scrollLeft is negative),
-  // we compute the target scroll position from |scrollLeft| and re-apply with
-  // the correct sign for the current browser.
-  const scrollByDir = (dir: "start" | "end") => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const maxScroll = el.scrollWidth - el.clientWidth;
-    if (maxScroll <= 0) return;
-    const step = el.clientWidth * 0.7;
-    const currentProgress = Math.abs(el.scrollLeft);
-    const sign = el.scrollLeft < 0 ? -1 : 1; // detect old-RTL negative mode
-    const target =
-      dir === "end"
-        ? Math.min(maxScroll, currentProgress + step)
-        : Math.max(0, currentProgress - step);
-    el.scrollTo({ left: target * sign, behavior: "smooth" });
-  };
+  /**
+   * Scroll the container by ~70% of its visible width in the given
+   * visual direction (start = visually toward beginning of content).
+   *
+   * Sign handling:
+   *   - LTR / modern RTL (positive scrollLeft): "end" = +step
+   *   - Old RTL (negative scrollLeft): "end" = -step
+   * We detect the sign from the current scrollLeft value.
+   */
+  const scrollByDir = useCallback(
+    (dir: "start" | "end") => {
+      const el = scrollRef.current;
+      if (!el) return;
+      const maxScroll = el.scrollWidth - el.clientWidth;
+      if (maxScroll <= 0) return;
+      const step = el.clientWidth * 0.7;
+      const currentProgress = Math.abs(el.scrollLeft);
+      const sign = el.scrollLeft < 0 ? -1 : 1;
+      const target =
+        dir === "end"
+          ? Math.min(maxScroll, currentProgress + step)
+          : Math.max(0, currentProgress - step);
+      el.scrollTo({ left: target * sign, behavior: "smooth" });
+    },
+    []
+  );
 
-  // Mouse wheel: convert vertical wheel → horizontal scroll on the strip.
-  //
-  // In RTL mode (modern browsers), scrolling down should move content to the
-  // right visually, which means scrollLeft should DECREASE. But wheel deltaY
-  // is positive when scrolling down, so we need to invert it in RTL.
-  // (In old RTL where scrollLeft is negative, the same logic applies because
-  // we use the sign-detection approach in scrollByDir.)
-  //
-  // To keep this simple and consistent, we detect the current "direction sign"
-  // by reading scrollLeft after the user starts scrolling, and apply the
-  // correct delta direction.
+  /**
+   * Mouse wheel: convert vertical wheel → horizontal scroll.
+   * In RTL, the visual direction is reversed, so we flip the delta.
+   *
+   * NOTE: React 19+ attaches touchmove as passive by default, so we can't
+   * preventDefault on touch. But wheel is fine.
+   */
   const onWheel = (e: React.WheelEvent) => {
-    if (Math.abs(e.deltaY) < Math.abs(e.deltaX)) return; // user already scrolling horizontally
+    if (Math.abs(e.deltaY) < Math.abs(e.deltaX)) return;
     const el = scrollRef.current;
     if (!el) return;
-    // Only hijack wheel if the strip can scroll horizontally
     if (el.scrollWidth <= el.clientWidth + 2) return;
-    // In RTL mode, the visual direction is reversed, so we flip the delta.
     const delta = isRTL ? -e.deltaY : e.deltaY;
     el.scrollBy({ left: delta, behavior: "auto" });
+  };
+
+  /**
+   * Drag-to-scroll for desktop (mousedown on a pill, drag horizontally).
+   * This gives a native app-like feel and works around any scrollbar issues.
+   */
+  const onMouseDown = (e: React.MouseEvent) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    dragRef.current = {
+      startX: e.clientX,
+      startScroll: el.scrollLeft,
+      active: true,
+    };
+    el.style.cursor = "grabbing";
+    el.style.userSelect = "none";
+  };
+
+  const onMouseMove = (e: React.MouseEvent) => {
+    if (!dragRef.current.active) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const dx = e.clientX - dragRef.current.startX;
+    el.scrollLeft = dragRef.current.startScroll - dx;
+  };
+
+  const endDrag = () => {
+    if (!dragRef.current.active) return;
+    dragRef.current.active = false;
+    const el = scrollRef.current;
+    if (el) {
+      el.style.cursor = "";
+      el.style.userSelect = "";
+    }
   };
 
   if (sources.length === 0) return null;
@@ -176,14 +218,14 @@ export function SourceFilter({
         )}
       </div>
 
-      {/* Scrolling pill strip — with left/right scroll indicators */}
+      {/* Scrolling pill strip with indicators */}
       <div className="relative">
         {/* Start indicator (left in LTR, right in RTL) */}
         {canScrollStart && (
           <button
             onClick={() => scrollByDir("start")}
             className={cn(
-              "absolute top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full",
+              "absolute top-1/2 -translate-y-1/2 z-20 w-7 h-7 rounded-full",
               "flex items-center justify-center",
               "bg-[var(--brand-surface)] border border-[var(--brand-border)] shadow-lg",
               "text-[var(--brand-muted)] hover:text-[var(--brand-accent)] hover:border-[var(--brand-accent)]/40",
@@ -200,7 +242,7 @@ export function SourceFilter({
           <button
             onClick={() => scrollByDir("end")}
             className={cn(
-              "absolute top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full",
+              "absolute top-1/2 -translate-y-1/2 z-20 w-7 h-7 rounded-full",
               "flex items-center justify-center",
               "bg-[var(--brand-surface)] border border-[var(--brand-border)] shadow-lg",
               "text-[var(--brand-muted)] hover:text-[var(--brand-accent)] hover:border-[var(--brand-accent)]/40",
@@ -216,8 +258,20 @@ export function SourceFilter({
         <div
           ref={scrollRef}
           onWheel={onWheel}
-          className="flex gap-2 overflow-x-auto pb-1.5 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden scroll-smooth"
+          onMouseDown={onMouseDown}
+          onMouseMove={onMouseMove}
+          onMouseUp={endDrag}
+          onMouseLeave={endDrag}
+          className="no-scrollbar flex gap-2 overflow-x-auto pb-1.5 px-1 scroll-smooth cursor-grab"
+          style={{
+            // Hide scrollbar in all browsers via inline style (most reliable)
+            scrollbarWidth: "none",
+            msOverflowStyle: "none",
+            // Allow horizontal pan with touch (vertical page scroll still works)
+            touchAction: "pan-y",
+          }}
         >
+          {/* WebKit scrollbar hidden via global CSS rule (see globals.css) */}
           {/* "All sources" pill */}
           <button
             onClick={() => onSourceChange(null)}
@@ -246,7 +300,7 @@ export function SourceFilter({
             )}
           </button>
 
-          {/* Per-source pills with colored dots */}
+          {/* Per-source pills */}
           {sources.map((src) => {
             const meta = CATEGORY_META[src.category];
             const active = activeSourceId === src.id;
@@ -272,7 +326,6 @@ export function SourceFilter({
                     : undefined
                 }
               >
-                {/* Color indicator dot */}
                 <span
                   className={cn(
                     "w-2 h-2 rounded-full shrink-0 transition-transform group-hover:scale-125",

@@ -9,6 +9,7 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Loader2,
   AlertCircle,
   Eye,
@@ -16,6 +17,7 @@ import {
   Play,
   Newspaper,
   Check,
+  RefreshCw,
 } from "lucide-react";
 import {
   TELEGRAM_CHANNELS,
@@ -374,33 +376,57 @@ function ChannelPreviewCard({
   const { t } = useLanguage();
   const [data, setData] = useState<ChannelData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const [imgErrors, setImgErrors] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    let cancelled = false;
+  // Default number of posts to show; "Show more" reveals up to 8.
+  const COLLAPSED_COUNT = 3;
+  const EXPANDED_COUNT = 8;
+
+  const load = useCallback(async () => {
     setLoading(true);
-    (async () => {
-      try {
-        const res = await fetch(
-          `/api/channel?handle=${encodeURIComponent(handle)}`,
-          { cache: "no-store" }
-        );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json: ChannelData = await res.json();
-        if (!cancelled) setData(json);
-      } catch {
-        if (!cancelled) setData(null);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    try {
+      const res = await fetch(
+        `/api/channel?handle=${encodeURIComponent(handle)}`,
+        { cache: "no-store" }
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json: ChannelData = await res.json();
+      setData(json);
+    } catch {
+      setData(null);
+    } finally {
+      setLoading(false);
+    }
   }, [handle]);
 
+  // Manual refresh button — re-fetches with a fresh request (bypasses any
+  // edge cache by appending a `_t` query param).
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const res = await fetch(
+        `/api/channel?handle=${encodeURIComponent(handle)}&_t=${Date.now()}`,
+        { cache: "no-store" }
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json: ChannelData = await res.json();
+      setData(json);
+    } catch {
+      // ignore — keep stale data
+    } finally {
+      setRefreshing(false);
+    }
+  }, [handle]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
   const meta = CATEGORY_META[category];
-  const posts = (data?.posts || []).slice(0, 2);
+  const posts = (data?.posts || []).slice(0, showAll ? EXPANDED_COUNT : COLLAPSED_COUNT);
+  const hasMore = (data?.posts?.length || 0) > COLLAPSED_COUNT;
 
   return (
     <div className="rounded-lg border border-[var(--brand-border)] bg-[var(--brand-surface-2)]/40 overflow-hidden">
@@ -421,6 +447,11 @@ function ChannelPreviewCard({
             </div>
             <div className="text-[10px] font-latin text-[var(--brand-muted)] flex items-center gap-1.5">
               @{handle}
+              {data?.postCount ? (
+                <span className="text-[9px] text-[var(--brand-muted)]/70">
+                  · {data.postCount} {lang === "fa" ? "پست" : "posts"}
+                </span>
+              ) : null}
               <span
                 className="inline-flex items-center gap-0.5 text-[9px] font-bold"
                 style={{ color: meta.tint }}
@@ -434,6 +465,15 @@ function ChannelPreviewCard({
             </div>
           </div>
         </a>
+        {/* Manual refresh button */}
+        <button
+          onClick={onRefresh}
+          disabled={refreshing}
+          aria-label={lang === "fa" ? "بروزرسانی پست‌ها" : "Refresh posts"}
+          className="p-1 rounded-full text-[var(--brand-muted)] hover:text-[var(--brand-accent)] hover:bg-[var(--brand-surface)] transition-colors shrink-0 disabled:opacity-50"
+        >
+          <RefreshCw className={cn("w-3 h-3", refreshing && "animate-spin")} />
+        </button>
         <a
           href={`https://t.me/${handle}`}
           target="_blank"
@@ -529,20 +569,42 @@ function ChannelPreviewCard({
           ))
         )}
 
-        {/* Show all link */}
+        {/* Show more / Show less + Open in Telegram */}
         {!loading && data && data.postCount > 0 && (
-          <a
-            href={`https://t.me/s/${handle}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block text-center text-[10px] text-[var(--brand-accent)] hover:underline py-1.5"
-          >
-            {lang === "fa"
-              ? `مشاهده ${data.postCount.toLocaleString("fa-IR")} پست`
-              : `View all ${data.postCount} posts`}
-            {" "}
-            →
-          </a>
+          <div className="pt-1 space-y-1">
+            {hasMore && (
+              <button
+                onClick={() => setShowAll((s) => !s)}
+                className="w-full text-center text-[10px] text-[var(--brand-accent)] hover:underline py-1.5 flex items-center justify-center gap-1"
+              >
+                {showAll ? (
+                  <>
+                    {lang === "fa" ? "نمایش کمتر" : "Show less"}
+                    <ChevronDown className="w-3 h-3 rotate-180" />
+                  </>
+                ) : (
+                  <>
+                    {lang === "fa"
+                      ? `نمایش پست‌های بیشتر (${data.postCount.toLocaleString("fa-IR")})`
+                      : `Show more posts (${data.postCount})`}
+                    <ChevronDown className="w-3 h-3" />
+                  </>
+                )}
+              </button>
+            )}
+            <a
+              href={`https://t.me/s/${handle}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block text-center text-[10px] text-[var(--brand-muted)] hover:text-[var(--brand-accent)] hover:underline py-1 transition-colors"
+            >
+              {lang === "fa"
+                ? `مشاهده همه ${data.postCount.toLocaleString("fa-IR")} پست در تلگرام`
+                : `View all ${data.postCount} posts on Telegram`}
+              {" "}
+              →
+            </a>
+          </div>
         )}
       </div>
     </div>

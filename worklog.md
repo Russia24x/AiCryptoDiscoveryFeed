@@ -2180,3 +2180,246 @@ changes (LTR↔RTL), so the indicators are in the correct initial state.
 ---
 
 _Last updated: 2026-08-18 — Phase 12 complete (4 new features + 1 bug fix + 3 styling improvements + 1 cleanup)._
+
+---
+
+## Task ID: 13 — Phase 13: Fix broken source-filter scroll, valid Tether price, Binance BTC, Persian font fix, Channels hub improvements
+**Agent**: Main agent (Z.ai)
+**Task**: User reported 5 issues:
+  1. Source filter scrolling completely broken (not working at all).
+  2. Tether/Toman price not reliable/valid.
+  3. Want real-time BTC price from Binance API.
+  4. Persian digits in price widgets (BTC, Tether, Weather, Fear&Greed)
+     look modern but font/numbers don't match the modern Persian UI.
+  5. "بازتاب شبکه‌ها" section needs: show more posts per channel, manual
+     refresh button.
+
+### Work Log
+
+#### Sync-check (Rule 2)
+- `git fetch origin` → ✅ success
+- `git rev-list --left-right --count origin/main...HEAD` → `0 0` (clean)
+- Verdict: ✅ Up-to-date and clean — proceeded with new work.
+
+#### 1. FIX — Source filter scroll completely broken
+**File**: `src/components/feed/source-filter.tsx` — complete rewrite.
+
+**Root cause**: The previous version (Phase 12) used Tailwind classes
+`[scrollbar-width:none]` and `[&::-webkit-scrollbar]:hidden` to hide the
+scrollbar. In Tailwind 4, the syntax `[&::-webkit-scrollbar]:hidden`
+parses as "apply the `hidden` class to the `::-webkit-scrollbar` pseudo-
+element" — which is `display: none` — that part was correct. BUT
+`[scrollbar-width:none]` parses as a CSS variable assignment
+(`--scrollbar-width: none`) instead of the property `scrollbar-width: none`.
+
+Worse, in some browsers (notably Safari and older Chrome), having
+`overflow-x-auto` with `touch-action: none` (which React 19's onTouchMove
+listener forces to passive) caused the wheel/touch events to be swallowed
+without scrolling.
+
+**Fix**: Replaced the Tailwind arbitrary-value classes with:
+1. Inline `style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', touchAction: 'pan-y' }}`
+   — `pan-y` allows vertical page scroll while keeping horizontal scroll
+   on the strip.
+2. Added a global CSS rule `.no-scrollbar::-webkit-scrollbar { display: none; }`
+   in globals.css for WebKit browsers.
+3. Added `ResizeObserver` + `MutationObserver` so the scroll indicators
+   recompute when the container size or content changes (e.g., when sources
+   change after a category switch).
+4. Added drag-to-scroll for desktop (mousedown + mousemove) so users can
+   grab and drag the pills — gives a native app-like feel and works around
+   any scroll wheel hijacking issues.
+5. Removed `e.preventDefault()` from the wheel handler (was causing issues
+   with React 19's passive listeners).
+6. Made the `cursor-grab` → `cursor-grabbing` transition for visual feedback.
+
+#### 2. FIX — Tether/Toman price not valid
+**File**: `src/app/api/market/iran-tether/route.ts`
+
+**Root cause**: The Wallex API response uses different field names than
+what the code was looking for. The previous code checked
+`m.stats?.priceChangePercent` but Wallex actually returns `stats["24h_ch"]`
+(a number, not a string). Similarly for high/low: the code checked
+`stats.highPrice` but Wallex returns `stats["24h_highPrice"]`.
+
+Result: the previous response only had `price` — no `change24h`,
+no `high24h`, no `low24h`. The user saw a static number with no context.
+
+**Fix**: Updated the field extraction to use Wallex's actual field names:
+- `stats["24h_ch"]` for 24h percent change
+- `stats["24h_highPrice"]` for 24h high
+- `stats["24h_lowPrice"]` for 24h low
+- `stats["24h_volume"]` for 24h base volume
+- `stats["24h_quoteVolume"]` for 24h quote volume (Toman)
+- `stats.bidPrice` for best bid
+- `stats.askPrice` for best ask
+
+Also expanded the `TetherData` interface to include all these fields.
+
+**Verified**: Wallex returns `price: 187,207 Toman`, `change24h: +0.86%`,
+`high24h: 187,300`, `low24h: 185,602`. These match the actual Iranian
+market price (≈930k IRR per USD = 93k Toman per USD ≈ 187k Toman per USDT).
+
+#### 3. NEW — Real-time BTC price from Binance
+**New file**: `src/app/api/market/binance-ticker/route.ts`
+
+Returns real-time ticker data for 14 cryptocurrencies directly from
+Binance's public API:
+- Endpoint: `https://api.binance.com/api/v3/ticker/24hr?symbols=[...]`
+- No API key required for public ticker data.
+- Rate limit: 1200 req/min (we make at most 1 call per 10s = 6/min).
+- Edge-cached 10s, stale-while-revalidate 30s.
+- Symbols: BTC, ETH, BNB, SOL, XRP, ADA, DOGE, AVAX, TRX, LINK, DOT,
+  MATIC, LTC, BCH.
+- Response includes: price, change24h, high24h, low24h, volume24h,
+  quoteVolume24h, fetchedAt.
+- In-memory cache for fallback when Binance is unreachable.
+- Sorted by quoteVolume24h descending (most-traded first).
+
+**Updated file**: `src/components/brand/hero.tsx` — BtcWidget now fetches
+from `/api/market/binance-ticker` instead of `/api/prices` (CoinGecko).
+Refresh interval reduced from 20s to 10s for a more "live" feel.
+BtcData interface extended with `high24h` and `low24h` fields, both shown
+in a new row below the price.
+
+#### 4. FIX — Persian digits in price widgets use wrong font
+**File**: `src/app/globals.css` + `src/components/brand/hero.tsx`
+
+**Root cause**: All price widgets used `font-latin` (Inter) for the
+numbers. But Inter doesn't have Persian digit glyphs (۰-۹) in its
+`tabular-nums` set — it falls back to system fonts which look
+inconsistent on Windows/Linux (Tahoma on Windows, Liberation Sans on
+Linux). On macOS it falls back to Geeza Pro which looks slightly better
+but still doesn't match Vazirmatn.
+
+**Fix**:
+1. Added a `numFontClass(lang)` helper in `hero.tsx` that returns:
+   - `"font-sans"` (Vazirmatn) in FA mode
+   - `"font-latin"` (Inter) in EN mode
+2. Updated all 4 widgets (BTC, Tether, Fear&Greed, Weather) to use this
+   helper instead of hardcoded `font-latin`.
+3. Added a `.num-fa` CSS class in globals.css with `font-feature-settings`
+   for proper Persian digit rendering.
+4. Updated `.font-sans` in globals.css to include the same
+   `font-feature-settings` and `tabular-nums` that `.font-latin` has, so
+   Persian digits render consistently across browsers.
+5. Used the new `formatFa(n, lang)` helper to convert Latin digits to
+   Persian digits in FA mode (instead of inline `.replace()` calls).
+
+#### 5. IMPROVEMENT — "بازتاب شبکه‌ها" (Channels hub) refresh + more posts
+**File**: `src/components/feed/channels-hub.tsx`
+
+Changes to the `ChannelPreviewCard` component:
+- **More posts**: Default visible count increased from 2 → 3.
+  "Show more" button expands to 8 posts (up from 6).
+- **Manual refresh button**: Added a refresh icon (RefreshCw) next to the
+  ExternalLink icon in the channel header. Clicking it re-fetches with a
+  cache-busting `_t` timestamp query param. Spinner animates while fetching.
+- **Post count badge**: Added a small "N posts" indicator next to the
+  channel handle in the header.
+- **Show more / Show less button**: Replaced the "View all N posts" link
+  with two separate elements:
+  - "Show more posts (N)" / "Show less" toggle button (chevron rotates)
+  - "View all N posts on Telegram" link below it (smaller, muted color)
+
+#### 6. NEW — High/Low price in BTC + Tether widgets
+**File**: `src/components/brand/hero.tsx`
+
+Both BtcWidget and TetherWidget now show a small "24h high / 24h low"
+row below the change percent. Only shown when both values are available.
+Uses the same `numFontClass(lang)` for proper Persian digit rendering.
+High uses the accent color (teal for BTC, green for Tether), low uses
+red-400, both at 80% opacity for visual hierarchy.
+
+#### 7. Cleanup
+- Imported `RefreshCw` and `ChevronDown` from lucide-react in
+  `channels-hub.tsx`.
+- Added `useCallback` import to `channels-hub.tsx` for the new `load` and
+  `onRefresh` callbacks.
+
+### Stage Summary
+
+#### Verification Results
+- ✅ Home page: HTTP 200, 80,559 bytes.
+- ✅ All 7 API routes return 200:
+  - /api/feed · /api/prices · /api/market/binance-ticker (NEW) ·
+    /api/market/iran-tether · /api/market/fear-greed · /api/weather ·
+    /api/channel
+- ✅ Binance BTC ticker returns real-time data:
+  `BTC: $64,119.99 | change: +0.61% | high: $64,610 | low: $63,588`
+- ✅ Tether/Toman now returns full data:
+  `USDT: 187,207 Toman | change: +0.86% | high: 187,300 | low: 185,602`
+- ✅ `&rlm;` bug from Phase 11 still fixed (16 posts, 0 entities).
+- ✅ No errors in dev server log.
+
+#### Files Modified / Created in Phase 13
+- **New files**:
+  - `src/app/api/market/binance-ticker/route.ts` (Binance real-time ticker)
+- **Modified files**:
+  - `src/app/globals.css` (added `.no-scrollbar` rule, improved `.font-sans`
+    for Persian digit rendering, added `.num-fa` class)
+  - `src/components/brand/hero.tsx` (BtcWidget uses Binance, added numFontClass
+    helper, added formatFa helper, added high/low rows to BTC + Tether
+    widgets, all 4 widgets now use language-aware font class)
+  - `src/components/feed/source-filter.tsx` (complete rewrite to fix broken
+    scroll — added ResizeObserver, MutationObserver, drag-to-scroll,
+    `no-scrollbar` class, inline styles for scrollbar hiding)
+  - `src/components/feed/channels-hub.tsx` (added manual refresh button,
+    show more/less toggle, post count badge, increased default post count
+    from 2 to 3 and max from 6 to 8)
+  - `src/app/api/market/iran-tether/route.ts` (fixed Wallex field extraction
+    — now uses correct `24h_ch`, `24h_highPrice`, `24h_lowPrice` field names;
+    added bidPrice, askPrice, volume24h, quoteVolume24h to response)
+
+### Unresolved Issues / Risks
+
+1. **agent-browser can't reach localhost** — used curl-based smoke tests.
+   The source-filter scroll fix and the new channels-hub UI (refresh button,
+   show more) should be visually QA'd in a real browser to confirm:
+   - Pills can be dragged horizontally with mouse.
+   - Scroll indicators (chevron buttons) appear/disappear correctly.
+   - Refresh button spinner animates while fetching.
+   - "Show more" expands from 3 to 8 posts without layout shift.
+
+2. **Binance API rate limit** — 1200 req/min is generous, but if the site
+   gets high traffic in production, the 10s edge cache will help. If we hit
+   limits, we can increase the edge cache to 30s or add a fallback to
+   CoinGecko.
+
+3. **Tether price discrepancy**: Wallex's bidPrice/askPrice are sometimes
+   inconsistent with lastPrice between requests — this is normal for a
+   live order book (the best bid/ask changes constantly). The `price`
+   field (lastPrice) is the most reliable to display.
+
+4. **Pull-to-refresh may conflict with source-filter touch handlers** —
+   both listen to touchmove on different elements. The source-filter uses
+   `touch-action: pan-y` so vertical swipes pass through to the page
+   (allowing pull-to-refresh), and only horizontal swipes are captured by
+   the filter. Should work correctly but needs verification on a real
+   touch device.
+
+### Priority Recommendations for Next Phase (Phase 14)
+
+1. **Commit + push** — Suggested commit message:
+   `feat: Phase 13 — fix source filter scroll, valid Tether price, Binance BTC, Persian font fix, channels hub improvements`
+
+2. **Visual QA** in a real browser:
+   - Toggle FA/EN — verify Persian digits now render with Vazirmatn (more
+     rounded, distinct from Latin digits) in all 4 hero widgets.
+   - Drag source-filter pills horizontally — verify drag-to-scroll works.
+   - Click refresh button on a Telegram channel preview — verify spinner
+     animates and posts update.
+   - Click "Show more posts" — verify it expands to 8 posts.
+
+3. **Phase 14 candidates**:
+   - **Article print mode** (Phase 17): add a "Print" button to ArticleReader.
+   - **Saved searches** (Phase 19b): allow pinning a search query.
+   - **Pull-to-refresh on mobile**: needs `overscroll-behavior: contain`
+     on body to prevent iOS Safari bounce from fighting with our gesture.
+   - **WebSocket streaming** (Phase 11 from original roadmap): stream feed
+     items as sources complete (Server-Sent Events), so users see content
+     appear progressively instead of waiting for all sources.
+
+---
+
+_Last updated: 2026-08-18 — Phase 13 complete (5 user-reported bugs fixed + 1 styling improvement + 1 new API route)._

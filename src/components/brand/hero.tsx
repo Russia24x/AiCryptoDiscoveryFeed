@@ -32,6 +32,8 @@ interface HeroProps {
 interface BtcData {
   price: number;
   change24h: number;
+  high24h?: number;
+  low24h?: number;
 }
 
 interface TetherData {
@@ -77,6 +79,27 @@ function formatUsd(price: number, lang: "fa" | "en"): string {
     maximumFractionDigits: 0,
   });
   return lang === "fa" ? s.replace(/[0-9]/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[+d]) : s;
+}
+
+/** Format a number with Persian digits in FA mode (no separators). */
+function formatFa(n: number | string, lang: "fa" | "en"): string {
+  const s = String(n);
+  return lang === "fa" ? s.replace(/[0-9]/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[+d]) : s;
+}
+
+/**
+ * Returns a font class that's appropriate for the current language.
+ *
+ * - In LTR/EN mode: use `font-latin` (Inter) for crisp Latin digits.
+ * - In RTL/FA mode: use `font-sans` (Vazirmatn) so Persian digits render
+ *   with the proper Persian font (Inter doesn't have Persian digit glyphs
+ *   in its tabular-nums set, so it falls back to system fonts which look
+ *   inconsistent on Windows/Linux).
+ *
+ * Apply this to any container that shows numbers in the widgets.
+ */
+function numFontClass(lang: "fa" | "en"): string {
+  return lang === "fa" ? "font-sans" : "font-latin";
 }
 
 /** Map F&G value to color. */
@@ -282,27 +305,39 @@ function BtcWidget() {
   const [loading, setLoading] = useState(true);
   const prevRef = useRef<number | undefined>(undefined);
 
+  // Fetch real-time BTC price from Binance via our edge-cached API.
+  // Binance ticker updates every 1s; we refresh every 10s for a good
+  // balance of freshness vs edge-cache hit rate.
   useEffect(() => {
     let cancelled = false;
     let id: ReturnType<typeof setInterval>;
     const load = async () => {
       try {
-        const res = await fetch("/api/prices", { cache: "no-store" });
+        const res = await fetch("/api/market/binance-ticker", { cache: "no-store" });
+        if (!res.ok) return;
         const json = await res.json();
         if (cancelled) return;
+        // Find BTC in the response
         const btc = json?.coins?.find((c: { symbol: string }) => c.symbol === "BTC");
-        if (btc) {
+        if (btc && typeof btc.price === "number") {
           prevRef.current = data?.price;
-          setData({ price: btc.price, change24h: btc.change24h });
+          setData({
+            price: btc.price,
+            change24h: btc.change24h,
+            high24h: btc.high24h,
+            low24h: btc.low24h,
+          });
         }
       } catch {
-        // ignore
+        // ignore — keep stale price
       } finally {
         if (!cancelled) setLoading(false);
       }
     };
     load();
-    id = setInterval(load, 20_000);
+    // Refresh every 10s — Binance ticker is real-time so this gives the
+    // "live" feeling the user requested.
+    id = setInterval(load, 10_000);
     return () => {
       cancelled = true;
       clearInterval(id);
@@ -331,18 +366,32 @@ function BtcWidget() {
         <SkeletonRow />
       ) : data ? (
         <>
-          <div className="text-2xl md:text-3xl font-extrabold font-latin tabular-nums text-[var(--brand-text)]">
+          <div className={cn("text-2xl md:text-3xl font-extrabold tabular-nums text-[var(--brand-text)]", numFontClass(lang))}>
             ${formatUsd(data.price, lang)}
           </div>
           <div
             className={cn(
-              "flex items-center gap-1 text-[11px] font-latin font-semibold mt-1",
+              "flex items-center gap-1 text-[11px] font-semibold mt-1",
+              numFontClass(lang),
               up ? "text-[var(--brand-accent)]" : "text-red-400"
             )}
           >
             {up ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-            {Math.abs(data.change24h).toFixed(2)}% <span className="opacity-60">24h</span>
+            {formatFa(Math.abs(data.change24h).toFixed(2), lang)}% <span className="opacity-60">24h</span>
           </div>
+          {/* 24h high/low row — only show if both are available */}
+          {data.high24h !== undefined && data.low24h !== undefined && (
+            <div className={cn("flex items-center justify-between text-[9px] text-[var(--brand-muted)]/80 mt-1.5 pt-1.5 border-t border-[var(--brand-border)]/50", numFontClass(lang))}>
+              <span className="flex items-center gap-1">
+                <span className="opacity-60">{lang === "fa" ? "بالا:" : "H:"}</span>
+                <span className="text-[var(--brand-accent)]/80">${formatUsd(data.high24h, lang)}</span>
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="opacity-60">{lang === "fa" ? "پایین:" : "L:"}</span>
+                <span className="text-red-400/80">${formatUsd(data.low24h, lang)}</span>
+              </span>
+            </div>
+          )}
         </>
       ) : (
         <FallbackMsg />
@@ -395,24 +444,37 @@ function TetherWidget() {
         <SkeletonRow />
       ) : data ? (
         <>
-          <div className="text-2xl md:text-3xl font-extrabold font-latin tabular-nums text-[var(--brand-text)]">
+          <div className={cn("text-2xl md:text-3xl font-extrabold tabular-nums text-[var(--brand-text)]", numFontClass(lang))}>
             {formatToman(data.price, lang)}
           </div>
-          <div className="flex items-center gap-1 text-[10px] text-[var(--brand-muted)] mt-1">
+          <div className={cn("flex items-center gap-1 text-[10px] text-[var(--brand-muted)] mt-1", numFontClass(lang))}>
             <span>{lang === "fa" ? "تومان" : "Toman"}</span>
             {data.cached && <span className="opacity-60">· cached</span>}
             {change !== undefined && (
               <span
                 className={cn(
-                  "flex items-center gap-0.5 ml-1 font-latin font-semibold",
+                  "flex items-center gap-0.5 ml-1 font-semibold",
                   up ? "text-[var(--brand-accent)]" : "text-red-400"
                 )}
               >
                 {up ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
-                {Math.abs(change).toFixed(2)}%
+                {formatFa(Math.abs(change).toFixed(2), lang)}%
               </span>
             )}
           </div>
+          {/* 24h high/low row — only show if both are available */}
+          {data.high24h !== undefined && data.low24h !== undefined && (
+            <div className={cn("flex items-center justify-between text-[9px] text-[var(--brand-muted)]/80 mt-1.5 pt-1.5 border-t border-[var(--brand-border)]/50", numFontClass(lang))}>
+              <span className="flex items-center gap-1">
+                <span className="opacity-60">{lang === "fa" ? "بالا:" : "H:"}</span>
+                <span className="text-[var(--brand-accent)]/80">{formatToman(data.high24h, lang)}</span>
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="opacity-60">{lang === "fa" ? "پایین:" : "L:"}</span>
+                <span className="text-red-400/80">{formatToman(data.low24h, lang)}</span>
+              </span>
+            </div>
+          )}
         </>
       ) : (
         <FallbackMsg />
@@ -464,10 +526,10 @@ function FearGreedWidget() {
         <>
           <div className="flex items-end gap-2">
             <span
-              className="text-3xl md:text-4xl font-extrabold font-latin tabular-nums"
+              className={cn("text-3xl md:text-4xl font-extrabold tabular-nums", numFontClass(lang))}
               style={{ color: fngColor(data.value) }}
             >
-              {lang === "fa" ? data.value.toString().replace(/[0-9]/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[+d]) : data.value}
+              {formatFa(data.value, lang)}
             </span>
             <span className="text-2xl">{fngEmoji(data.value)}</span>
           </div>
@@ -487,8 +549,8 @@ function FearGreedWidget() {
           >
             {data.classification}
             {data.yesterday !== undefined && (
-              <span className="text-[var(--brand-muted)] font-normal ml-1 font-latin">
-                · {lang === "fa" ? "دیروز" : "yest"} {data.yesterday}
+              <span className="text-[var(--brand-muted)] font-normal ml-1">
+                · {lang === "fa" ? "دیروز" : "yest"} {formatFa(data.yesterday, lang)}
               </span>
             )}
           </div>
@@ -597,8 +659,8 @@ function WeatherWidget({ onOpenSettings }: { onOpenSettings?: () => void }) {
       ) : data ? (
         <>
           <div className="flex items-end gap-2">
-            <span className="text-3xl md:text-4xl font-extrabold font-latin tabular-nums text-[var(--brand-text)]">
-              {Math.round(data.temperature)}
+            <span className={cn("text-3xl md:text-4xl font-extrabold tabular-nums text-[var(--brand-text)]", numFontClass(lang))}>
+              {formatFa(Math.round(data.temperature), lang)}
               <span className="text-base align-top">°</span>
             </span>
             <span className="text-2xl">{data.emoji}</span>
@@ -606,14 +668,14 @@ function WeatherWidget({ onOpenSettings }: { onOpenSettings?: () => void }) {
           <div className="text-[10px] text-[var(--brand-muted)] mt-1">
             {lang === "fa" ? data.descriptionFa : data.description}
           </div>
-          <div className="flex items-center gap-2 mt-1 text-[10px] text-[var(--brand-muted)] font-latin">
+          <div className={cn("flex items-center gap-2 mt-1 text-[10px] text-[var(--brand-muted)]", numFontClass(lang))}>
             <span className="flex items-center gap-0.5">
               <Droplets className="w-2.5 h-2.5" />
-              {data.humidity}%
+              {formatFa(data.humidity, lang)}%
             </span>
             <span className="flex items-center gap-0.5">
               <Wind className="w-2.5 h-2.5" />
-              {Math.round(data.windSpeed)} km/h
+              {formatFa(Math.round(data.windSpeed), lang)} km/h
             </span>
           </div>
         </>
