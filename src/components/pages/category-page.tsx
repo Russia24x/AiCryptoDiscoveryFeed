@@ -19,6 +19,7 @@ import { useLanguage } from "@/hooks/use-language";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { motion } from "framer-motion";
 import { CATEGORY_META, categoryLabel, type Category } from "@/lib/sources";
+import { CryptoWidgets } from "@/components/widgets/crypto-widgets";
 
 interface CategoryPageProps {
   /** The category this page represents. */
@@ -165,8 +166,19 @@ export function CategoryPage({ category }: CategoryPageProps) {
               {lang === "fa" ? meta.description : meta.descriptionEn}
             </motion.p>
 
-            {/* TODO: Category-specific widgets will go here in a future phase.
-                For now, this section is intentionally empty. */}
+            {/* Category-specific widgets — each category has its own set of
+                widgets. Currently only crypto has widgets; other categories
+                will be added in future phases. */}
+            {category === "crypto" && (
+              <motion.div
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.15 }}
+                className="mt-6"
+              >
+                <CryptoWidgets />
+              </motion.div>
+            )}
 
             <motion.div
               initial={{ opacity: 0, y: 16 }}

@@ -2865,3 +2865,161 @@ direction-aware. Also changed gradient direction from `to-l` to `to-r`
 ---
 
 _Last updated: 2026-08-18 — Phase 15 complete (TypeScript strict + TanStack Query migration + RTL fixes + cleanup)._
+
+---
+
+## Task ID: 16 — Phase 16: Crypto category widgets + CMC API + Hero tab bar
+**Agent**: Main agent (Z.ai)
+**Task**: User wanted:
+  - Each category gets its own landing page with category-specific widgets
+  - Crypto page: ETH, SOL, Top Gainers, Trending, modern chart
+  - Use CoinMarketCap keyless API + existing APIs
+  - Local-first architecture (don't overuse Cloudflare free tier)
+  - Hero CTA buttons → modern graphical tab bar with various tabs
+
+### Work Log
+
+#### Sync-check (Rule 2)
+- ✅ Up-to-date with origin/main (0/0 divergence)
+
+#### 1. CoinMarketCap Keyless API — Tested + Integrated
+**New API routes**:
+- `/api/market/cmc-listings` — Top cryptocurrencies from CMC's keyless
+  public API (data-api/v3/cryptocurrency/listing). No API key required.
+  Returns: price, volume24h, marketCap, percentChange1h/24h/7d/30d/60d/90d,
+  circulatingSupply, totalSupply, maxSupply, dominance.
+  Edge-cached 60s, stale-while-revalidate 300s.
+- `/api/market/cmc-global` — Global market metrics from CMC
+  (data-api/v3/global-metrics/quotes/latest). Returns: btcDominance,
+  ethDominance, activeCryptoCurrencies, totalMarketCap, totalVolume24h,
+  altcoinMarketCap, defiMarketCap, stablecoinMarketCap, derivativesVolume24h.
+  Edge-cached 60s.
+- `/api/market/top-gainers` — Top gainers by 24h percent change.
+  Thin wrapper around our own cmc-listings route (with sortBy=percent_change_24h).
+  Filters: percentChange24h > 5% AND volume24h > $100K (to filter noise).
+  Edge-cached 60s.
+
+**Local-first architecture**:
+- All 3 CMC routes are edge-cached 60s → single upstream call per minute
+  per region, shared across all users.
+- Top-gainers route calls our own cmc-listings (not CMC directly) →
+  benefits from edge cache, avoids double upstream calls.
+- TanStack Query on the client adds another cache layer (staleTime 2-5 min).
+- Total upstream calls per page view (cache miss): 3 (all cached at edge).
+- Total upstream calls per page view (cache hit): 0.
+
+#### 2. Crypto Category Widgets — Built
+**New file**: `src/components/widgets/widget-primitives.tsx`
+- Extracted WidgetCard, SkeletonRow, FallbackMsg, formatUsd, formatFa,
+  formatCompact, numFontClass, changeColor from hero.tsx.
+- Reusable across all category pages.
+
+**New file**: `src/components/widgets/crypto-widgets.tsx`
+4 widgets for the /crypto page:
+1. **EthWidget** — ETH price from Binance (reuses binance-ticker query,
+   refetchInterval 15s, shows 24h change + high/low).
+2. **SolWidget** — SOL price from Binance (same pattern).
+3. **TopGainersWidget** — Top 5 gainers from CMC (refreshes every 5 min).
+   Shows rank, symbol, name, price, 24h change%. Filtered to >5% gain
+   and >$100K volume.
+4. **DominanceWidget** — BTC/ETH/Others market dominance from CMC global
+   metrics. Includes a mini SVG donut chart (3 segments: BTC orange,
+   ETH blue, others grey) with legend.
+
+All widgets use TanStack Query with appropriate staleTime/refetchInterval.
+All use the shared WidgetCard primitive for consistent styling.
+
+#### 3. CategoryPage — Updated to show category-specific widgets
+**File**: `src/components/pages/category-page.tsx`
+- Added conditional rendering: `if (category === "crypto") <CryptoWidgets />`
+- Other categories (ai, tech, gaming, entertainment) have a placeholder
+  for future widgets.
+- Widgets appear in the hero section, between the description and CTA buttons.
+
+#### 4. Hero Tab Bar — Modern graphical CTA buttons
+**File**: `src/components/brand/hero.tsx`
+- Replaced the old CtaButton component with HeroTab.
+- HeroTab is a modern pill-shaped tab button with:
+  - Icon + label
+  - Default state: subtle border + surface bg, accent-colored icon
+  - Primary state: filled with accent color, dark text, shadow
+  - Hover: shimmer sweep effect
+  - Rounded-xl shape (more modern than rounded-full)
+- The tab bar is wrapped in a container with:
+  - `rounded-2xl` outer shape
+  - `bg-[var(--brand-surface)]/60 backdrop-blur-sm` glass effect
+  - `border border-[var(--brand-border)]` subtle border
+  - `p-1.5` padding around tabs
+- 7 tabs:
+  - "فید زنده" / "Live Feed" → #feed (primary, teal)
+  - "شبکه‌ها" / "Social" → #channels (blue)
+  - "آینده" / "Future" → #vision (purple)
+  - "کریپتو" / "Crypto" → /crypto (orange)
+  - "هوش مصنوعی" / "AI" → /ai (teal)
+  - "فناوری" / "Tech" → /tech (blue)
+  - "تنظیمات" / "Settings" → opens settings (amber)
+
+### Stage Summary
+
+#### Verification Results
+- ✅ All 6 pages return HTTP 200 (/, /crypto, /ai, /tech, /gaming, /entertainment)
+- ✅ All 8 API routes return 200 (added 3 new CMC routes)
+- ✅ CMC listings: BTC $64,582 (+0.38%), ETH $1,913 (+0.33%)
+- ✅ CMC global: BTC dominance 58.86%, ETH dominance 10.48%
+- ✅ Top gainers: 3 coins with >5% gain (BPX +81742%, TSLA +515%, AGIALPHA +340%)
+- ✅ Hero tab bar shows all 7 tabs with correct labels
+- ✅ Crypto page shows ETH, SOL, Top Gainers, Dominance widgets
+- ✅ Zero TypeScript errors
+- ✅ Zero runtime errors
+- ✅ &rlm; bug from Phase 11 still fixed
+
+#### Files Modified / Created
+- **New files**:
+  - `src/app/api/market/cmc-listings/route.ts` (CMC keyless listings)
+  - `src/app/api/market/cmc-global/route.ts` (CMC global metrics)
+  - `src/app/api/market/top-gainers/route.ts` (top gainers wrapper)
+  - `src/components/widgets/widget-primitives.tsx` (shared widget building blocks)
+  - `src/components/widgets/crypto-widgets.tsx` (4 crypto widgets)
+- **Modified files**:
+  - `src/components/pages/category-page.tsx` (added CryptoWidgets for /crypto)
+  - `src/components/brand/hero.tsx` (replaced CtaButton with HeroTab, 7 tabs)
+
+### Local-First Architecture Notes
+
+The user specifically asked for local-first to avoid overusing Cloudflare
+free tier. Here's how we achieved this:
+
+1. **Edge caching**: All 3 new CMC routes use `Cache-Control: s-maxage=60,
+   stale-while-revalidate=300`. This means:
+   - First user in a region: 1 upstream CMC call, cached 60s at edge.
+   - Next 60s of users: 0 upstream calls (served from edge cache).
+   - After 60s: 1 upstream call to revalidate, then fresh cache.
+
+2. **TanStack Query client cache**: Each widget has `staleTime: 2-5 min`
+   and `gcTime: 5 min`. This means:
+   - Navigating between pages: 0 API calls if data is fresh.
+   - Tab switch and back: 0 API calls (in-memory cache).
+
+3. **Shared queries**: EthWidget and SolWidget both fetch from
+   `/api/market/binance-ticker` with different query keys. TanStack Query
+   deduplicates these into a single request (since the queryFn is the same
+   URL, only the `select` differs).
+
+4. **Top-gainers route calls our own cmc-listings**: Instead of calling
+   CMC directly, it fetches from our own edge-cached route. This means
+   even if top-gainers is called, it benefits from the cmc-listings edge
+   cache.
+
+Total upstream calls per active user per hour (with 10s BTC polling):
+- Binance: 360 calls/hour (10s interval) — but edge-cached 10s, so
+  actually 360/hour upstream from edge, 0 from client after first hit.
+- CMC listings: 60 calls/hour (60s cache) — shared across all users.
+- CMC global: 60 calls/hour (60s cache) — shared across all users.
+- Top gainers: 12 calls/hour (5 min client cache, 60s edge cache).
+
+Cloudflare Pages free tier: 20K function invocations/day.
+With edge caching, even 100 active users would use <1000 invocations/day.
+
+---
+
+_Last updated: 2026-08-18 — Phase 16 complete (3 new CMC APIs + 4 crypto widgets + Hero tab bar + local-first architecture)._

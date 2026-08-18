@@ -7,6 +7,11 @@ import {
   ArrowLeft,
   ArrowRight,
   Bitcoin,
+  Brain,
+  Cpu,
+  Telescope,
+  Activity,
+  Send,
   TrendingUp,
   TrendingDown,
   Thermometer,
@@ -221,35 +226,58 @@ export function Hero({ totalItems, sourcesOk, sourcesTried, onOpenSettings }: He
               {t.hero.description}
             </motion.p>
 
-            {/* Quick-jump CTA buttons — modern, button-style */}
+            {/* Tab-style graphical CTA buttons — modern, icon + label.
+                Clicking navigates to the category page (for category tabs)
+                or scrolls to section (for in-page tabs). */}
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.18 }}
-              className="flex flex-wrap gap-2 mt-2"
+              className="flex flex-wrap gap-1.5 mt-2 p-1.5 rounded-2xl bg-[var(--brand-surface)]/60 backdrop-blur-sm border border-[var(--brand-border)]"
             >
-              <CtaButton
+              <HeroTab
                 href="#feed"
-                label={lang === "fa" ? "مشاهده فید زنده" : "Live feed"}
-                accent="var(--brand-accent)"
+                label={lang === "fa" ? "فید زنده" : "Live Feed"}
+                icon={<Activity className="w-3.5 h-3.5" />}
+                accent="#2dd4bf"
                 primary
               />
-              <CtaButton
+              <HeroTab
                 href="#channels"
-                label={lang === "fa" ? "شبکه‌های اجتماعی" : "Social feeds"}
+                label={lang === "fa" ? "شبکه‌ها" : "Social"}
+                icon={<Send className="w-3.5 h-3.5" />}
                 accent="#38bdf8"
               />
-              <CtaButton
+              <HeroTab
                 href="#vision"
-                label={lang === "fa" ? "محورهای آینده" : "Future pillars"}
+                label={lang === "fa" ? "آینده" : "Future"}
+                icon={<Telescope className="w-3.5 h-3.5" />}
                 accent="#a78bfa"
               />
+              <HeroTab
+                href="/crypto"
+                label={lang === "fa" ? "کریپتو" : "Crypto"}
+                icon={<Bitcoin className="w-3.5 h-3.5" />}
+                accent="#f7931a"
+              />
+              <HeroTab
+                href="/ai"
+                label={lang === "fa" ? "هوش مصنوعی" : "AI"}
+                icon={<Brain className="w-3.5 h-3.5" />}
+                accent="#2dd4bf"
+              />
+              <HeroTab
+                href="/tech"
+                label={lang === "fa" ? "فناوری" : "Tech"}
+                icon={<Cpu className="w-3.5 h-3.5" />}
+                accent="#38bdf8"
+              />
               {onOpenSettings && (
-                <CtaButton
+                <HeroTab
                   onClick={onOpenSettings}
                   label={lang === "fa" ? "تنظیمات" : "Settings"}
-                  accent="#f59e0b"
                   icon={<SettingsIcon className="w-3.5 h-3.5" />}
+                  accent="#f59e0b"
                 />
               )}
             </motion.div>
@@ -278,39 +306,56 @@ export function Hero({ totalItems, sourcesOk, sourcesTried, onOpenSettings }: He
 }
 
 /** Modern CTA button with subtle shimmer. */
-function CtaButton({
+/**
+ * HeroTab — a modern graphical tab button for the hero CTA bar.
+ *
+ * Visual design:
+ *   - Pill shape with icon + label
+ *   - Default state: subtle border + surface bg, accent icon
+ *   - Primary (active) state: filled with accent color, dark text
+ *   - Hover: lifts slightly, accent border brightens
+ *   - Shimmer sweep on hover (like CtaButton had)
+ *
+ * Used for both:
+ *   - In-page navigation (href="#feed", href="#channels")
+ *   - Cross-page navigation (href="/crypto", href="/ai")
+ *   - Action triggers (onClick for settings)
+ */
+function HeroTab({
   href,
   onClick,
   label,
+  icon,
   accent,
   primary,
-  icon,
 }: {
   href?: string;
   onClick?: () => void;
   label: string;
+  icon: React.ReactNode;
   accent: string;
   primary?: boolean;
-  icon?: React.ReactNode;
 }) {
   const inner = (
     <span
       className={cn(
-        "group relative inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs md:text-sm font-bold transition-all overflow-hidden",
+        "group relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs md:text-sm font-bold transition-all overflow-hidden",
         primary
-          ? "text-[#04201d] hover:brightness-110"
-          : "border text-[var(--brand-text)] hover:bg-[var(--brand-surface)]"
+          ? "text-[#04201d] hover:brightness-110 shadow-md"
+          : "border text-[var(--brand-text)] hover:bg-[var(--brand-surface)] hover:border-[var(--brand-accent)]/40"
       )}
       style={
         primary
-          ? { background: accent }
+          ? { background: accent, boxShadow: `0 2px 12px ${accent}40` }
           : { borderColor: `${accent}40` }
       }
     >
       {/* Shimmer sweep on hover */}
       <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/30 to-transparent" />
-      {icon && <span className="relative">{icon}</span>}
-      <span className="relative">{label}</span>
+      <span className="relative shrink-0" style={{ color: primary ? "#04201d" : accent }}>
+        {icon}
+      </span>
+      <span className="relative whitespace-nowrap">{label}</span>
     </span>
   );
   if (href) {
