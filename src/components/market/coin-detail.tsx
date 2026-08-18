@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import {
@@ -14,8 +15,12 @@ import {
   MessageCircle,
   Layers,
   TrendingUp,
+  Bell,
+  BellRing,
+  X,
 } from "lucide-react";
 import { useLanguage } from "@/hooks/use-language";
+import { usePriceAlerts, type AlertDirection } from "@/hooks/use-price-alerts";
 import { cn } from "@/lib/utils";
 
 interface CoinDetailProps {
@@ -125,6 +130,9 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
   const { lang, isRTL } = useLanguage();
   const router = useRouter();
   const Back = isRTL ? ArrowLeft : ArrowRight;
+  const [alertOpen, setAlertOpen] = useState(false);
+  const { alerts, addAlert, permission, requestPermission, count: alertCount } = usePriceAlerts();
+  const coinAlerts = alerts.filter((a) => a.coinId === coinId);
 
   // --- Primary: CoinGecko coin detail ---
   const { data: coin, isLoading, error } = useQuery<CoinGeckoCoin>({
@@ -277,7 +285,41 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
             <span className="text-[10px] text-[var(--brand-muted)]">24h</span>
           </div>
         </div>
+        {/* Price Alert Button */}
+        <button
+          onClick={() => setAlertOpen((v) => !v)}
+          className={cn(
+            "relative p-2.5 rounded-full border transition-all shrink-0",
+            coinAlerts.length > 0
+              ? "bg-[var(--brand-accent-soft)] border-[var(--brand-accent)]/40 text-[var(--brand-accent)]"
+              : "bg-[var(--brand-surface)] border-[var(--brand-border)] text-[var(--brand-muted)] hover:text-[var(--brand-text)] hover:border-[var(--brand-accent)]/40"
+          )}
+          aria-label={lang === "fa" ? "هشدار قیمت" : "Price alert"}
+        >
+          {coinAlerts.length > 0 ? <BellRing className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+          {coinAlerts.length > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-[var(--brand-accent)] text-[#04201d] text-[9px] font-bold font-latin">
+              {fa(coinAlerts.length)}
+            </span>
+          )}
+        </button>
       </div>
+
+      {/* Price Alert Panel */}
+      {alertOpen && (
+        <PriceAlertPanel
+          coinId={coinId}
+          coinName={coin.name}
+          coinSymbol={coin.symbol}
+          currentPrice={md.current_price.usd}
+          lang={lang}
+          alerts={coinAlerts}
+          addAlert={addAlert}
+          permission={permission}
+          requestPermission={requestPermission}
+          onClose={() => setAlertOpen(false)}
+        />
+      )}
 
       {/* Sparkline */}
       {md.sparkline_7d?.price && md.sparkline_7d.price.length > 0 && (
@@ -602,6 +644,148 @@ function ExtLink({ href, icon, label }: { href: string; icon: React.ReactNode; l
     <a href={href} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--brand-border)] bg-[var(--brand-surface)] text-xs font-medium text-[var(--brand-muted)] hover:text-[var(--brand-accent)] hover:border-[var(--brand-accent)]/40 transition-colors">
       {icon}<span>{label}</span>
     </a>
+  );
+}
+
+/* ============= Price Alert Panel ============= */
+function PriceAlertPanel({
+  coinId,
+  coinName,
+  coinSymbol,
+  currentPrice,
+  lang,
+  alerts,
+  addAlert,
+  permission,
+  requestPermission,
+  onClose,
+}: {
+  coinId: string;
+  coinName: string;
+  coinSymbol: string;
+  currentPrice: number;
+  lang: "fa" | "en";
+  alerts: Array<{ id: string; direction: AlertDirection; targetPrice: number; active: boolean; triggered: boolean; currentPrice?: number }>;
+  addAlert: (alert: { coinId: string; symbol: string; name: string; direction: AlertDirection; targetPrice: number; currentPrice: number }) => boolean;
+  permission: NotificationPermission;
+  requestPermission: () => Promise<string>;
+  onClose: () => void;
+}) {
+  const [direction, setDirection] = useState<AlertDirection>("above");
+  const [targetPrice, setTargetPrice] = useState<string>(currentPrice.toFixed(2));
+
+  const fa = (n: string | number) =>
+    lang === "fa" ? String(n).replace(/[0-9]/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[+d]) : String(n);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const price = parseFloat(targetPrice);
+    if (!Number.isFinite(price) || price <= 0) return;
+    const added = addAlert({
+      coinId,
+      symbol: coinSymbol,
+      name: coinName,
+      direction,
+      targetPrice: price,
+      currentPrice,
+    });
+    if (added) {
+      // Reset form
+      setTargetPrice(currentPrice.toFixed(2));
+      setDirection("above");
+    }
+  };
+
+  return (
+    <div className="mb-6 p-4 rounded-xl border border-[var(--brand-accent)]/30 bg-[var(--brand-accent-soft)] overflow-hidden">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Bell className="w-4 h-4 text-[var(--brand-accent)]" />
+          <span className="text-xs font-bold text-[var(--brand-accent)] uppercase tracking-wider font-latin">
+            {lang === "fa" ? "هشدار قیمت" : "Price Alert"}
+          </span>
+          <span className="text-[10px] text-[var(--brand-muted)] font-latin">
+            {fa(currentPrice.toFixed(2))} USD
+          </span>
+        </div>
+        <button onClick={onClose} className="p-1 rounded-full text-[var(--brand-muted)] hover:text-[var(--brand-text)] hover:bg-[var(--brand-surface)] transition-colors" aria-label="Close">
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {/* Notification permission request */}
+      {permission !== "granted" && (
+        <div className="mb-3 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+          <p className="text-[10px] text-amber-400 mb-2">
+            {lang === "fa" ? "برای دریافت اعلان‌ها، اجازه اطلاع‌رسانی را بدهید" : "Enable notifications to receive alerts"}
+          </p>
+          <button
+            onClick={() => requestPermission()}
+            className="px-3 py-1 rounded-full bg-amber-500 text-black text-[10px] font-bold hover:brightness-110 transition-all"
+          >
+            {lang === "fa" ? "فعال‌سازی اعلان‌ها" : "Enable notifications"}
+          </button>
+        </div>
+      )}
+
+      {/* Add alert form */}
+      <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-2 mb-3">
+        <select
+          value={direction}
+          onChange={(e) => setDirection(e.target.value as AlertDirection)}
+          className="bg-[var(--brand-surface)] border border-[var(--brand-border)] rounded-lg px-2 py-1.5 text-xs text-[var(--brand-text)] focus:outline-none focus:border-[var(--brand-accent)]"
+        >
+          <option value="above">{lang === "fa" ? "بالاتر از" : "Above"}</option>
+          <option value="below">{lang === "fa" ? "پایین‌تر از" : "Below"}</option>
+        </select>
+        <div className="flex items-center gap-1">
+          <span className="text-xs text-[var(--brand-muted)]">$</span>
+          <input
+            type="number"
+            value={targetPrice}
+            onChange={(e) => setTargetPrice(e.target.value)}
+            step="0.01"
+            min="0"
+            className="bg-[var(--brand-surface)] border border-[var(--brand-border)] rounded-lg px-2 py-1.5 text-xs text-[var(--brand-text)] font-latin tabular-nums w-28 focus:outline-none focus:border-[var(--brand-accent)]"
+            placeholder={currentPrice.toFixed(2)}
+          />
+        </div>
+        <button
+          type="submit"
+          className="px-4 py-1.5 rounded-lg bg-[var(--brand-accent)] text-[#04201d] text-xs font-bold hover:brightness-110 transition-all"
+        >
+          {lang === "fa" ? "افزودن هشدار" : "Add alert"}
+        </button>
+      </form>
+
+      {/* Existing alerts list */}
+      {alerts.length > 0 && (
+        <div className="space-y-1.5">
+          <div className="text-[10px] text-[var(--brand-muted)] uppercase tracking-wider font-latin mb-1">
+            {lang === "fa" ? "هشدارهای فعال" : "Active alerts"}
+          </div>
+          {alerts.map((alert) => (
+            <div key={alert.id} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-[var(--brand-surface)]/50 text-xs">
+              <div className="flex items-center gap-2">
+                <span className={cn(
+                  "w-2 h-2 rounded-full",
+                  alert.triggered ? "bg-amber-400" : alert.active ? "bg-[var(--brand-accent)]" : "bg-[var(--brand-muted)]"
+                )} />
+                <span className="text-[var(--brand-text)]">
+                  {alert.direction === "above" ? (lang === "fa" ? "بالاتر از" : "Above") : (lang === "fa" ? "پایین‌تر از" : "Below")}
+                </span>
+                <span className="font-latin tabular-nums font-bold text-[var(--brand-text)]">${fa(alert.targetPrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}</span>
+                {alert.triggered && (
+                  <span className="text-[9px] font-bold text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded-full">
+                    {lang === "fa" ? "فعال شد" : "TRIGGERED"}
+                  </span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 

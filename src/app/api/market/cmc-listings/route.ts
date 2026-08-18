@@ -74,6 +74,7 @@ interface CoinListing {
   totalSupply: number;
   maxSupply: number | null;
   dominance: number;
+  tags: string[];
 }
 
 const FETCH_TIMEOUT_MS = 10000;
@@ -133,6 +134,7 @@ export async function GET(request: Request) {
         totalSupply: Number(c.totalSupply) || 0,
         maxSupply: c.maxSupply ? Number(c.maxSupply) : null,
         dominance: Number(quote.dominance) || 0,
+        tags: Array.isArray(c.tags) ? c.tags.slice(0, 10) : [],
       };
     });
 

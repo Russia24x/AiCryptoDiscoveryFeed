@@ -43,6 +43,19 @@ interface Coin {
   atl: number;
 }
 
+interface CmcCoin {
+  id: number;
+  name: string;
+  symbol: string;
+  slug: string;
+  cmcRank: number;
+  price: number;
+  volume24h: number;
+  marketCap: number;
+  percentChange24h: number;
+  tags: string[];
+}
+
 interface GlobalStats {
   totalMarketCap: number;
   totalVolume24h: number;
@@ -107,6 +120,7 @@ export function MarketIntelligence() {
   const [sortField, setSortField] = useState<SortField>("market_cap_rank");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [showWatchlistOnly, setShowWatchlistOnly] = useState(false);
+  const [activeTag, setActiveTag] = useState<string | null>(null);
   const { watchlist, isWatched, toggle: toggleWatch, hydrated: watchHydrated } = useWatchlist();
 
   // --- Coin list (top 100) ---
@@ -122,6 +136,49 @@ export function MarketIntelligence() {
     refetchInterval: 5 * 60_000,
     staleTime: 60_000,
   });
+
+  // --- CMC listings (for tags/category filter) ---
+  // We fetch CMC listings in parallel to get tags for category filtering.
+  // This data is edge-cached 60s and TanStack Query caches it 2min.
+  // Local-first: no extra upstream call if cache is warm.
+  const { data: cmcData } = useQuery<{ coins: CmcCoin[] }>({
+    queryKey: ["market", "cmc-listings", "top100"],
+    queryFn: async () => {
+      const res = await fetch("/api/market/cmc-listings?limit=100", { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      return { coins: (json?.coins || []) as CmcCoin[] };
+    },
+    staleTime: 2 * 60_000,
+  });
+
+  // Build a symbol → tags map from CMC data
+  const symbolToTags = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const c of cmcData?.coins || []) {
+      map.set(c.symbol.toUpperCase(), c.tags || []);
+    }
+    return map;
+  }, [cmcData]);
+
+  // Extract unique tags from top 100 coins (sorted by frequency)
+  const availableTags = useMemo(() => {
+    const tagCount = new Map<string, number>();
+    for (const c of cmcData?.coins || []) {
+      for (const tag of c.tags || []) {
+        // Filter out noisy tags (portfolio tags, exchange-specific, etc.)
+        if (tag.includes("portfolio") || tag.includes("ecosystem") ||
+            tag.includes("bankruptcy") || tag.includes("listing") ||
+            tag.includes("sec-cftc") || tag.includes("alt-season")) continue;
+        tagCount.set(tag, (tagCount.get(tag) || 0) + 1);
+      }
+    }
+    return Array.from(tagCount.entries())
+      .filter(([, count]) => count >= 2) // At least 2 coins have this tag
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 12)
+      .map(([tag]) => tag);
+  }, [cmcData]);
 
   // --- Global stats ---
   const { data: globalStats } = useQuery<GlobalStats>({
@@ -171,6 +228,13 @@ export function MarketIntelligence() {
 
   const filtered = useMemo(() => {
     let result = coins;
+    // Filter by tag/category
+    if (activeTag) {
+      result = result.filter((c) => {
+        const tags = symbolToTags.get(c.symbol.toUpperCase()) || [];
+        return tags.includes(activeTag);
+      });
+    }
     // Filter by watchlist toggle
     if (showWatchlistOnly && watchHydrated) {
       result = result.filter((c) => watchlist.includes(c.id));
@@ -183,7 +247,7 @@ export function MarketIntelligence() {
       );
     }
     return result;
-  }, [coins, search, showWatchlistOnly, watchlist, watchHydrated]);
+  }, [coins, search, showWatchlistOnly, watchlist, watchHydrated, activeTag, symbolToTags]);
 
   // Sort: watchlist coins first (when not in "watchlist only" mode), then by selected field
   const sorted = useMemo(() => {
@@ -265,6 +329,40 @@ export function MarketIntelligence() {
             </button>
           </div>
         </div>
+        {/* Category tags filter bar */}
+        {availableTags.length > 0 && (
+          <div className="border-t border-[var(--brand-border)]/50">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-2">
+              <div className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                <button
+                  onClick={() => setActiveTag(null)}
+                  className={cn(
+                    "shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all whitespace-nowrap",
+                    !activeTag
+                      ? "bg-[var(--brand-accent)] text-[#04201d]"
+                      : "bg-[var(--brand-surface)] border border-[var(--brand-border)] text-[var(--brand-muted)] hover:text-[var(--brand-text)]"
+                  )}
+                >
+                  {lang === "fa" ? "همه" : "All"}
+                </button>
+                {availableTags.map((tag) => (
+                  <button
+                    key={tag}
+                    onClick={() => setActiveTag(activeTag === tag ? null : tag)}
+                    className={cn(
+                      "shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all whitespace-nowrap capitalize",
+                      activeTag === tag
+                        ? "bg-[var(--brand-accent)] text-[#04201d]"
+                        : "bg-[var(--brand-surface)] border border-[var(--brand-border)] text-[var(--brand-muted)] hover:text-[var(--brand-text)] hover:border-[var(--brand-accent)]/30"
+                    )}
+                  >
+                    {tag.replace(/-/g, " ")}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Global Stats Bar */}
