@@ -7,6 +7,7 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-vazirmatn);
+  --font-display: "Estedad", var(--font-vazirmatn), system-ui, sans-serif;
   --font-mono: var(--font-jetbrains-mono);
   --font-latin: var(--font-inter);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -168,6 +169,18 @@
     font-family: var(--font-inter), var(--font-vazirmatn), system-ui, sans-serif;
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.01em;
+  }
+
+  /* Display font — Estedad (modern Persian geometric sans-serif).
+     Used for large headings (Hero title, section titles) to give a more
+     modern, distinctive look than the body Vazirmatn. Only loaded in
+     weights 800 and 900 to keep the bundle small.
+  */
+  .font-display {
+    font-family: "Estedad", var(--font-vazirmatn), system-ui, sans-serif;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    font-feature-settings: "ss01", "ss02";
   }
 
   /* Persian/Farsi digits — use Vazirmatn for proper Persian digit shapes.

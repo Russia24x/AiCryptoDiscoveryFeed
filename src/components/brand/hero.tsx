@@ -39,9 +39,17 @@ interface BtcData {
 interface TetherData {
   price: number;        // Toman per USDT
   change24h?: number;
+  high24h?: number;
+  low24h?: number;
+  volume24h?: number;
+  quoteVolume24h?: number;
+  bidPrice?: number;
+  askPrice?: number;
   source?: string;
   cached?: boolean;
   fetchedAt?: string;
+  /** Set when Iranian exchange APIs are unreachable from the server. */
+  unavailable?: boolean;
 }
 
 interface FngData {
@@ -50,6 +58,22 @@ interface FngData {
   yesterday?: number;
   lastWeek?: number;
   fetchedAt?: string;
+}
+
+interface Sp500Data {
+  symbol: string;
+  name: string;
+  price: number;
+  change24h: number;       // percent
+  changeAbs: number;       // points
+  high24h: number;
+  low24h: number;
+  previousClose: number;
+  source?: string;
+  fetchedAt?: string;
+  cached?: boolean;
+  unavailable?: boolean;
+  marketClosed?: boolean;
 }
 
 interface WeatherData {
@@ -180,7 +204,7 @@ export function Hero({ totalItems, sourcesOk, sourcesTried, onOpenSettings }: He
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.05 }}
-              className="text-3xl md:text-5xl lg:text-6xl font-extrabold leading-[1.15] tracking-tight"
+              className="font-display text-3xl md:text-5xl lg:text-6xl font-extrabold leading-[1.15] tracking-tight"
             >
               <span className="text-[var(--brand-text)]">{t.hero.titlePart1}</span>
               <span className="text-[var(--brand-accent)]">{t.hero.titleAccent}</span>
@@ -230,7 +254,11 @@ export function Hero({ totalItems, sourcesOk, sourcesTried, onOpenSettings }: He
             </motion.div>
           </div>
 
-          {/* RIGHT — live widgets grid */}
+          {/* RIGHT — live widgets grid.
+              In FA mode: BTC | Tether | Fear&Greed | Weather
+              In EN mode: BTC | S&P 500 | Fear&Greed | Weather
+              (Tether/Toman is only relevant to Iranian users; for English
+              users we show the S&P 500 index instead.) */}
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
@@ -238,7 +266,7 @@ export function Hero({ totalItems, sourcesOk, sourcesTried, onOpenSettings }: He
             className="grid grid-cols-2 gap-3 md:gap-4"
           >
             <BtcWidget />
-            <TetherWidget />
+            {lang === "fa" ? <TetherWidget /> : <Sp500Widget />}
             <FearGreedWidget />
             <WeatherWidget onOpenSettings={onOpenSettings} />
           </motion.div>
@@ -442,6 +470,11 @@ function TetherWidget() {
     >
       {loading ? (
         <SkeletonRow />
+      ) : data?.unavailable ? (
+        <div className="flex items-center gap-1.5 text-[11px] text-[var(--brand-muted)]">
+          <AlertCircle className="w-3 h-3" />
+          <span>{lang === "fa" ? "ناموجود" : "Unavailable"}</span>
+        </div>
       ) : data ? (
         <>
           <div className={cn("text-2xl md:text-3xl font-extrabold tabular-nums text-[var(--brand-text)]", numFontClass(lang))}>
@@ -472,6 +505,103 @@ function TetherWidget() {
               <span className="flex items-center gap-1">
                 <span className="opacity-60">{lang === "fa" ? "پایین:" : "L:"}</span>
                 <span className="text-red-400/80">{formatToman(data.low24h, lang)}</span>
+              </span>
+            </div>
+          )}
+        </>
+      ) : (
+        <FallbackMsg />
+      )}
+    </WidgetCard>
+  );
+}
+
+/* ============= S&P 500 widget (English mode only — replaces Tether/Toman) ============= */
+function Sp500Widget() {
+  const { lang } = useLanguage();
+  const [data, setData] = useState<Sp500Data | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    let id: ReturnType<typeof setInterval>;
+    const load = async () => {
+      try {
+        const res = await fetch("/api/market/sp500", { cache: "no-store" });
+        if (!res.ok) return;
+        const json = await res.json();
+        if (cancelled) return;
+        if (json && (json.price || json.unavailable)) {
+          setData(json);
+        }
+      } catch {
+        // ignore
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    load();
+    // Refresh every 60s — Yahoo Finance data doesn't change faster than that
+    // during market hours; after hours it's static anyway.
+    id = setInterval(load, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
+  const change = data?.change24h;
+  const up = (change ?? 0) >= 0;
+
+  return (
+    <WidgetCard
+      title="S&P 500"
+      icon={<span className="text-[10px] font-bold font-latin">$</span>}
+      accent="#10b981"
+    >
+      {loading ? (
+        <SkeletonRow />
+      ) : data?.unavailable ? (
+        <div className="flex items-center gap-1.5 text-[11px] text-[var(--brand-muted)]">
+          <AlertCircle className="w-3 h-3" />
+          <span>Market data unavailable</span>
+        </div>
+      ) : data ? (
+        <>
+          <div className={cn("text-2xl md:text-3xl font-extrabold tabular-nums text-[var(--brand-text)]", numFontClass(lang))}>
+            {formatUsd(data.price, lang)}
+          </div>
+          <div className={cn("flex items-center gap-1 text-[10px] text-[var(--brand-muted)] mt-1", numFontClass(lang))}>
+            <span>USD</span>
+            {data.cached && <span className="opacity-60">· cached</span>}
+            {data.marketClosed && (
+              <span className="opacity-60">· closed</span>
+            )}
+            {change !== undefined && (
+              <span
+                className={cn(
+                  "flex items-center gap-0.5 ml-1 font-semibold",
+                  up ? "text-[var(--brand-accent)]" : "text-red-400"
+                )}
+              >
+                {up ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
+                {formatFa(Math.abs(change).toFixed(2), lang)}%
+                <span className="opacity-60 ml-1">
+                  ({up ? "+" : "-"}{formatFa(Math.abs(data.changeAbs).toFixed(2), lang)})
+                </span>
+              </span>
+            )}
+          </div>
+          {/* 24h high/low row */}
+          {data.high24h !== undefined && data.low24h !== undefined && (
+            <div className={cn("flex items-center justify-between text-[9px] text-[var(--brand-muted)]/80 mt-1.5 pt-1.5 border-t border-[var(--brand-border)]/50", numFontClass(lang))}>
+              <span className="flex items-center gap-1">
+                <span className="opacity-60">H:</span>
+                <span className="text-[var(--brand-accent)]/80">{formatUsd(data.high24h, lang)}</span>
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="opacity-60">L:</span>
+                <span className="text-red-400/80">{formatUsd(data.low24h, lang)}</span>
               </span>
             </div>
           )}

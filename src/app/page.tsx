@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useState, useRef } from "react";
+import { useCallback, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Header } from "@/components/brand/header";
 import { Ticker } from "@/components/brand/ticker";
 import { Hero } from "@/components/brand/hero";
@@ -20,9 +21,8 @@ import { useLanguage } from "@/hooks/use-language";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 
 export default function Home() {
+  const router = useRouter();
   const {
-    category,
-    onCategoryChange,
     search,
     setSearch,
     sourceFilter,
@@ -45,11 +45,22 @@ export default function Home() {
     [setSearch]
   );
 
-  // Pull-to-refresh: triggers a full feed refetch when the user drags down
-  // from the top of the page on a touch device.
+  // Navigation: clicking "Home" stays on /, clicking a category goes to /category
+  const onCategoryChange = useCallback(
+    (c: string) => {
+      if (c === "all") {
+        // Already on home — just scroll to top
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } else {
+        router.push(`/${c}`);
+      }
+    },
+    [router]
+  );
+
+  // Pull-to-refresh
   const { touchHandlers, PullIndicator } = usePullToRefresh({
     onRefresh: async () => {
-      // Clear all client-side feed caches so the refetch is fresh.
       try {
         const keys = Object.keys(window.localStorage).filter((k) =>
           k.startsWith("acd:feed-cache:")
@@ -59,10 +70,6 @@ export default function Home() {
         // ignore
       }
       await refetch();
-      // Also reload the page after a successful pull-to-refresh to refresh
-      // the hero widgets (BTC, Tether, Fear & Greed, Weather) — they fetch
-      // independently and wouldn't pick up the cleared cache.
-      // We use a soft reload so scroll position is preserved.
       setTimeout(() => window.location.reload(), 200);
     },
   });
@@ -72,11 +79,10 @@ export default function Home() {
       {...touchHandlers}
       className="min-h-screen flex flex-col bg-[var(--brand-bg)] relative"
     >
-      {/* Pull-to-refresh indicator overlay */}
       <PullIndicator />
 
       <Header
-        activeCategory={category}
+        activeCategory="all"
         onCategoryChange={onCategoryChange}
         search={search}
         onSearchChange={setSearch}
@@ -94,13 +100,14 @@ export default function Home() {
           sourcesTried={0}
         />
 
-        {/* HUB LAYOUT — feed + channels side-by-side on desktop */}
+        {/* HUB LAYOUT — feed + channels side-by-side on desktop.
+            Home page shows MIXED content from all categories. */}
         <div id="feed" className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 md:py-12 scroll-mt-20">
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] xl:grid-cols-[1fr_400px] gap-6 lg:gap-8 items-start">
-            {/* LEFT — Live feed (main content) */}
+            {/* LEFT — Live feed (all categories mixed) */}
             <div className="min-w-0">
               <FeedGrid
-                category={category}
+                category="all"
                 search={search}
                 sourceFilter={sourceFilter}
                 onSourceChange={setSourceFilter}

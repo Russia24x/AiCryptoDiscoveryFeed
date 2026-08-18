@@ -190,44 +190,19 @@ async function tryWallex(): Promise<TetherData | null> {
   }
 }
 
-/**
- * Fallback: derive Toman price of USDT from the open ER API.
- * 1 USDT ≈ 1 USD. Open ER API gives USD→IRR.
- * 1 Toman = 10 IRR, so: tetherPrice (Toman) = USD→IRR / 10.
- *
- * This isn't the true Tether price (which is driven by Iranian market
- * demand and can be 1-3% off USD), but it's a reasonable fallback when
- * Iranian crypto exchanges are unreachable.
- */
-async function tryErApiFallback(): Promise<TetherData | null> {
-  try {
-    const res = await fetchWithTimeout(
-      "https://open.er-api.com/v6/latest/USD",
-      {},
-      FETCH_TIMEOUT_MS
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    const irr = data?.rates?.IRR;
-    if (!irr || !Number.isFinite(Number(irr))) return null;
-    // USD→IRR, convert to Toman (/10) — close approximation of USDT/Toman
-    const priceToman = Math.round(Number(irr) / 10);
-    return {
-      price: priceToman,
-      source: "open.er-api.com (USD≈USDT approximation)",
-      fetchedAt: new Date().toISOString(),
-    };
-  } catch {
-    return null;
-  }
-}
-
 export async function GET() {
   // Try each source in order; first success wins.
-  // 1. Wallex (most accurate — direct USDTTMN market)
+  // 1. Wallex (most accurate - direct USDTTMN market)
   // 2. Nobitex (also direct USDT-RLS orderbook)
-  // 3. open.er-api.com fallback (USD≈USDT approximation)
-  const sources = [tryWallex, tryNobitex, tryErApiFallback];
+  //
+  // IMPORTANT: We DO NOT fall back to open.er-api.com anymore. The previous
+  // fallback returned the OFFICIAL USD->IRR rate (set by Central Bank of Iran),
+  // which is 30-40% LOWER than the FREE MARKET rate that Iranian crypto
+  // exchanges actually trade at. This caused the production bug where users
+  // saw 134,518 Toman (official rate) instead of ~187,000 (real market rate).
+  // When we can't reach Iranian exchanges, we return an explicit "unavailable"
+  // status so the UI can show "ناموجود" instead of misleading the user.
+  const sources = [tryWallex, tryNobitex];
   for (const src of sources) {
     const result = await src();
     if (result) {
@@ -240,7 +215,11 @@ export async function GET() {
     }
   }
 
-  // All upstreams failed — return cached value if available
+  // All Iranian exchange upstreams failed.
+  // - If we have a cached value from a recent successful fetch, use it
+  //   (with a cached: true flag so the UI can show "cached").
+  // - Otherwise, return unavailable: true so the UI knows to show
+  //   "ناموجود" instead of misleading the user with the official USD->IRR rate.
   if (cached) {
     return NextResponse.json(
       { ...cached, cached: true, fetchedAt: new Date().toISOString() },
@@ -252,12 +231,18 @@ export async function GET() {
     );
   }
 
-  // No data anywhere
+  // No data anywhere - explicitly tell the UI it's unavailable.
   return NextResponse.json(
     {
-      error: "All upstream sources failed",
+      unavailable: true,
+      error: "Iranian exchange APIs (Wallex, Nobitex) are unreachable from this server. Cannot provide real free-market USDT/Toman rate.",
       fetchedAt: new Date().toISOString(),
     },
-    { status: 200 }
+    {
+      status: 200,
+      headers: {
+        "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
+      },
+    }
   );
 }

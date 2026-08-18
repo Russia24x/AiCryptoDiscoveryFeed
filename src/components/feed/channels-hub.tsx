@@ -181,37 +181,53 @@ export function ChannelsHub({ lang, onOpenBookmarks }: ChannelsHubProps) {
   }, []);
 
   return (
-    <div className="rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)] overflow-hidden">
-      {/* Header */}
-      <div className="px-4 py-3 border-b border-[var(--brand-border)] bg-gradient-to-br from-[var(--brand-accent-soft)] to-transparent">
-        <div className="flex items-center justify-between">
+    <div className="rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)] overflow-hidden shadow-lg shadow-black/20">
+      {/* Header — gradient with subtle glow */}
+      <div className="relative px-4 py-3 border-b border-[var(--brand-border)] bg-gradient-to-br from-[var(--brand-accent-soft)] via-[var(--brand-surface)] to-transparent">
+        {/* Subtle pattern overlay */}
+        <div
+          className="absolute inset-0 opacity-30 pointer-events-none"
+          style={{
+            backgroundImage: "radial-gradient(circle at 20% 50%, rgba(45, 212, 191, 0.15), transparent 60%)",
+          }}
+        />
+        <div className="relative flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Send className="w-4 h-4 text-[var(--brand-accent)]" />
-            <h2 className="text-sm font-bold">
+            {/* Animated pulse on the Send icon to indicate "live" */}
+            <div className="relative">
+              <Send className="w-4 h-4 text-[var(--brand-accent)]" />
+              <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-[var(--brand-accent)] animate-pulse" />
+            </div>
+            <h2 className="text-sm font-bold font-display">
               <span className="text-[var(--brand-text)]">{t.channels.title} </span>
               <span className="text-[var(--brand-accent)]">{t.channels.titleAccent}</span>
             </h2>
+            {/* Channel count badge */}
+            <span className="text-[9px] font-latin text-[var(--brand-muted)] bg-[var(--brand-surface-2)] px-1.5 py-0.5 rounded-full">
+              {filteredTg.length + filteredX.length}
+            </span>
           </div>
           <Button
             variant="ghost"
             size="sm"
             className="h-7 text-xs px-2 text-[var(--brand-muted)] hover:text-[var(--brand-accent)]"
             onClick={onOpenBookmarks}
+            aria-label={t.nav.bookmarks}
           >
             <ExternalLink className="w-3 h-3" />
           </Button>
         </div>
       </div>
 
-      {/* Category filter chips — modern graphical pills */}
+      {/* Category filter chips — modern graphical pills with no-scrollbar */}
       <div className="px-3 py-2.5 border-b border-[var(--brand-border)]">
-        <div className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:thin]">
+        <div className="no-scrollbar flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: "none", touchAction: "pan-y" }}>
           <button
             onClick={() => setActiveCat("all")}
             className={cn(
               "shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition-all whitespace-nowrap",
               activeCat === "all"
-                ? "bg-[var(--brand-accent)] text-[#04201d] font-bold shadow-sm"
+                ? "bg-[var(--brand-accent)] text-[#04201d] font-bold shadow-sm shadow-[var(--brand-accent)]/30"
                 : "bg-[var(--brand-surface-2)] border border-[var(--brand-border)] text-[var(--brand-muted)] hover:text-[var(--brand-text)] hover:border-[var(--brand-accent)]/30"
             )}
           >

@@ -1,11 +1,12 @@
 import type { Metadata, Viewport } from "next";
 import { Vazirmatn, Inter, JetBrains_Mono } from "next/font/google";
+import "@fontsource/estedad/800.css";
+import "@fontsource/estedad/900.css";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 
-// Vazirmatn — modern, slightly humanist Persian font (next/font/google only
-// has v1 available; v2 requires a manual @fontsource setup if needed).
+// Vazirmatn — primary Persian UI font (clean, modern, readable for body text).
 const vazirmatn = Vazirmatn({
   subsets: ["arabic", "latin"],
   variable: "--font-vazirmatn",
