@@ -1,100 +1,67 @@
-# Deployment Guide — Cloudflare Pages (Free Tier)
+# Deployment Guide — Ai Crypto Discovery
 
-This guide walks you through deploying Ai Crypto Discovery to Cloudflare Pages using GitHub integration.
-
-**Cost: $0** — runs entirely on Cloudflare's free tier.
+This guide covers deploying the project to **Cloudflare Pages** (free tier).
 
 ---
 
-## 📋 Prerequisites
+## Prerequisites
 
-1. **GitHub account** — the repo is at `Russia24x/AiCryptoDiscoveryFeed`
-2. **Cloudflare account** — sign up free at [cloudflare.com](https://cloudflare.com)
-3. **No database needed** — the project is fully stateless
+1. A GitHub account with the repo pushed
+2. A Cloudflare account (free)
+3. Node.js 18+ installed locally
 
 ---
 
-## 🚀 Method 1: Cloudflare Dashboard (Recommended)
+## Option 1: Cloudflare Pages Dashboard (Recommended)
 
-### Step 1: Log into Cloudflare
+### Step 1: Connect Repository
 
-1. Go to [dash.cloudflare.com](https://dash.cloudflare.com)
-2. Sign in (or create a free account)
+1. Log into [Cloudflare Dashboard](https://dash.cloudflare.com)
+2. Go to **Workers & Pages** → **Create application** → **Pages** → **Connect to Git**
+3. Select the `Russia24x/AiCryptoDiscoveryFeed` repository
+4. Choose a project name (e.g., `ai-crypto-discovery`)
 
-### Step 2: Create a Pages Project
-
-1. In the left sidebar, click **Workers & Pages**
-2. Click **Create application** → **Pages** tab → **Connect to Git**
-3. Connect your GitHub account if not already connected
-4. Select the repository: `Russia24x/AiCryptoDiscoveryFeed`
-5. Click **Begin setup**
-
-### Step 3: Configure Build Settings
-
-Fill in the following:
+### Step 2: Build Configuration
 
 | Setting | Value |
 |---|---|
-| **Project name** | `ai-crypto-discovery` (or any name you like) |
-| **Production branch** | `main` |
-| **Framework preset** | `Next.js` |
+| **Framework preset** | Next.js |
 | **Build command** | `npx @cloudflare/next-on-pages@1` |
 | **Build output directory** | `.vercel/output/static` |
-| **Root directory** | `/` (default) |
+| **Root directory** | (leave empty) |
+| **Environment variables** | (none required — see note below) |
 
-### Step 4: Environment Variables
+### Step 3: Advanced Settings
 
-**None required.** The project has no mandatory environment variables.
+In the Cloudflare Pages dashboard, under **Settings** → **Functions**:
 
-Optional (for future use):
-- `NODE_VERSION` = `18` (if Cloudflare doesn't auto-detect)
+- **Compatibility flags**: `nodejs_compat`
+- **Compatibility date**: `2024-09-25` or later
 
-### Step 5: Deploy
+These are already configured in `wrangler.toml`.
 
-1. Click **Save and Deploy**
-2. Wait for the build to complete (first build takes ~3-5 minutes)
-3. Cloudflare will assign a URL like: `https://ai-crypto-discovery.pages.dev`
+### Step 4: Deploy
 
-### Step 6: Verify
+Click **Save and Deploy**. Cloudflare will:
+1. Clone the repo
+2. Run `npm install --legacy-peer-deps` (using `.npmrc`)
+3. Run `npx @cloudflare/next-on-pages@1`
+4. Deploy the output to global Cloudflare CDN
 
-Once deployed, visit your URL. You should see:
-- ✅ Homepage loads with hero, ticker, feed grid
-- ✅ Articles display with images (lazy-loaded)
-- ✅ Telegram channel previews work
-- ✅ Article reader opens when clicking a card
-- ✅ Language toggle (FA/EN) works
+**Build time**: ~3-5 minutes
 
 ---
 
-## 🔧 Method 2: Wrangler CLI (Advanced)
-
-If you prefer the command line:
-
-### Install Wrangler
+## Option 2: Wrangler CLI
 
 ```bash
+# Install wrangler
 npm install -g wrangler
-# or
-bun add -g wrangler
-```
 
-### Login to Cloudflare
-
-```bash
+# Login to Cloudflare
 wrangler login
-```
 
-This opens a browser to authenticate.
-
-### Build and Deploy
-
-```bash
-cd /path/to/AiCryptoDiscoveryFeed
-
-# Install deps
-bun install
-
-# Build for Cloudflare Pages
+# Build
 npx @cloudflare/next-on-pages@1
 
 # Deploy
@@ -103,155 +70,90 @@ wrangler pages deploy .vercel/output/static --project-name=ai-crypto-discovery
 
 ---
 
-## ⚙️ Custom Domain (Optional)
+## Important Notes
 
-To use your own domain instead of `*.pages.dev`:
+### 1. Edge Runtime
+All API routes use `export const runtime = "edge"`. This is **required** for Cloudflare Pages — the Node.js runtime is not available.
 
-1. In Cloudflare Pages → your project → **Custom domains**
-2. Click **Set up a custom domain**
-3. Enter your domain (e.g., `discovery.yourdomain.com`)
-4. Cloudflare will guide you to add a CNAME record
-5. SSL is automatically provisioned (free)
+### 2. Image Optimization
+`next.config.ts` has `images.unoptimized: true` because Cloudflare Pages doesn't support the default Next.js image optimizer. Images are served as-is.
 
----
+### 3. Peer Dependencies
+`.npmrc` contains `legacy-peer-deps=true` because `@cloudflare/next-on-pages` has a peer dependency on Next.js ≤15.5.2, but we use Next.js 16. The adapter works fine despite the warning.
 
-## 📊 Free Tier Limits
+### 4. Environment Variables
+**No environment variables are required**. All API keys are handled via keyless public APIs:
+- CoinMarketCap: `data-api/v3/*` (keyless)
+- CoinGecko: free tier (30 calls/min, no key)
+- DefiLlama: no key, no rate limit
+- Binance: public ticker (no key)
+- Open-Meteo: free (10K calls/day, no key)
 
-Cloudflare Pages free tier is **very generous** — more than enough for this project:
+### 5. Free Tier Limits
 
-| Resource | Free Tier Limit | This Project's Usage |
+| Resource | Free Tier Limit | Our Usage |
 |---|---|---|
-| **Builds** | 500 per month | ~10-20 (one per push to `main`) |
-| **Bandwidth** | Unlimited | — |
-| **Requests** | Unlimited | — |
-| **Functions invocations** | 100,000 per day | ~5,000-10,000/day (estimated) |
-| **Concurrent builds** | 1 | — |
+| Builds | 500/month | ~10/month |
+| Bandwidth | Unlimited | — |
+| Requests | Unlimited | — |
+| Functions invocations | 20,000/day | ~5,000/day (with caching) |
+| Edge cache | Unlimited | — |
 
-**You will not hit any free tier limits** under normal usage.
+**How we stay within limits:**
+- All API routes are edge-cached (60s-900s depending on data freshness)
+- TanStack Query adds client-side caching (30s-15min staleTime)
+- In-memory fallback cache when upstream APIs fail
+- No polling on server — all polling is client-side via TanStack Query
 
----
+### 6. Iranian API Geo-blocking
 
-## 🔄 Continuous Deployment
+Some APIs are geo-blocked from certain Cloudflare PoPs:
+- **Binance**: blocked from US PoPs → fallback chain: Binance → Coinbase → CoinGecko
+- **Wallex/Nobitex**: may be blocked from US PoPs → returns `unavailable: true` (UI shows "ناموجود")
+- **CoinGecko**: rate-limited (30 calls/min) → retry with exponential backoff + in-memory cache
 
-Once connected to GitHub, Cloudflare Pages automatically:
+This is by design — the fallback chains ensure the app works globally.
 
-1. **Builds on every push to `main`** → deploys to production
-2. **Builds on every pull request** → deploys a preview URL (e.g., `pr-123.ai-crypto-discovery.pages.dev`)
-3. **Rolls back instantly** if a deploy fails (previous version stays live)
+### 7. TypeScript Strict Mode
 
-To trigger a new deployment:
-```bash
-git push origin main
-```
-
-Cloudflare builds in ~3-5 minutes. Watch the build log in the Cloudflare dashboard.
-
----
-
-## 🐛 Troubleshooting
-
-### Build fails with "Cannot find module @cloudflare/next-on-pages"
-
-The adapter is listed in `devDependencies`. Make sure the build command uses `npx`:
-```
-npx @cloudflare/next-on-pages@1
-```
-
-### Build fails with "Node.js version mismatch"
-
-Cloudflare Pages uses Node.js 18 by default. If you need a different version, add an environment variable:
-- **Key**: `NODE_VERSION`
-- **Value**: `18` (or `20`)
-
-### Articles don't load content
-
-The `/api/article` route fetches HTML from external sites server-side. Some sites may block Cloudflare IPs. Check:
-1. Cloudflare dashboard → your project → **Functions** → view logs
-2. The route returns `{"error": "Failed to fetch article"}` if the source blocks the request
-
-### Telegram channel preview is empty
-
-This means the channel is private (no public web preview at `t.me/s/<handle>`). The UI will show "Channel is private" with a link to open in Telegram directly.
-
-### Images not loading
-
-Images are lazily fetched via `/api/og-image`. Check:
-1. Browser console for errors
-2. Network tab — `/api/og-image` should return `{"url": "https://..."}`
-3. The source site may block the `og:image` fetch — falls back to placeholder
-
-### "Application error" on page load
-
-This usually means a Turbopack cache issue. The fix:
-```bash
-rm -rf .next
-bun run dev
-```
-
-Or for production:
-```bash
-rm -rf .vercel .next
-npx @cloudflare/next-on-pages@1
-```
-
-### Function timeout
-
-Cloudflare Pages Functions have a **10-second CPU time limit** on the free tier. Our API routes use:
-- `/api/feed`: 5s per source, but sources run concurrently (max 5 at once) — total ~6s
-- `/api/article`: 12s timeout — **may exceed CF limit**, but edge cache makes this rare
-- `/api/channel`: 12s timeout — same as above
-- `/api/og-image`: 8s timeout — within limit
-- `/api/prices`: 10s timeout — within limit
-
-If you hit timeouts, the cached response will still be served.
+`tsconfig.json` has `strict: true` and `next.config.ts` has `ignoreBuildErrors: false`. The build will **fail** on any TypeScript error. This is intentional — it catches bugs before they reach production.
 
 ---
 
-## 🔍 Monitoring
+## Custom Domains
 
-### View Build Logs
-1. Cloudflare dashboard → Workers & Pages → your project
-2. Click the latest deployment → **Build log**
-
-### View Function Logs
-1. Cloudflare dashboard → Workers & Pages → your project
-2. **Functions** tab → select a route (e.g., `/api/feed`)
-3. View real-time invocation logs
-
-### Analytics
-Cloudflare provides free analytics:
-- Request count
-- Bandwidth
-- Cache hit rate
-- Geographic distribution
+After deployment, you can add a custom domain in the Cloudflare Pages dashboard:
+1. Go to **Custom domains** → **Set up a custom domain**
+2. Enter your domain (e.g., `ai-crypto-discovery.pages.dev`)
+3. Cloudflare will configure DNS and SSL automatically
 
 ---
 
-## 🆘 Getting Help
+## Monitoring
 
-- **Cloudflare Pages docs**: [developers.cloudflare.com/pages](https://developers.cloudflare.com/pages/)
-- **@cloudflare/next-on-pages**: [github.com/cloudflare/next-on-pages](https://github.com/cloudflare/next-on-pages)
-- **Project worklog**: `worklog.md` in the repo root
-
----
-
-## ✅ Deployment Checklist
-
-Before deploying:
-- [ ] Code pushed to GitHub `main` branch
-- [ ] `bun run lint` passes with 0 errors
-- [ ] `bun run dev` works locally
-- [ ] No `.env` files in git (verified by `.gitignore`)
-
-After deploying:
-- [ ] Homepage loads
-- [ ] Feed displays articles
-- [ ] Article reader opens on card click
-- [ ] Telegram preview shows recent posts
-- [ ] Language toggle (FA/EN) works
-- [ ] Bookmarks persist across reload
-- [ ] Mobile layout responsive
+- **Cloudflare Analytics**: Available in the dashboard (requests, bandwidth, function invocations)
+- **TanStack Query DevTools**: Available in development mode (floating button at bottom-left)
+- **Console logs**: Check browser console for any runtime errors
 
 ---
 
-_Deployed app URL: add your URL here after deployment._
+## Troubleshooting
+
+### Build Fails
+1. Check that `npm install --legacy-peer-deps` succeeds locally
+2. Check that `npx tsc --noEmit` returns 0 errors
+3. Check that `npm run build` succeeds locally
+4. Check Cloudflare Pages build logs for specific errors
+
+### API Routes Return 500
+1. Check that all routes have `export const runtime = "edge"`
+2. Check Cloudflare Functions logs in the dashboard
+3. Some upstream APIs may be temporarily down — check their status pages
+
+### Images Don't Load
+- Images from external sources (RSS, Telegram) use `referrerPolicy: "no-referrer"` to avoid hotlink protection
+- If images still don't load, it's likely the source website blocking Cloudflare IPs — not fixable on our end
+
+---
+
+_Last updated: 2026-08-19 — Phase 17 complete._
