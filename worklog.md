@@ -3192,3 +3192,26 @@ Stage Summary:
 - مرحله 10 (تست preview) و 11 (تنظیم GitHub auto-deploy در Cloudflare Workers Builds) و 12 (cutover) باقی مانده.
 - پیشنهاد: قبل از cutover نهایی، در یک staging Worker تست شود.
 - فایل‌های تغییریافته: 32 (شامل 28 فایل source، package.json، package-lock.json، next.config.ts، .gitignore، wrangler.jsonc جدید، open-next.config.ts جدید، .dev.vars.example جدید، حذف .npmrc و wrangler.toml).
+
+---
+Task ID: 22
+Agent: Claude (advisor/auditor session)
+Task: بررسی نیاز واقعی به R2 incremental cache و تصمیم برای حذفش — پروژه از اول local-first بوده و کاربر نمی‌خواد کارت اعتباری به Cloudflare بده.
+
+Work Log:
+- چک شد: فعال‌سازی R2 (حتی پلن رایگان) نیاز به ثبت کارت اعتباری در Cloudflare داره؛ Workers + Static Assets این نیاز رو ندارن.
+- قبل از حذف R2، همه‌ی ۳۵ فایل page.tsx/route.ts در src/app گرپ شد تا مطمئن بشیم چیزی واقعاً به Incremental Cache نیاز نداره:
+  - همه‌ی ۲۷ API route + صفحه‌ی coin: force-dynamic (از کش رد می‌شن).
+  - src/app/page.tsx، crypto/market/page.tsx، crypto/market/[coin]/page.tsx: "use client"، بدون fetch سمت سرور.
+  - ai/tech/gaming/entertainment/crypto: همه از کامپوننت مشترک CategoryPage استفاده می‌کنن که اونم "use client"‌ـه.
+  - src/app/api/route.ts: فقط JSON ثابت، بدون fetch.
+  - نتیجه: هیچ صفحه‌ای در کل پروژه به Incremental Cache نیاز نداره؛ dummy cache پیش‌فرض OpenNext هیچ‌وقت صدا زده نمی‌شه.
+- تغییرات:
+  - wrangler.jsonc: حذف r2_buckets binding (با کامنت توضیحی).
+  - open-next.config.ts: حذف import و استفاده از r2IncrementalCache؛ defineCloudflareConfig({}) خالی با کامنت توضیحی کامل (چرا، و چطور برگردوندنش در آینده).
+  - .dev.vars.example دست‌نخورده موند (رفرنسی به R2 نداشت).
+
+Stage Summary:
+- پروژه حالا کاملاً بدون نیاز به کارت اعتباری روی Cloudflare قابل دیپلویه (فقط Workers + Static Assets).
+- اگه در آینده صفحه‌ای به Server Component با fetch/revalidate واقعی تبدیل بشه، باید R2 (یا KV) دوباره اضافه بشه — نکته در کامنت open-next.config.ts مستند شده.
+- مراحل ۱۰ (preview)، ۱۱ (Workers Builds در داشبورد)، ۱۲ (cutover) هنوز باقی مونده و نیاز به اقدام دستی کاربر در داشبورد Cloudflare داره.

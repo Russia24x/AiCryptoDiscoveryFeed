@@ -8,12 +8,13 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
-  "r2_buckets": [
-    {
-      "binding": "NEXT_INC_CACHE_R2_BUCKET",
-      "bucket_name": "ai-crypto-cache"
-    }
-  ],
+  // No r2_buckets binding: project is local-first (all data fetching is
+  // client-side; every API route is force-dynamic). The Next.js Incremental
+  // Cache is never invoked, so there is nothing for R2 to cache — and R2
+  // is the one Cloudflare product that requires a card on file even on the
+  // free tier. Workers + Static Assets do not. See open-next.config.ts for
+  // the corresponding cache config, and worklog.md Task 22 for the audit
+  // that confirmed this is safe.
   "observability": {
     "enabled": true
   }
