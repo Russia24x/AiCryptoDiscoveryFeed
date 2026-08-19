@@ -120,8 +120,6 @@ ai-crypto-discovery/
 | Endpoint | Source | Cache (edge) | Fallback | Purpose |
 |---|---|---|---|---|
 | `/api/market/binance-ticker` | Binance → Coinbase → CoinGecko | 10s | In-memory | 14-coin real-time ticker |
-| `/api/market/iran-tether` | Wallex → Nobitex | 30s | In-memory | Tether/Toman price (real market rate) |
-| `/api/market/sp500` | Yahoo Finance | 60s | In-memory | S&P 500 index (English mode) |
 | `/api/market/fear-greed` | alternative.me | 900s | In-memory | Crypto Fear & Greed Index |
 | `/api/market/fear-greed-historical` | alternative.me | 900s | — | Historical F&G (7-365 days) |
 | `/api/market/cmc-listings` | CoinMarketCap (keyless) | 60s | In-memory | Top 100 coins with tags |
@@ -129,17 +127,26 @@ ai-crypto-discovery/
 | `/api/market/cmc-coin` | CoinMarketCap (keyless) | 300s | — | Coin metadata (tags, logo, URLs) |
 | `/api/market/cmc-categories` | CoinMarketCap (keyless) | 300s | — | Categories list |
 | `/api/market/top-gainers` | Our cmc-listings | 60s | — | Top gainers (24h change >5%) |
-| `/api/market/altcoin-season` | Our cmc-listings | 300s | — | Altcoin Season Index (computed) |
 | `/api/market/global-stats` | Our cmc-global | 60s | — | Global stats wrapper |
 | `/api/market/trending` | CoinGecko | 300s | — | Trending coins (search) |
 | `/api/market/coingecko-markets` | CoinGecko | 60s | In-memory + retry | Top 100 markets table |
 | `/api/market/coingecko-coin` | CoinGecko | 120s | In-memory + retry | Full coin detail |
-| `/api/market/coingecko-categories` | CoinGecko | 600s | — | Categories list (rate-limited) |
-| `/api/market/defillama` | DefiLlama | 300s | — | Generic DefiLlama proxy |
-| `/api/market/defillama-protocol` | DefiLlama /v2/protocols | 300s | — | Protocol TVL by gecko_id |
-| `/api/market/defillama-summary` | DefiLlama /overview/fees + /summary/fees | 300s | — | Fees + methodology + chart |
 | `/api/weather` | Open-Meteo | 600s | — | Weather by lat/lon |
 | `/api/weather/geocode` | Open-Meteo Geocoding | 3600s | — | City search worldwide |
+
+> **Note (Phase 21)**: The following API routes were removed to reduce
+> resource consumption and Worker exceeded errors:
+> - `/api/market/iran-tether` (Wallex/Nobitex geoblocked from Cloudflare Workers)
+> - `/api/market/sp500` (Yahoo Finance rate-limits/times out)
+> - `/api/market/altcoin-season` (non-essential)
+> - `/api/market/defillama`, `/api/market/defillama-protocol`,
+>   `/api/market/defillama-summary` (the last one took 11.8s and caused
+>   Cloudflare Worker resource limit errors)
+> - `/api/market/coingecko-categories` (dead code — was never called from UI)
+>
+> The TetherWidget and Sp500Widget now show static informational widgets
+> with links to nobitex.com and finance.yahoo.com respectively, instead
+> of fetching live data that was always failing.
 
 ### API Architecture
 
