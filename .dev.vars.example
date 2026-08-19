@@ -1,0 +1,8 @@
+# Local development environment variables for OpenNext Cloudflare bindings.
+# Copy this file to `.dev.vars` (which is gitignored) and fill in real values
+# for local development. In production, these are set as Worker secrets via
+# `wrangler secret put NAME` or in the Cloudflare dashboard.
+#
+# This file is committed to the repo ONLY as a template — actual .dev.vars
+# with real values must never be committed.
+NEXTJS_ENV=development

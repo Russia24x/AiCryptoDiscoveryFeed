@@ -3126,3 +3126,69 @@ Stage Summary:
   - `src/hooks/use-read-later.ts` — defensive rename + added warning comment
 - Build verified clean locally.
 - Ready to commit and push.
+
+---
+Task ID: 21
+Agent: main
+Task: مهاجرت کامل از @cloudflare/next-on-pages به @opennextjs/cloudflare (OpenNext) — مراحل 1 تا 9.
+
+Work Log:
+- ایجاد branch feat/opennext از main.
+- مرحله 1 — نصب پکیج‌ها:
+  - @opennextjs/cloudflare@1.20.2 (latest stable)
+  - wrangler@4.124.0 (latest stable، ارتقا از 3.114.17)
+  - @cloudflare/workers-types@5.20260819.1 (latest)
+  - تأیید شد: next-on-pages قبلاً dependency نبوده (همانطور که کاربر اشاره کرد).
+- مرحله 2 — wrangler.toml → wrangler.jsonc:
+  - main: .open-next/worker.js
+  - compatibility_date: 2026-08-18
+  - compatibility_flags: nodejs_compat, global_fetch_strictly_public
+  - assets: .open-next/assets با binding ASSETS
+  - r2_buckets: NEXT_INC_CACHE_R2_BUCKET → ai-crypto-cache
+  - observability: enabled
+- مرحله 3 — open-next.config.ts:
+  - استفاده از r2IncrementalCache برای ISR/SSG cache
+  - (DO queue و D1 tag cache فعلاً فعال نشدن چون API routes از fetch استفاده می‌کنن با CDN caching خودشان)
+- مرحله 4 — package.json scripts:
+  - اضافه شدن preview، deploy، upload، cf-typegen
+  - بروزرسانی range next از ^16.1.1 به ^16.3.1 (زیر floor OpenNext بود)
+  - بروزرسانی eslint-config-next هم به ^16.3.1
+- مرحله 5 — next.config.ts:
+  - حذف کامنت‌های قدیمی next-on-pages
+  - اضافه شدن initOpenNextCloudflareForDev() برای bindings محلی
+  - حفظ optimizePackageImports و images.unoptimized
+- مرحله 6 — حذف export const runtime = "edge" از 28 فایل:
+  - 27 فایل در src/app/api/ (همه API routes)
+  - 1 فایل در src/app/crypto/market/[coin]/page.tsx
+  - پاک‌سازی کامنت قدیمی Cloudflare Pages در همان فایل
+- مرحله 7 — حذف .npmrc (legacy-peer-deps مخصوص next-on-pages بود)
+- مرحله 8 — آپدیت .gitignore:
+  - اضافه شدن .open-next/، .dev.vars، cloudflare-env.d.ts، .wrangler/
+  - ایجاد .dev.vars.example به‌عنوان template
+- مرحله 9 — R2 bucket:
+  - نام bucket: ai-crypto-cache (در wrangler.jsonc پیکربندی شد)
+  - ایجاد واقعی bucket نیاز به wrangler login دارد که در محیط ما ممکن نیست
+  - کاربر باید قبل از deploy اولین بار این دستور را اجرا کند:
+    npx wrangler r2 bucket create ai-crypto-cache
+- تأیید کیفیت:
+  - TypeScript: npx tsc --noEmit → تمیز
+  - next build: موفق
+  - opennextjs-cloudflare build: موفق
+  - wrangler deploy --dry-run: موفق
+  - خطاهای eslint از قبل روی main وجود داشتند (react-hooks/set-state-in-effect) — ربطی به این مهاجرت ندارن
+- اندازه‌گیری حجم Worker نهایی:
+  - قبل (next-on-pages): 10.6 MiB (بالای حد رایگان و پولی)
+  - بعد (OpenNext): 1.36 MiB gzip (بسیار زیر حد رایگان 3 MiB)
+  - بهبود: 87% کاهش حجم gzip
+  - فایل اصلی: .open-next/server-functions/default/handler.mjs (4.4 MiB raw، 1.10 MiB gzip)
+  - assets: 69 فایل static
+  - bindings: R2 (ai-crypto-cache) + ASSETS
+
+Stage Summary:
+- مهاجرت کامل از next-on-pages به OpenNext با موفقیت انجام شد.
+- حجم Worker از 10.6 MiB به 1.36 MiB (gzip) کاهش یافت — زیر حد رایگان.
+- همه 28 فایل runtime="edge" حذف شدند.
+- پیکربندی R2 cache آماده است (کاربر باید bucket را یکبار با wrangler بسازد).
+- مرحله 10 (تست preview) و 11 (تنظیم GitHub auto-deploy در Cloudflare Workers Builds) و 12 (cutover) باقی مانده.
+- پیشنهاد: قبل از cutover نهایی، در یک staging Worker تست شود.
+- فایل‌های تغییریافته: 32 (شامل 28 فایل source، package.json، package-lock.json، next.config.ts، .gitignore، wrangler.jsonc جدید، open-next.config.ts جدید، .dev.vars.example جدید، حذف .npmrc و wrangler.toml).
