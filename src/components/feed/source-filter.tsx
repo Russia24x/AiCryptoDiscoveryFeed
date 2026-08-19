@@ -204,7 +204,7 @@ export function SourceFilter({
         <span className="text-[11px] font-latin uppercase tracking-wider text-[var(--brand-muted)]">
           {t.feed.sourceFilter}
         </span>
-        <span className="text-[10px] font-latin text-[var(--brand-muted)]/60 ml-auto">
+        <span className="text-[10px] font-latin text-[var(--brand-muted)]/60 ml-auto" suppressHydrationWarning>
           {sources.length} {lang === "fa" ? "منبع" : "sources"}
         </span>
         {activeSourceId && (

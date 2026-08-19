@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { RefreshCw, LayoutGrid, List, Filter } from "lucide-react";
 import type { FeedItem } from "@/types/feed";
 import { useFeed } from "@/hooks/use-feed";
@@ -36,6 +36,11 @@ export function FeedGrid({
     sourceFilter,
     lang
   );
+  // Track if component has mounted on the client.
+  // This prevents SSR hydration mismatches for elements that depend on
+  // runtime data (localStorage cache, timestamps, locale-formatted numbers).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
   // Separate fetch for source counts — only when no source filter is applied
   // (otherwise counts would be misleading). Uses the existing cache so it's
   // basically free if the user has already fetched this category.
@@ -88,19 +93,20 @@ export function FeedGrid({
       {/* Section header */}
       <div className="flex flex-wrap items-end justify-between gap-3 mb-6">
         <div>
-          <div className="flex items-center gap-2 text-[11px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-1.5" suppressHydrationWarning>
+          <div className="flex items-center gap-2 text-[11px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-1.5">
             <Filter className="w-3.5 h-3.5" />
             <span>{t.feed.feedLive}</span>
-            {data?.fetchedAt && (
+            {/* Only render timestamp after mount to avoid SSR hydration mismatch. */}
+            {mounted && data?.fetchedAt && (
               <span className="text-[var(--brand-muted)]/60">
                 · {t.feed.updated} {new Date(data.fetchedAt).toLocaleTimeString("en-GB")}
               </span>
             )}
           </div>
-          <h2 className="text-xl md:text-2xl font-bold flex items-center gap-3" suppressHydrationWarning>
+          <h2 className="text-xl md:text-2xl font-bold flex items-center gap-3">
             <span className="text-[var(--brand-text)]">{title}</span>
             <span className="text-sm font-latin text-[var(--brand-accent)] bg-[var(--brand-accent-soft)] px-2 py-0.5 rounded-md">
-              {formatNumber(count, lang)}
+              {mounted ? formatNumber(count, lang) : ""}
             </span>
           </h2>
         </div>

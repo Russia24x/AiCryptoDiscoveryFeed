@@ -51,7 +51,7 @@ export function TrendingTags({ items, onTagClick }: TrendingTagsProps) {
           >
             <Hash className="w-3 h-3 text-[var(--brand-accent)]/60 group-hover:text-[var(--brand-accent)]" />
             <span className="truncate max-w-[180px]">{tag}</span>
-            <span className="text-[10px] text-[var(--brand-muted)]/60 ml-1">
+            <span className="text-[10px] text-[var(--brand-muted)]/60 ml-1" suppressHydrationWarning>
               {formatNumber(count, lang)}
             </span>
           </button>

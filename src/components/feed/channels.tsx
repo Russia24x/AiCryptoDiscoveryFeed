@@ -241,7 +241,7 @@ export function Channels() {
           <span className="font-latin uppercase tracking-wider">
             {t.channels.telegramTitle}
           </span>
-          <span className="text-[10px] font-latin text-[var(--brand-muted)]/60">
+          <span className="text-[10px] font-latin text-[var(--brand-muted)]/60" suppressHydrationWarning>
             {filteredTg.length}
           </span>
         </div>
@@ -342,7 +342,7 @@ export function Channels() {
           <span className="font-latin uppercase tracking-wider">
             {t.channels.twitterTitle}
           </span>
-          <span className="text-[10px] font-latin text-[var(--brand-muted)]/60">
+          <span className="text-[10px] font-latin text-[var(--brand-muted)]/60" suppressHydrationWarning>
             {filteredX.length}
           </span>
         </div>
