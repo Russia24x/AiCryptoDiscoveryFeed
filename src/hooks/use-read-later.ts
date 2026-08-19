@@ -16,7 +16,9 @@ import { useCallback, useEffect, useState } from "react";
  */
 
 const STORAGE_KEY = "acd:read-later";
-const MAX_ENTRIES = 100;
+// NOTE: Renamed from MAX_ENTRIES to avoid an esbuild minifier bug on
+// Cloudflare Pages. See use-search-history.ts for the full explanation.
+const QUEUE_LIMIT = 100;
 const TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 export interface ReadLaterEntry {
@@ -132,7 +134,7 @@ export function useReadLater() {
       const next = [
         { ...entry, addedAt: new Date().toISOString() },
         ...current,
-      ].slice(0, MAX_ENTRIES);
+      ].slice(0, QUEUE_LIMIT);
       writeStorage(next);
       setEntries(next);
       return true;

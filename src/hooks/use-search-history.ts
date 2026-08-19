@@ -17,7 +17,14 @@ import { useCallback, useEffect, useState } from "react";
  */
 
 const STORAGE_KEY = "acd:search-history";
-const MAX_ENTRIES = 12;
+// NOTE: Do NOT name this `MAX_ENTRIES` — that identifier triggers a bug in
+// esbuild's minifier when combined with Turbopack's output for Cloudflare
+// Pages (@cloudflare/next-on-pages). The minifier concatenates it with the
+// next statement (globalThis._ENTRIES) producing invalid syntax:
+//   `MAXglobalThis._ENTRIES:12}}function ...`
+// Renaming to `LIMIT` avoids the bug. See:
+// https://github.com/cloudflare/next-on-pages/issues/500
+const HISTORY_LIMIT = 12;
 const MIN_QUERY_LENGTH = 2;
 const DEBOUNCE_MS = 1500;
 
@@ -79,7 +86,7 @@ export function useSearchHistory() {
     const next = [
       { query: trimmed, timestamp: Date.now() },
       ...filtered,
-    ].slice(0, MAX_ENTRIES);
+    ].slice(0, HISTORY_LIMIT);
     writeStorage(next);
     setEntries(next);
   }, []);
@@ -110,7 +117,7 @@ export function useSearchHistory() {
     removeEntry,
     clearAll,
     has,
-    MAX_ENTRIES,
+    HISTORY_LIMIT,
   };
 }
 
