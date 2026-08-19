@@ -3023,3 +3023,71 @@ With edge caching, even 100 active users would use <1000 invocations/day.
 ---
 
 _Last updated: 2026-08-18 — Phase 16 complete (3 new CMC APIs + 4 crypto widgets + Hero tab bar + local-first architecture)._
+
+---
+Task ID: 18
+Agent: main
+Task: Fix hydration mismatch error in SourceFilter/Check span — "Hydration failed because the server rendered HTML didn't match the client" pointing at the count badge inside the "All sources" pill.
+
+Work Log:
+- Inspected the error diff: a `<span suppressHydrationWarning>` with `min-w-[18px] h-[18px]` rendered as client-only (`+` markers) inside `<Check>` inside the "All sources" pill of SourceFilter.
+- Traced the source: this span is gated by `typeof totalItems === "number" && totalItems > 0` in `src/components/feed/source-filter.tsx`.
+- Traced `totalItems` upstream: comes from `allData?.items?.length` in `FeedGrid`, where `allData` is from `useFeed(category, "", null, lang)`.
+- Traced `useFeed`: reads `localStorage` for `initialData` (instant-render cache). On the server `typeof window === "undefined"` → `readCache()` returns `null` → `initialData` undefined → `query.data` undefined → `totalItems` undefined. On the client first render, `localStorage` is available → `initialData` is set → `totalItems` is a number (e.g. 50).
+- This produces the hydration mismatch: server renders 0 count badges, client first render renders 1+ count badges. `suppressHydrationWarning` only suppresses text content of an existing element — it does NOT help when the element's existence itself differs.
+- Fix in `src/components/feed/feed-grid.tsx`: gate `sourceCounts` and `totalItems` props passed to `<SourceFilter>` behind the existing `mounted` state (already used elsewhere in the file for the timestamp and Refresh button). On SSR and first client render, both props are `undefined`; after the post-mount effect runs they become populated values, which is a legitimate state update rather than a hydration mismatch.
+- Audited other `useFeed` consumers for the same pattern:
+  - `src/app/page.tsx`: `<TrendingTags>` gated by `allData?.items && allData.items.length > 0` — same mismatch pattern. Added `mounted` state and gated the conditional with `&& mounted`.
+  - `src/components/pages/category-page.tsx`: same `<TrendingTags>` pattern. Added `mounted` state and gated the conditional with `&& mounted`.
+- Ran `npx tsc --noEmit` → clean (no errors).
+- Ran `npx next build` → "Compiled successfully", "Finished TypeScript", all 9 static pages generated. No errors, no warnings related to the fix.
+
+Stage Summary:
+- Root cause: `useFeed` reads `localStorage` during render for `initialData`, producing different data on SSR (null) vs client first render (cached). Any conditional render based on this data produces a hydration mismatch.
+- Fix: gate all such conditionals behind a `mounted` flag (already standard pattern in this codebase for time/number formatting).
+- Files changed:
+  - `src/components/feed/feed-grid.tsx` — gated `sourceCounts` and `totalItems` passed to `<SourceFilter>`.
+  - `src/app/page.tsx` — added `mounted` state, gated `<TrendingTags>` conditional.
+  - `src/components/pages/category-page.tsx` — added `mounted` state, gated `<TrendingTags>` conditional.
+- Why `suppressHydrationWarning` did NOT fix this: that prop only suppresses text-content mismatches of an element that exists in both trees. It does NOT suppress the case where the element itself is conditionally rendered (different number of children between server and client).
+- Recommendation for future: any new consumer of `useFeed` (or any other localStorage-backed hook) must gate conditionals that depend on the returned data behind a `mounted` flag. Consider extracting this into a small `useMounted()` hook or wrapping `useFeed` to expose a `mounted` flag directly.
+
+---
+Task ID: 19
+Agent: main
+Task: Fix two issues reported by user: (1) persistent hydration mismatch in FeedCard (motion.article vs div) on /crypto page, (2) Cloudflare Pages build failure due to /crypto/market/[coin] not configured for Edge Runtime.
+
+Work Log:
+- Inspected the new hydration error diff carefully:
+  - `+` (client) renders `<article>` with motion props, full className `card-lift group cursor-pointer relative flex flex-col overflow-hidden rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]`
+  - `-` (server) renders `<div>` with TRUNCATED className `rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)] overflow-hidden`
+- Recognized the server's `<div>` className — it EXACTLY matches `FeedSkeleton`'s inner card div in `src/components/feed/feed-states.tsx` line 9.
+- Root cause identified: the mismatch is NOT Framer Motion's fault — it's the same `useFeed` localStorage-derived `initialData` pattern as before, but manifesting differently:
+  - **Server**: `useFeed` returns `loading: true` (no localStorage on SSR) → FeedGrid renders `<FeedSkeleton>` → server emits `<div class="rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)] overflow-hidden">` (the skeleton card)
+  - **Client first render**: `useFeed` returns `loading: false` (localStorage has cached `initialData`) → FeedGrid renders `<FeedCard>` → client emits `<article>` with motion props
+  - This is an element-type mismatch (div vs article), which `suppressHydrationWarning` cannot fix.
+- Fix: modified `src/hooks/use-feed.ts` to gate `loading` behind a `mounted` flag:
+  - Added `const [mounted, setMounted] = useState(false); useEffect(() => { setMounted(true); }, []);`
+  - Changed `loading` from `query.isLoading && !query.data` to `!mounted || (query.isLoading && !query.data)`
+  - Now: SSR → `loading: true` (skeleton); client first render → `loading: true` (skeleton — matches SSR); after mount → `loading: false` if data available (state update, not hydration mismatch)
+  - This automatically fixes ALL consumers of `useFeed`, not just FeedGrid.
+- Created `src/hooks/use-mounted.ts` as a reusable hook for future SSR-safety gating.
+- Added `MotionConfig` with `reducedMotion="user"` to `src/app/providers.tsx` for accessibility (respects prefers-reduced-motion). Initially tried `initial={false}` but Framer Motion 12 removed that prop from `MotionConfig` — TypeScript errored. Removed it because the `useFeed` fix already prevents motion components from rendering during hydration.
+- Cloudflare fix: added `export const runtime = "edge";` to `src/app/crypto/market/[coin]/page.tsx`. This was the only non-static route missing the Edge Runtime config — all 27 API routes and other dynamic routes already had it.
+- Cleared stale `.next` cache: `rm -rf .next` (the Turbopack dev server had a stale SSR bundle from before the FeedCard changes).
+- Ran `npx next build` — compiled successfully, TypeScript passed, all 9 static pages generated, no errors or warnings (only pre-existing `metadataBase` and Edge Runtime deprecation notices).
+
+Stage Summary:
+- Two distinct issues, two distinct root causes, two distinct fixes:
+  1. **Hydration mismatch**: root cause was `useFeed` returning `loading: false` on client first render (due to localStorage `initialData`) while SSR returned `loading: true`. This caused FeedGrid to render `<FeedSkeleton>` on server but `<FeedCard>` (with `motion.article`) on client — element-type mismatch. Fixed by gating `loading` behind `mounted` in `useFeed`.
+  2. **Cloudflare build failure**: `/crypto/market/[coin]/page.tsx` was missing `export const runtime = "edge";`. Added it.
+- Files changed:
+  - `src/hooks/use-feed.ts` — added `mounted` state, gated `loading` behind it
+  - `src/hooks/use-mounted.ts` — new reusable hook (created for future use)
+  - `src/app/providers.tsx` — added `MotionConfig` with `reducedMotion="user"`
+  - `src/app/crypto/market/[coin]/page.tsx` — added `export const runtime = "edge";`
+- Key insight: `suppressHydrationWarning` only suppresses TEXT CONTENT mismatches of elements that exist in both trees. It does NOT help when:
+  - The element TYPE differs (div vs article)
+  - The element's EXISTENCE differs (rendered vs not rendered)
+  For these cases, the only fix is to ensure both server and client render the SAME markup on the first client render, then update via `useEffect` (the `mounted` pattern).
+- Recommendation: any new hook that reads from `localStorage` or other browser-only APIs during render should gate its outputs behind a `mounted` flag, just like `useFeed` now does. Consider extracting this into a generic `useIsomorphicState` wrapper.

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/brand/header";
 import { Ticker } from "@/components/brand/ticker";
@@ -31,6 +31,12 @@ export default function Home() {
   const { lang } = useLanguage();
   const [bookmarksOpen, setBookmarksOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Track client mount to gate renders that depend on localStorage-derived
+  // data (useFeed reads localStorage for initialData, which is unavailable
+  // during SSR — so any conditional render based on `allData` would mismatch
+  // between server (null) and client first render (cached data)).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
   // Local feed hook used only to feed trending tags (always "all" but localized)
   // and to provide a refresh trigger for pull-to-refresh.
   const { data: allData, refetch } = useFeed("all", "", null, lang);
@@ -125,8 +131,12 @@ export default function Home() {
                 onOpenBookmarks={() => setBookmarksOpen(true)}
               />
 
-              {/* Trending tags (only when feed data is available) */}
-              {allData?.items && allData.items.length > 0 && (
+              {/* Trending tags (only when feed data is available).
+                  Gated by `mounted` because `allData` comes from useFeed,
+                  which reads localStorage for initialData — that data is
+                  unavailable during SSR, so the conditional would differ
+                  between server (false) and client first render (true). */}
+              {mounted && allData?.items && allData.items.length > 0 && (
                 <div className="mt-6">
                   <TrendingTags items={allData.items} onTagClick={onTagClick} />
                 </div>

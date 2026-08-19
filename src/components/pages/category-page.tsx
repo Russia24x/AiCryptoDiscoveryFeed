@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Home as HomeIcon,
@@ -97,6 +97,10 @@ export function CategoryPage({ category }: CategoryPageProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
+  // Track client mount to gate renders that depend on localStorage-derived
+  // data (useFeed reads localStorage for initialData — unavailable on SSR).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   // Local feed hook for trending tags + refresh trigger
   const { data: allData, refetch } = useFeed(category, "", null, lang);
@@ -292,8 +296,11 @@ export function CategoryPage({ category }: CategoryPageProps) {
                 onOpenBookmarks={() => setBookmarksOpen(true)}
               />
 
-              {/* Trending tags (only when feed data is available) */}
-              {allData?.items && allData.items.length > 0 && (
+              {/* Trending tags (only when feed data is available).
+                  Gated by `mounted` to avoid SSR hydration mismatch —
+                  `allData` comes from useFeed which reads localStorage
+                  for initialData, unavailable during SSR. */}
+              {mounted && allData?.items && allData.items.length > 0 && (
                 <div className="mt-6">
                   <TrendingTags items={allData.items} onTagClick={onTagClick} />
                 </div>

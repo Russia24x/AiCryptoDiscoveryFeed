@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { FeedResponse } from "@/types/feed";
 import type { Language } from "@/lib/sources";
@@ -28,6 +28,17 @@ import type { Language } from "@/lib/sources";
  *     stale data is shown immediately
  *   - `gcTime: 5min` — cached data is kept for 5 min after the last
  *     observer unsubscribes
+ *
+ * SSR / hydration safety:
+ *   - `initialData` is read from localStorage, which is unavailable during SSR.
+ *   - On SSR: `query.data` is `undefined` → `loading` is `true` → consumer renders skeleton.
+ *   - On client first render: `query.data` may be populated (from localStorage)
+ *     → `loading` is `false` → consumer renders actual data (e.g., FeedCard).
+ *   - This mismatch (skeleton on server, FeedCard on client) causes hydration
+ *     errors. We fix it by gating `loading` behind a `mounted` flag — until the
+ *     component has mounted on the client, `loading` is always `true`, so both
+ *     server and client first render show the skeleton. After mount, the real
+ *     loading state takes over (a legitimate state update, not a mismatch).
  */
 
 const CACHE_PREFIX = "acd:feed-cache:";
@@ -69,6 +80,11 @@ export function useFeed(
   const queryClient = useQueryClient();
   const cacheKey = `${category}:${lang || "all"}:${sourceFilter || "all"}`;
   const queryKey = ["feed", category, lang || "all", sourceFilter || "all", search.trim()] as const;
+
+  // Track client mount to gate the `loading` flag for SSR safety.
+  // See the SSR / hydration safety note in the file header.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   // Read initial data from localStorage so the first render is instant.
   // This is the key to the "instant page load on repeat visits" UX.
@@ -118,9 +134,15 @@ export function useFeed(
     ? "خطا در دریافت داده"
     : null;
 
+  // `loading` — true while the query is fetching AND we have no data yet.
+  // ALSO true until the component has mounted on the client, to prevent SSR
+  // hydration mismatches (server renders skeleton, client first render would
+  // render data from localStorage cache — see file header for full context).
+  const loading = !mounted || (query.isLoading && !query.data);
+
   return {
     data: query.data ?? null,
-    loading: query.isLoading && !query.data, // hide skeleton if we have stale data
+    loading,
     error,
     refetch,
     stale,

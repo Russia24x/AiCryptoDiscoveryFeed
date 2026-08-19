@@ -3,27 +3,32 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { useState, type ReactNode } from "react";
+import { MotionConfig } from "framer-motion";
 import { makeQueryClient } from "@/lib/query-client";
 
 /**
- * Wrap the app with TanStack Query Provider.
+ * Wrap the app with TanStack Query Provider + Framer Motion Config.
+ *
+ * MotionConfig:
+ *   - `reducedMotion="user"` respects the user's `prefers-reduced-motion`
+ *     setting and disables animations accordingly (accessibility).
+ *   - In Framer Motion 12, `MotionConfig` no longer accepts `initial={false}`.
+ *     Instead, we prevent SSR hydration mismatches by gating data-dependent
+ *     components (like FeedCard) behind `loading` state in `useFeed`, which
+ *     is in turn gated behind a `mounted` flag — so motion components are
+ *     never rendered during SSR or client first render.
  *
  * Usage in layout.tsx:
  *   <Providers>{children}</Providers>
- *
- * Why a separate component:
- *   - "use client" is required because QueryClientProvider uses React context.
- *   - We create the QueryClient in useState so it persists across re-renders
- *     but is recreated if the component remounts (e.g., on hot reload in dev).
- *   - DevTools are only included in development to keep the production
- *     bundle small.
  */
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => makeQueryClient());
 
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
+      <MotionConfig reducedMotion="user">
+        {children}
+      </MotionConfig>
       {process.env.NODE_ENV === "development" && (
         <ReactQueryDevtools
           initialIsOpen={false}

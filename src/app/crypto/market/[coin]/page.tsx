@@ -12,6 +12,12 @@ import { OfflineBanner } from "@/components/brand/offline-banner";
 import { UpdateBanner } from "@/components/brand/update-banner";
 import { CoinDetail } from "@/components/market/coin-detail";
 
+// Cloudflare Pages (via @cloudflare/next-on-pages) requires ALL non-static
+// routes to run on the Edge Runtime. Without this export, the build fails
+// with: "The following routes were not configured to run with the Edge
+// Runtime: /crypto/market/[coin]".
+export const runtime = "edge";
+
 export default function CoinDetailPage() {
   const params = useParams<{ coin: string }>();
   const coinId = params.coin;

@@ -151,13 +151,21 @@ export function FeedGrid({
         </div>
       </div>
 
-      {/* Source filter chips */}
+      {/* Source filter chips.
+          NOTE: `sourceCounts` and `totalItems` come from `useFeed`, which reads
+          localStorage for its `initialData`. That means on the server they are
+          `undefined`, but on the client's first render they may already be
+          populated (from localStorage cache). This discrepancy causes a
+          hydration mismatch in SourceFilter (the count badges render only on
+          the client). We gate both props behind `mounted` so SSR and the
+          client's first render produce identical markup; counts appear after
+          the post-mount effect runs, which is a legitimate state update. */}
       <SourceFilter
         category={category}
         activeSourceId={sourceFilter}
         onSourceChange={onSourceChange}
-        sourceCounts={sourceCounts}
-        totalItems={totalItems}
+        sourceCounts={mounted ? sourceCounts : undefined}
+        totalItems={mounted ? totalItems : undefined}
       />
 
       {/* Body */}
