@@ -142,10 +142,10 @@ export function FeedGrid({
 
           <button
             onClick={() => refetch()}
-            disabled={loading}
+            disabled={mounted ? loading : false}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-md bg-[var(--brand-surface)] border border-[var(--brand-border)] text-xs text-[var(--brand-muted)] hover:text-[var(--brand-accent)] hover:border-[var(--brand-accent)]/40 transition-colors disabled:opacity-50"
           >
-            <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
+            <RefreshCw className={cn("w-3.5 h-3.5", mounted && loading && "animate-spin")} />
             <span className="hidden sm:inline">{t.feed.refresh}</span>
           </button>
         </div>

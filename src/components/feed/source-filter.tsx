@@ -286,6 +286,7 @@ export function SourceFilter({
             {t.feed.allSources}
             {typeof totalItems === "number" && totalItems > 0 && (
               <span
+                suppressHydrationWarning
                 className={cn(
                   "min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full text-[9px] font-latin font-bold",
                   activeSourceId === null
@@ -338,6 +339,7 @@ export function SourceFilter({
                 {displayName}
                 {typeof count === "number" && count > 0 && (
                   <span
+                    suppressHydrationWarning
                     className={cn(
                       "min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full text-[9px] font-latin font-bold",
                       active
