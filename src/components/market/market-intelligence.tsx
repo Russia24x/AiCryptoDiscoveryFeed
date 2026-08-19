@@ -133,22 +133,25 @@ export function MarketIntelligence() {
   const { watchlist, isWatched, toggle: toggleWatch, hydrated: watchHydrated } = useWatchlist();
 
   // --- Coin list (top 100) ---
-  // staleTime: 2min (was 1min) — reduces API calls by 50%
-  // refetchInterval: removed (was 5min, caused unnecessary refetches)
-  // retry: 2 (was default 1) — more resilient to transient errors
+  // staleTime: 2min — reduces API calls by 50%
+  // retry: 2 with exponential backoff — more resilient to transient errors
+  // If CoinGecko is rate-limited with no cached data, we DON'T throw —
+  // instead we return an empty array and the component falls back to
+  // CMC listings data (which has price + rank info).
   const { data: marketData, isLoading, error, refetch, isFetching } = useQuery<{ coins: Coin[] }>({
     queryKey: ["market", "coingecko-markets", "top100"],
     queryFn: async () => {
       const res = await fetch("/api/market/coingecko-markets?per_page=100&sparkline=false", { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-      // If rate-limited, return the cached coins (if any) instead of throwing.
-      // This prevents the "درخواست‌های زیاد" error message from appearing.
+      // If rate-limited with cached coins, serve them.
       if (json?.rateLimited && json?.coins?.length > 0) {
         return json as { coins: Coin[] };
       }
+      // If rate-limited with NO cached coins, return empty array instead of
+      // throwing. The component will fall back to CMC listings data.
       if (json?.rateLimited) {
-        throw new Error(lang === "fa" ? "درخواست‌های زیاد. یک دقیقه صبر کنید." : "Rate limited.");
+        return { coins: [] };
       }
       return json as { coins: Coin[] };
     },
@@ -246,7 +249,31 @@ export function MarketIntelligence() {
     staleTime: 30 * 60_000,
   });
 
-  const coins = marketData?.coins || [];
+  // If CoinGecko data is empty (rate-limited), fall back to CMC listings.
+  // CMC data has: id, name, symbol, slug, cmcRank, price, volume24h,
+  // marketCap, percentChange24h, tags. We map it to the Coin interface.
+  const coingeckoCoins = marketData?.coins || [];
+  const usingFallback = coingeckoCoins.length === 0 && (cmcData?.coins?.length || 0) > 0;
+  const coins: Coin[] = usingFallback
+    ? (cmcData!.coins.map((c) => ({
+        id: c.slug || c.symbol.toLowerCase(),
+        symbol: c.symbol,
+        name: c.name,
+        image: `https://s2.coinmarketcap.com/static/img/coins/64x64/${c.id}.png`,
+        current_price: c.price,
+        market_cap: c.marketCap,
+        market_cap_rank: c.cmcRank,
+        total_volume: c.volume24h,
+        high_24h: 0,
+        low_24h: 0,
+        price_change_percentage_24h: c.percentChange24h,
+        circulating_supply: 0,
+        total_supply: null,
+        max_supply: null,
+        ath: 0,
+        atl: 0,
+      } as Coin)))
+    : coingeckoCoins;
 
   const filtered = useMemo(() => {
     let result = coins;
