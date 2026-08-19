@@ -82,6 +82,19 @@ interface TrendingCoin {
   thumb: string;
 }
 
+interface TopGainer {
+  id: number;
+  name: string;
+  symbol: string;
+  slug: string;
+  cmcRank: number;
+  price: number;
+  volume24h: number;
+  marketCap: number;
+  percentChange24h: number;
+  tags: string[];
+}
+
 interface AltcoinSeason {
   index: number;
   season: string;
@@ -238,7 +251,7 @@ export function MarketIntelligence() {
   });
 
   // --- Fear & Greed Historical (30 days) ---
-  // staleTime: 30min (was 15min) — historical data doesn't change
+  // staleTime: 30min — historical data doesn't change
   const { data: fngHistory } = useQuery<FngHistory>({
     queryKey: ["market", "fear-greed-historical", 30],
     queryFn: async () => {
@@ -247,6 +260,19 @@ export function MarketIntelligence() {
       return (await res.json()) as FngHistory;
     },
     staleTime: 30 * 60_000,
+  });
+
+  // --- Top Gainers (24h) ---
+  // staleTime: 5min — gainers change more frequently than trending
+  const { data: topGainersData } = useQuery<{ coins: TopGainer[] }>({
+    queryKey: ["market", "top-gainers"],
+    queryFn: async () => {
+      const res = await fetch("/api/market/top-gainers?limit=7", { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      return { coins: (json?.coins || []) as TopGainer[] };
+    },
+    staleTime: 5 * 60_000,
   });
 
   // If CoinGecko data is empty (rate-limited), fall back to CMC listings.
@@ -326,15 +352,27 @@ export function MarketIntelligence() {
   const onCoinClick = (coin: Coin) => router.push(`/crypto/market/${coin.id}`);
 
   return (
-    <div className="min-h-screen bg-[var(--brand-bg)]">
+    <div className="min-h-screen bg-[var(--brand-bg)] relative">
+      {/* Decorative gradient background */}
+      <div className="absolute inset-x-0 top-0 h-[480px] bg-gradient-to-b from-[var(--brand-accent)]/[0.04] via-transparent to-transparent pointer-events-none" />
+      <div className="absolute top-0 start-1/4 w-96 h-96 bg-[var(--brand-accent)]/[0.05] blur-3xl rounded-full pointer-events-none" />
+      <div className="absolute top-0 end-1/4 w-96 h-96 bg-purple-500/[0.04] blur-3xl rounded-full pointer-events-none" />
+
       {/* Sticky header */}
-      <div className="sticky top-16 z-30 bg-[var(--brand-bg)]/95 backdrop-blur-xl border-b border-[var(--brand-border)]">
+      <div className="sticky top-16 z-30 bg-[var(--brand-bg)]/95 backdrop-blur-xl border-b border-[var(--brand-border)] relative">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-3">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 flex-1 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[var(--brand-accent)]/20 to-purple-500/10 border border-[var(--brand-accent)]/30 flex items-center justify-center shrink-0">
+                <BarChart3 className="w-4 h-4 text-[var(--brand-accent)]" />
+              </div>
               <h1 className="font-display text-lg md:text-xl font-bold text-[var(--brand-text)] truncate">
                 {lang === "fa" ? "هوش بازار" : "Market Intelligence"}
               </h1>
+              <Badge variant="accent" className="hidden sm:inline-flex">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                LIVE
+              </Badge>
             </div>
             {/* Watchlist toggle */}
             <button
@@ -359,13 +397,13 @@ export function MarketIntelligence() {
               )}
             </button>
             {/* Search */}
-            <div className="relative flex items-center">
-              <Search className="absolute left-3 w-3.5 h-3.5 text-[var(--brand-muted)] pointer-events-none" />
+            <div className="relative flex items-center group">
+              <Search className="absolute left-3 w-3.5 h-3.5 text-[var(--brand-muted)] pointer-events-none group-focus-within:text-[var(--brand-accent)] transition-colors" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={lang === "fa" ? "جستجوی ارز..." : "Search..."}
-                className="bg-[var(--brand-surface)] border border-[var(--brand-border)] rounded-full pl-9 pr-3 py-1.5 text-xs text-[var(--brand-text)] placeholder:text-[var(--brand-muted)] focus:outline-none focus:border-[var(--brand-accent)] w-32 sm:w-48"
+                className="bg-[var(--brand-surface)] border border-[var(--brand-border)] rounded-full pl-9 pr-3 py-1.5 text-xs text-[var(--brand-text)] placeholder:text-[var(--brand-muted)] focus:outline-none focus:border-[var(--brand-accent)] focus:ring-2 focus:ring-[var(--brand-accent)]/20 w-32 sm:w-48 transition-all"
               />
             </div>
             <button
@@ -414,19 +452,53 @@ export function MarketIntelligence() {
         )}
       </div>
 
-      {/* Global Stats Bar */}
+      {/* Global Stats Bar — modern cards with gradient glow */}
       {globalStats && globalStats.totalMarketCap > 0 && (
-        <div className="border-b border-[var(--brand-border)] bg-[var(--brand-surface)]/30">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-3">
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
-              <StatPill label={lang === "fa" ? "مارکت کپ کل" : "Total M.Cap"} value={fa(fmtCompact(globalStats.totalMarketCap), lang)}
-                change={globalStats.totalMarketCapYesterdayPctChange} />
-              <StatPill label={lang === "fa" ? "حجم ۲۴س" : "24h Volume"} value={fa(fmtCompact(globalStats.totalVolume24h), lang)} />
-              <StatPill label="BTC" value={`${fa(globalStats.btcDominance.toFixed(1), lang)}%`} accent="#f7931a" />
-              <StatPill label="ETH" value={`${fa(globalStats.ethDominance.toFixed(1), lang)}%`} accent="#627eea" />
-              <StatPill label={lang === "fa" ? "ارزها" : "Coins"} value={fa(globalStats.activeCryptoCurrencies.toLocaleString(), lang)} />
-              <StatPill label={lang === "fa" ? "دیفای" : "DeFi"} value={fa(fmtCompact(globalStats.defiMarketCap), lang)} />
+        <div className="border-b border-[var(--brand-border)] bg-gradient-to-b from-[var(--brand-surface)]/40 to-transparent">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 md:gap-3">
+              <StatCard
+                label={lang === "fa" ? "مارکت کپ کل" : "Total M.Cap"}
+                value={fa(fmtCompact(globalStats.totalMarketCap), lang)}
+                change={globalStats.totalMarketCapYesterdayPctChange}
+                accent="#2dd4bf"
+              />
+              <StatCard
+                label={lang === "fa" ? "حجم ۲۴س" : "24h Volume"}
+                value={fa(fmtCompact(globalStats.totalVolume24h), lang)}
+                accent="#38bdf8"
+              />
+              <StatCard
+                label="BTC.D"
+                value={`${fa(globalStats.btcDominance.toFixed(1), lang)}%`}
+                accent="#f7931a"
+              />
+              <StatCard
+                label="ETH.D"
+                value={`${fa(globalStats.ethDominance.toFixed(1), lang)}%`}
+                accent="#627eea"
+              />
+              <StatCard
+                label={lang === "fa" ? "ارزها" : "Coins"}
+                value={fa(globalStats.activeCryptoCurrencies.toLocaleString(), lang)}
+                accent="#a78bfa"
+              />
+              <StatCard
+                label={lang === "fa" ? "دیفای" : "DeFi"}
+                value={fa(fmtCompact(globalStats.defiMarketCap), lang)}
+                accent="#f472b6"
+              />
             </div>
+            {usingFallback && (
+              <div className="mt-3 flex items-center gap-2 text-[10px] text-[var(--brand-muted)] bg-amber-500/5 border border-amber-500/20 rounded-md px-2.5 py-1.5">
+                <AlertCircle className="w-3 h-3 text-amber-400 shrink-0" />
+                <span>
+                  {lang === "fa"
+                    ? "نمایش داده‌ها از CoinMarketCap (CoinGecko در حالت آماده‌سازی)"
+                    : "Showing CoinMarketCap data (CoinGecko is warming up)"}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -641,17 +713,26 @@ export function MarketIntelligence() {
                 icon={<Flame className="w-3.5 h-3.5" />}
                 accent="#f97316"
               >
-                <div className="space-y-1.5">
+                <div className="space-y-1">
                   {trendingData.coins.slice(0, 7).map((coin, i) => (
                     <button
                       key={coin.id}
                       onClick={() => router.push(`/crypto/market/${coin.id}`)}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--brand-surface-2)] transition-colors text-start group"
+                      className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-[var(--brand-surface-2)] transition-all text-start group border border-transparent hover:border-[var(--brand-accent)]/20"
                     >
-                      <span className="text-[10px] font-latin text-[var(--brand-muted)] w-4 text-center shrink-0">{fa(i + 1, lang)}</span>
-                      {coin.thumb && <img src={coin.thumb} alt={coin.name} className="w-4 h-4 rounded-full shrink-0" loading="lazy" />}
+                      <span className={cn(
+                        "text-[10px] font-latin font-bold w-5 h-5 flex items-center justify-center rounded-md shrink-0",
+                        i === 0 ? "bg-orange-500/20 text-orange-400" :
+                        i === 1 ? "bg-amber-500/20 text-amber-400" :
+                        i === 2 ? "bg-yellow-500/20 text-yellow-400" :
+                        "text-[var(--brand-muted)] bg-[var(--brand-surface-2)]"
+                      )}>{fa(i + 1, lang)}</span>
+                      {coin.thumb && <img src={coin.thumb} alt={coin.name} className="w-5 h-5 rounded-full shrink-0 ring-1 ring-[var(--brand-border)]" loading="lazy" />}
                       <span className="text-xs font-bold text-[var(--brand-text)] group-hover:text-[var(--brand-accent)] transition-colors truncate flex-1">{coin.name}</span>
-                      <span className="text-[10px] font-latin text-[var(--brand-muted)] shrink-0">{coin.symbol}</span>
+                      <span className="text-[9px] font-latin text-[var(--brand-muted)] shrink-0 uppercase tracking-wide">{coin.symbol}</span>
+                      {coin.marketCapRank && (
+                        <span className="text-[9px] font-latin text-[var(--brand-muted)]/60 shrink-0">#{coin.marketCapRank}</span>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -692,6 +773,51 @@ export function MarketIntelligence() {
                 <FngChart data={fngHistory.data} lang={lang} />
               </SidebarCard>
             )}
+
+            {/* Top Gainers (24h) */}
+            {topGainersData?.coins && topGainersData.coins.length > 0 && (
+              <SidebarCard
+                title={lang === "fa" ? "بزرگترین صعودی‌ها (۲۴س)" : "Top Gainers (24h)"}
+                icon={<TrendingUp className="w-3.5 h-3.5" />}
+                accent="#22c55e"
+              >
+                <div className="space-y-1">
+                  {topGainersData.coins.slice(0, 7).map((coin, i) => (
+                    <button
+                      key={coin.id}
+                      onClick={() => router.push(`/crypto/market/${coin.slug || coin.symbol.toLowerCase()}`)}
+                      className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-[var(--brand-surface-2)] transition-all text-start group border border-transparent hover:border-emerald-500/20"
+                    >
+                      <span className="text-[10px] font-latin font-bold w-5 h-5 flex items-center justify-center rounded-md shrink-0 bg-emerald-500/10 text-emerald-400">
+                        {fa(i + 1, lang)}
+                      </span>
+                      <img
+                        src={`https://s2.coinmarketcap.com/static/img/coins/64x64/${coin.id}.png`}
+                        alt={coin.name}
+                        className="w-5 h-5 rounded-full shrink-0 ring-1 ring-[var(--brand-border)]"
+                        loading="lazy"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-bold text-[var(--brand-text)] group-hover:text-emerald-400 transition-colors truncate">
+                          {coin.name}
+                        </div>
+                        <div className="text-[9px] font-latin text-[var(--brand-muted)] uppercase tracking-wide">
+                          {coin.symbol}
+                        </div>
+                      </div>
+                      <div className="text-end shrink-0">
+                        <div className="text-[10px] font-latin font-bold text-emerald-400">
+                          +{fa(coin.percentChange24h.toFixed(2), lang)}%
+                        </div>
+                        <div className="text-[9px] font-latin text-[var(--brand-muted)]/70">
+                          {fa(fmtPrice(coin.price), lang)}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </SidebarCard>
+            )}
           </aside>
         </div>
       </div>
@@ -729,14 +855,18 @@ function SortHeader({ label, field, sortField, sortDir, onSort, align }: { label
 
 function SidebarCard({ title, icon, accent, children }: { title: string; icon: React.ReactNode; accent: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)] p-4 overflow-hidden relative">
-      <div className="absolute top-0 end-0 w-px h-full" style={{ background: `linear-gradient(to bottom, transparent, ${accent}, transparent)` }} />
-      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-latin font-semibold mb-3" style={{ color: accent }}>
+    <GlassCard glow accent={accent} className="p-4 overflow-hidden">
+      {/* Background gradient glow */}
+      <div
+        className="absolute -top-8 -end-8 w-24 h-24 rounded-full opacity-15 blur-2xl pointer-events-none"
+        style={{ backgroundColor: accent }}
+      />
+      <div className="relative flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-latin font-semibold mb-3" style={{ color: accent }}>
         {icon}
         <span>{title}</span>
       </div>
-      {children}
-    </div>
+      <div className="relative">{children}</div>
+    </GlassCard>
   );
 }
 
