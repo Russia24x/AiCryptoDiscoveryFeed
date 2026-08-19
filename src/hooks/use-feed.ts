@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { FeedResponse } from "@/types/feed";
 import type { Language } from "@/lib/sources";
+import { useMounted } from "@/hooks/use-mounted";
 
 /**
  * Feed data hook — backed by TanStack Query.
@@ -82,9 +83,11 @@ export function useFeed(
   const queryKey = ["feed", category, lang || "all", sourceFilter || "all", search.trim()] as const;
 
   // Track client mount to gate the `loading` flag for SSR safety.
+  // Uses `useSyncExternalStore` (via `useMounted()`) instead of the classic
+  // `useEffect(() => setMounted(true), [])` pattern — React 19's ESLint plugin
+  // flags the latter as an anti-pattern (cascading renders).
   // See the SSR / hydration safety note in the file header.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  const mounted = useMounted();
 
   // Read initial data from localStorage so the first render is instant.
   // This is the key to the "instant page load on repeat visits" UX.

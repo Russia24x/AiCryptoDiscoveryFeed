@@ -105,7 +105,7 @@ export function SourceFilter({
       ro.disconnect();
       mo.disconnect();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [isRTL, sources.length, category, lang, updateScrollState]);
 
   // Reset scroll position when language changes (LTR↔RTL).
@@ -114,7 +114,7 @@ export function SourceFilter({
     if (!el) return;
     el.scrollTo({ left: 0, behavior: "auto" });
     requestAnimationFrame(updateScrollState);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [isRTL]);
 
   /**

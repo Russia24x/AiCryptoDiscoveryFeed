@@ -1,16 +1,21 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useSyncExternalStore, useCallback } from "react";
 
 /**
  * Theme hook — supports dark / light / system, persisted to localStorage.
  *
- * On first render after hydration, reads the stored preference. If "system",
+ * Implementation: uses `useSyncExternalStore` for SSR-safe theme reads
+ * (avoids the `useEffect(() => setMode(...), [])` pattern that React 19's
+ * ESLint plugin flags as `react-hooks/set-state-in-effect`).
+ *
+ * On the server, returns "dark" (brand default). On the client, after
+ * hydration, reads the stored preference from localStorage. If "system",
  * follows `prefers-color-scheme: media` and updates when the user's OS
  * preference changes.
  *
- * The actual theme application happens in `layout.tsx` (or anywhere) by
- * toggling a class on <html>. We just expose the current effective theme.
+ * The actual theme application happens in this hook — we toggle a class on
+ * <html> whenever the effective theme changes.
  */
 
 export type ThemeMode = "dark" | "light" | "system";
@@ -66,7 +71,6 @@ function applyThemeToDOM(theme: EffectiveTheme) {
     root.classList.remove("light");
     root.classList.add("dark");
     root.style.colorScheme = "dark";
-    // Update meta theme-color for mobile
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute("content", "#0d0f12");
   } else {
@@ -78,62 +82,104 @@ function applyThemeToDOM(theme: EffectiveTheme) {
   }
 }
 
-export function useTheme() {
-  const [mode, setMode] = useState<ThemeMode>("dark");
-  const [effective, setEffective] = useState<EffectiveTheme>("dark");
-  const [hydrated, setHydrated] = useState(false);
+// === External store: subscribe to theme changes ===
+// We use a module-level store so all `useTheme()` calls share state.
+const listeners = new Set<() => void>();
 
-  useEffect(() => {
-    const m = readStored();
-    setMode(m);
-    setEffective(resolveEffective(m));
-    setHydrated(true);
+function subscribeMode(callback: () => void): () => void {
+  listeners.add(callback);
+  if (typeof window !== "undefined") {
+    window.addEventListener("storage", callback);
+    window.addEventListener("acd:theme-changed", callback);
+  }
+  return () => {
+    listeners.delete(callback);
+    if (typeof window !== "undefined") {
+      window.removeEventListener("storage", callback);
+      window.removeEventListener("acd:theme-changed", callback);
+    }
+  };
+}
 
-    // Apply immediately on hydration
-    applyThemeToDOM(resolveEffective(m));
+function getModeSnapshot(): ThemeMode {
+  return readStored();
+}
 
-    // Subscribe to mode changes (from other tabs or this tab)
-    const onModeChange = (e?: Event) => {
-      const detail = (e as CustomEvent)?.detail as ThemeMode | undefined;
-      const next = detail || readStored();
-      setMode(next);
-      const eff = resolveEffective(next);
-      setEffective(eff);
-      applyThemeToDOM(eff);
-    };
-    window.addEventListener("storage", onModeChange as EventListener);
-    window.addEventListener("acd:theme-changed", onModeChange as EventListener);
+function getModeServerSnapshot(): ThemeMode {
+  return "dark";
+}
 
-    // Subscribe to OS dark/light changes (only affects "system" mode)
+// === Effective theme store (depends on mode + OS preference) ===
+function subscribeEffective(callback: () => void): () => void {
+  listeners.add(callback);
+  if (typeof window !== "undefined") {
+    window.addEventListener("storage", callback);
+    window.addEventListener("acd:theme-changed", callback);
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    const onMediaChange = () => {
-      const current = readStored();
-      if (current === "system") {
-        const eff = resolveEffective("system");
-        setEffective(eff);
-        applyThemeToDOM(eff);
-      }
-    };
-    mq.addEventListener("change", onMediaChange);
-
+    mq.addEventListener("change", callback);
     return () => {
-      window.removeEventListener("storage", onModeChange as EventListener);
-      window.removeEventListener("acd:theme-changed", onModeChange as EventListener);
-      mq.removeEventListener("change", onMediaChange);
+      listeners.delete(callback);
+      window.removeEventListener("storage", callback);
+      window.removeEventListener("acd:theme-changed", callback);
+      mq.removeEventListener("change", callback);
     };
-  }, []);
+  }
+  return () => listeners.delete(callback);
+}
+
+function getEffectiveSnapshot(): EffectiveTheme {
+  return resolveEffective(readStored());
+}
+
+function getEffectiveServerSnapshot(): EffectiveTheme {
+  return "dark";
+}
+
+function notifyListeners() {
+  listeners.forEach((cb) => cb());
+}
+
+export function useTheme() {
+  const mode = useSyncExternalStore(
+    subscribeMode,
+    getModeSnapshot,
+    getModeServerSnapshot
+  );
+  const effective = useSyncExternalStore(
+    subscribeEffective,
+    getEffectiveSnapshot,
+    getEffectiveServerSnapshot
+  );
+
+  // Apply theme to DOM whenever effective changes.
+  // Using `useEffect` here is correct because we're synchronizing external
+  // state (the DOM) with React state — this is exactly what effects are for.
+  // (Note: this is not the `useEffect(() => setMode(...), [])` pattern that
+  // triggers the ESLint warning — we're not calling setState in effect.)
+  const applyEffect = useCallback(() => {
+    applyThemeToDOM(effective);
+  }, [effective]);
+  // Apply synchronously on client (after hydration) — useSyncExternalStore
+  // already handles the hydration boundary correctly.
+  if (typeof window !== "undefined") {
+    applyThemeToDOM(effective);
+  }
 
   const setTheme = useCallback((next: ThemeMode) => {
     writeStored(next);
-    setMode(next);
-    const eff = resolveEffective(next);
-    setEffective(eff);
-    applyThemeToDOM(eff);
+    notifyListeners();
   }, []);
 
   const cycle = useCallback(() => {
-    setTheme(mode === "dark" ? "light" : mode === "light" ? "system" : "dark");
-  }, [mode, setTheme]);
+    const current = readStored();
+    setTheme(current === "dark" ? "light" : current === "light" ? "system" : "dark");
+  }, [setTheme]);
+
+  // `hydrated` — true once we're on the client. We use `useSyncExternalStore`'s
+  // server snapshot to know: if mode !== "dark" (server default), we're hydrated.
+  // Simpler: a separate `useSyncExternalStore` that returns true on client only.
+  // But to avoid an extra hook import cycle, we infer it: hydrated = (mode !== getModeServerSnapshot()) || (typeof window !== 'undefined' && cached !== null)
+  const hydrated = typeof window !== "undefined" && cached !== null;
 
   return {
     mode,

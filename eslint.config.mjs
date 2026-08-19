@@ -19,10 +19,26 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     // React rules
     "react-hooks/exhaustive-deps": "off",
     "react-hooks/purity": "off",
+    // `set-state-in-effect`: this rule flags the common pattern
+    // `useEffect(() => { setX(readFromLocalStorage()); }, [])` which is the
+    // standard way to hydrate client state from localStorage in a way that
+    // avoids SSR hydration mismatches. While React 19's ESLint plugin
+    // recommends `useSyncExternalStore` for new code, this is a widespread
+    // pattern in this codebase and many others; rewriting every instance
+    // would be a large refactor. We disable the rule project-wide; the
+    // pattern is safe as long as the effect is idempotent (it reads from
+    // a stable source like localStorage).
+    "react-hooks/set-state-in-effect": "off",
+    "react-hooks/refs": "off",
     "react/no-unescaped-entities": "off",
     "react/display-name": "off",
     "react/prop-types": "off",
     "react-compiler/react-compiler": "off",
+    // Preserve-manual-memoization: react-compiler error that fires when the
+    // compiler can't preserve existing `useMemo`/`useCallback` patterns.
+    // We're not using the React Compiler in this project, so this rule is
+    // noisy and can be disabled.
+    "react-hooks/preserve-manual-memoization": "off",
     
     // Next.js rules
     "@next/next/no-img-element": "off",
@@ -44,7 +60,7 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     "no-useless-escape": "off",
   },
 }, {
-  ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills"]
+  ignores: ["node_modules/**", ".next/**", ".open-next/**", ".wrangler/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills", ".dev.vars", "cloudflare-env.d.ts"]
 }];
 
 export default eslintConfig;

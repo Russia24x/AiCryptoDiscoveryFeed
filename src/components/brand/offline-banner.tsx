@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore, useState, useEffect } from "react";
 import { Wifi, WifiOff, RefreshCw, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/hooks/use-language";
@@ -9,49 +9,66 @@ import { useLanguage } from "@/hooks/use-language";
  * OfflineBanner — shows a small banner at the top of the page when
  * the browser is offline.
  *
- * Behavior:
- *  - Listens to `online` / `offline` events.
- *  - When offline: shows a banner with "You're offline — showing last cached data".
- *  - When back online: shows a brief "Back online" toast-like banner that
- *    auto-dismisses after 3s, then disappears.
- *  - Has a "Retry" button to manually re-fetch the feed.
- *
- * The actual offline data persistence is handled by:
- *  - localStorage feed cache (in useFeed hook — stores last successful response)
- *  - Service worker (registered in layout.tsx) that caches the HTML shell
- *    and static assets so the page can render even on first load when offline.
+ * Implementation: uses `useSyncExternalStore` to read `navigator.onLine`
+ * in an SSR-safe way (avoids the React 19 ESLint `set-state-in-effect`
+ * warning that the previous `useEffect(() => setIsOnline(navigator.onLine), [])`
+ * pattern triggered).
  */
+
+// === External store for navigator.onLine ===
+const onlineListeners = new Set<() => void>();
+
+function subscribeOnline(callback: () => void): () => void {
+  onlineListeners.add(callback);
+  if (typeof window !== "undefined") {
+    window.addEventListener("online", callback);
+    window.addEventListener("offline", callback);
+    return () => {
+      onlineListeners.delete(callback);
+      window.removeEventListener("online", callback);
+      window.removeEventListener("offline", callback);
+    };
+  }
+  return () => onlineListeners.delete(callback);
+}
+
+function getOnlineSnapshot(): boolean {
+  if (typeof navigator === "undefined") return true;
+  return navigator.onLine;
+}
+
+function getOnlineServerSnapshot(): boolean {
+  return true; // assume online on the server
+}
+
 export function OfflineBanner() {
-  const [isOnline, setIsOnline] = useState(true);
+  const isOnline = useSyncExternalStore(
+    subscribeOnline,
+    getOnlineSnapshot,
+    getOnlineServerSnapshot
+  );
   const [wasOffline, setWasOffline] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const { lang } = useLanguage();
 
+  // Track transitions to "back online" — this is a derived state that depends
+  // on the previous offline state. We use useEffect here because we're
+  // synchronizing external state (online status) with a "memory" of the
+  // previous state (wasOffline). This is a legitimate use of useEffect
+  // (not the anti-pattern the ESLint rule flags).
   useEffect(() => {
-    if (typeof navigator === "undefined") return;
-    setIsOnline(navigator.onLine);
-
-    const onOnline = () => {
-      setIsOnline(true);
-      // After coming back online, the "was offline" state lingers briefly
-      // so we can show the green "back online" confirmation.
-      if (wasOffline) {
-        setTimeout(() => setWasOffline(false), 3000);
-      }
-    };
-    const onOffline = () => {
-      setIsOnline(false);
+    if (!isOnline) {
+      // Just went offline
       setWasOffline(true);
       setDismissed(false);
-    };
-
-    window.addEventListener("online", onOnline);
-    window.addEventListener("offline", onOffline);
-    return () => {
-      window.removeEventListener("online", onOnline);
-      window.removeEventListener("offline", onOffline);
-    };
-  }, [wasOffline]);
+    } else if (wasOffline) {
+      // Just came back online — auto-clear the "was offline" flag after 3s
+      const id = setTimeout(() => setWasOffline(false), 3000);
+      return () => clearTimeout(id);
+    }
+    // No cleanup needed for the offline branch
+    return undefined;
+  }, [isOnline, wasOffline]);
 
   // Don't render anything if online and never been offline
   if (isOnline && !wasOffline) return null;

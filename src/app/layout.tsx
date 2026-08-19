@@ -5,6 +5,7 @@ import "@fontsource/estedad/900.css";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
+import { PWAInstallPrompt } from "@/components/brand/pwa-install-prompt";
 import { Providers } from "./providers";
 
 // Vazirmatn — primary Persian UI font (clean, modern, readable for body text).
@@ -105,6 +106,7 @@ export default function RootLayout({
         <Providers>
           {children}
         </Providers>
+        <PWAInstallPrompt />
         <Toaster />
         <SonnerToaster
           position="bottom-center"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Home as HomeIcon,
@@ -22,6 +22,7 @@ import { OfflineBanner } from "@/components/brand/offline-banner";
 import { UpdateBanner } from "@/components/brand/update-banner";
 import { useFeed } from "@/hooks/use-feed";
 import { useLanguage } from "@/hooks/use-language";
+import { useMounted } from "@/hooks/use-mounted";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { motion } from "framer-motion";
 import { CATEGORY_META, categoryLabel, type Category } from "@/lib/sources";
@@ -99,8 +100,8 @@ export function CategoryPage({ category }: CategoryPageProps) {
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
   // Track client mount to gate renders that depend on localStorage-derived
   // data (useFeed reads localStorage for initialData — unavailable on SSR).
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  // Uses `useSyncExternalStore` (via `useMounted()`) per React 19 best practices.
+  const mounted = useMounted();
 
   // Local feed hook for trending tags + refresh trigger
   const { data: allData, refetch } = useFeed(category, "", null, lang);

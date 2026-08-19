@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Sparkles,
@@ -27,6 +27,8 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useLanguage } from "@/hooks/use-language";
+import { useMounted } from "@/hooks/use-mounted";
+import { useLocalStorage } from "@/hooks/use-local-storage";
 import { formatNumber } from "@/hooks/use-feed-state";
 import { cn } from "@/lib/utils";
 
@@ -738,24 +740,11 @@ function readCity(): CityChoice {
 
 function WeatherWidget({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const { lang } = useLanguage();
-  const [city, setCity] = useState<CityChoice>(DEFAULT_CITY);
-  const [hydrated, setHydrated] = useState(false);
-
-  // Hydrate from localStorage
-  useEffect(() => {
-    setCity(readCity());
-    setHydrated(true);
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === WEATHER_KEY) setCity(readCity());
-    };
-    const onCustom = () => setCity(readCity());
-    window.addEventListener("storage", onStorage);
-    window.addEventListener("acd:weather-city-changed", onCustom as EventListener);
-    return () => {
-      window.removeEventListener("storage", onStorage);
-      window.removeEventListener("acd:weather-city-changed", onCustom as EventListener);
-    };
-  }, []);
+  // Use `useLocalStorage` (SSR-safe via `useSyncExternalStore`) instead of
+  // the `useEffect(() => setCity(readCity()), [])` pattern that triggers
+  // React 19's ESLint `set-state-in-effect` warning.
+  const city = useLocalStorage<CityChoice>(WEATHER_KEY, DEFAULT_CITY);
+  const hydrated = useMounted();
 
   // Fetch weather whenever city changes — TanStack Query automatically
   // refetches when the queryKey changes (i.e., when city.lat/lon change).

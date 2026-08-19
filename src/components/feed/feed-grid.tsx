@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { RefreshCw, LayoutGrid, List, Filter } from "lucide-react";
 import type { FeedItem } from "@/types/feed";
 import { useFeed } from "@/hooks/use-feed";
 import { useLanguage } from "@/hooks/use-language";
+import { useMounted } from "@/hooks/use-mounted";
 import { FeedCard } from "./feed-card";
 import { ArticleReader } from "./article-reader";
 import { FeedSkeleton, FeedEmpty, FeedError } from "./feed-states";
@@ -39,8 +40,8 @@ export function FeedGrid({
   // Track if component has mounted on the client.
   // This prevents SSR hydration mismatches for elements that depend on
   // runtime data (localStorage cache, timestamps, locale-formatted numbers).
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  // Uses `useSyncExternalStore` (via `useMounted()`) per React 19 best practices.
+  const mounted = useMounted();
   // Separate fetch for source counts — only when no source filter is applied
   // (otherwise counts would be misleading). Uses the existing cache so it's
   // basically free if the user has already fetched this category.

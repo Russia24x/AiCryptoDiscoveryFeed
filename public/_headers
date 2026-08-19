@@ -1,33 +1,114 @@
-# Cloudflare Pages custom headers
-# https://developers.cloudflare.com/pages/configuration/headers/
+# Cloudflare Workers Static Assets custom headers
+# https://developers.cloudflare.com/workers/static-assets/headers/
 
-# Security headers
+# === Security headers (apply to all responses) ===
 /*
   X-Frame-Options: SAMEORIGIN
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=()
 
-# Cache static assets aggressively (1 year)
+# === Static assets (immutable, 1 year) ===
+# Next.js content-hashed assets — safe to cache forever.
 /_next/static/*
   Cache-Control: public, max-age=31536000, immutable
 
-# Cache API responses at the edge
+# === Fonts (immutable, 1 year) — separate rule for clarity ===
+/_next/static/media/*
+  Cache-Control: public, max-age=31536000, immutable
+  Access-Control-Allow-Origin: *
+
+# === Service worker — must revalidate every time ===
+# Otherwise users may get stuck on an old SW version.
+/sw.js
+  Cache-Control: no-cache, must-revalidate
+  Service-Worker-Allowed: /
+
+# === Manifest — short cache, frequent updates ===
+/manifest.json
+  Cache-Control: public, max-age=3600
+
+# === HTML pages — never cache (always fresh) ===
+/*.html
+  Cache-Control: no-cache
+
+# === API: feed (RSS aggregator) — 5 min cache, 10 min stale ===
 /api/feed*
   Cache-Control: public, s-maxage=300, stale-while-revalidate=600
 
-/api/og-image*
-  Cache-Control: public, s-maxage=3600, stale-while-revalidate=86400
-
+# === API: article reader (slow upstream fetch) — 10 min cache ===
 /api/article*
   Cache-Control: public, s-maxage=600, stale-while-revalidate=1200
 
+# === API: channel list (static-ish) — 5 min cache ===
 /api/channel*
   Cache-Control: public, s-maxage=300, stale-while-revalidate=600
 
+# === API: OG images (expensive to generate) — 1 hour cache ===
+/api/og-image*
+  Cache-Control: public, s-maxage=3600, stale-while-revalidate=86400
+
+# === API: prices (fast-changing) — 60s cache, 5 min stale ===
 /api/prices*
   Cache-Control: public, s-maxage=60, stale-while-revalidate=300
 
-# Don't cache HTML pages (always fresh)
-/*.html
-  Cache-Control: no-cache
+# === API: market data (medium frequency) — 60s cache ===
+/api/market/binance-ticker*
+  Cache-Control: public, s-maxage=60, stale-while-revalidate=120
+
+/api/market/iran-tether*
+  Cache-Control: public, s-maxage=60, stale-while-revalidate=120
+
+# === API: market data (slow-changing) — 5 min cache ===
+/api/market/cmc-listings*
+  Cache-Control: public, s-maxage=300, stale-while-revalidate=600
+
+/api/market/cmc-global*
+  Cache-Control: public, s-maxage=300, stale-while-revalidate=600
+
+/api/market/cmc-categories*
+  Cache-Control: public, s-maxage=300, stale-while-revalidate=600
+
+/api/market/coingecko-markets*
+  Cache-Control: public, s-maxage=300, stale-while-revalidate=600
+
+/api/market/coingecko-categories*
+  Cache-Control: public, s-maxage=300, stale-while-revalidate=600
+
+/api/market/global-stats*
+  Cache-Control: public, s-maxage=300, stale-while-revalidate=600
+
+/api/market/trending*
+  Cache-Control: public, s-maxage=300, stale-while-revalidate=600
+
+/api/market/top-gainers*
+  Cache-Control: public, s-maxage=300, stale-while-revalidate=600
+
+/api/market/altcoin-season*
+  Cache-Control: public, s-maxage=300, stale-while-revalidate=600
+
+# === API: Fear & Greed index — 30 min cache (updates 4x/day) ===
+/api/market/fear-greed*
+  Cache-Control: public, s-maxage=1800, stale-while-revalidate=3600
+
+/api/market/fear-greed-historical*
+  Cache-Control: public, s-maxage=3600, stale-while-revalidate=86400
+
+# === API: DefiLlama (slow upstream, daily updates) — 1 hour cache ===
+/api/market/defillama*
+  Cache-Control: public, s-maxage=3600, stale-while-revalidate=86400
+
+# === API: Coin detail pages — 5 min cache ===
+/api/market/cmc-coin*
+  Cache-Control: public, s-maxage=300, stale-while-revalidate=600
+
+/api/market/coingecko-coin*
+  Cache-Control: public, s-maxage=300, stale-while-revalidate=600
+
+# === API: SP500 (daily updates) — 1 hour cache ===
+/api/market/sp500*
+  Cache-Control: public, s-maxage=3600, stale-while-revalidate=86400
+
+# === API: Weather (medium frequency) — 10 min cache ===
+/api/weather*
+  Cache-Control: public, s-maxage=600, stale-while-revalidate=1200

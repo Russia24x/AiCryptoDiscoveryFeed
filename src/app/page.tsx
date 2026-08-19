@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Header } from "@/components/brand/header";
 import { Ticker } from "@/components/brand/ticker";
@@ -18,6 +18,7 @@ import { UpdateBanner } from "@/components/brand/update-banner";
 import { useFeedState } from "@/hooks/use-feed-state";
 import { useFeed } from "@/hooks/use-feed";
 import { useLanguage } from "@/hooks/use-language";
+import { useMounted } from "@/hooks/use-mounted";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 
 export default function Home() {
@@ -35,8 +36,8 @@ export default function Home() {
   // data (useFeed reads localStorage for initialData, which is unavailable
   // during SSR — so any conditional render based on `allData` would mismatch
   // between server (null) and client first render (cached data)).
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  // Uses `useSyncExternalStore` (via `useMounted()`) per React 19 best practices.
+  const mounted = useMounted();
   // Local feed hook used only to feed trending tags (always "all" but localized)
   // and to provide a refresh trigger for pull-to-refresh.
   const { data: allData, refetch } = useFeed("all", "", null, lang);
