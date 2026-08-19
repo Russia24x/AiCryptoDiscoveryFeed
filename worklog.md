@@ -3606,3 +3606,74 @@ Stage Summary:
    - هنوز کند در cache miss
 
 3. **[پاک‌سازی] فشرده‌سازی worklog.md**
+
+---
+Task ID: 26
+Agent: main (autonomous dev session)
+Task: اصلاح قیمت صفر در coin-detail، بهبود Nobitex API، اسکرول روان فیلتر منابع، SocialFeed داینامیک.
+
+Work Log:
+
+### مرحله 1: اصلاح قیمت صفر در coin-detail (CRITICAL BUG)
+- مشکل: وقتی CoinGecko rate-limited بود، coin-detail فقط cmcCoin metadata رو
+  نشون می‌داد که قیمت نداره (همه صفر)
+- ریشه: cmcCoin فقط name, symbol, description, logo داره؛ price, volume,
+  marketCap نداره
+- راه‌حل: اضافه‌شدن cmc-listings query (shared cache با market table)
+  - cmcListing قیمت واقعی، volume، marketCap، change1h/24h/7d/30d/60d/90d،
+    circulatingSupply، totalSupply، maxSupply، cmcRank داره
+  - fallback از cmcListing برای قیمت و cmcCoin برای metadata استفاده می‌کنه
+- مشکل دوم: cmcListings هنوز loading بود وقتی fallback اجرا می‌شد
+- ریشه: isLoading فقط از CoinGecko query چک می‌شد، نه cmcListings
+- رفع: اضافه‌شدن isLoadingAll = isLoading || (cmcListingsLoading && !coin)
+  - skeleton تا زمانی که هر دو query کامل بشن نشون داده می‌شه
+
+### مرحله 2: بهبود Nobitex API (client-side fetch)
+- مشکل: User-Agent header در browser fetch forbidden هست
+- رفع: حذف User-Agent از headers
+- اضافه‌شدن credentials: 'omit' و mode: 'cors'
+- نتیجه: fetch از مرورگر کاربر بدون مشکل CORS
+
+### مرحله 3: اسکرول روان فیلتر منابع (CRITICAL UX)
+- مشکل: touchAction: 'pan-y' فقط vertical pan رو اجازه می‌داد
+  → horizontal touch scroll روی موبایل کار نمی‌کرد!
+- رفع: تغییر به touchAction: 'pan-x pan-y' (هر دو جهت)
+- اضافه‌شدن WebkitOverflowScrolling: 'touch' برای iOS Safari momentum
+- اضافه‌شدن willChange: 'scroll-position' برای smoother rendering
+- تغییر onWheel از scrollBy به scrollLeft += (responsive‌تر)
+
+### مرحله 4: SocialFeed داینامیک با TanStack Query
+- مشکل: ChannelPreviewCard از manual fetch/useState/useEffect استفاده می‌کرد
+  → کش نمی‌شد، هر بار channel switch = fresh fetch
+- رفع: استفاده از useQuery (TanStack Query)
+  - staleTime: 5min، gcTime: 10min
+  - refresh button از refetch() استفاده می‌کنه
+  - کش shared با queryKey ["channel", handle]
+- نتیجه: channel switching سریع‌تر، کمتر API call
+
+### مرحله 5: تست نهایی production
+- coin-detail: ✅ قیمت واقعی Bitcoin $۶۸,۳۸۷.۲۹ نمایش داده می‌شه
+- source filter: ✅ touch-action pan-x pan-y فعال
+- TetherWidget: ✅ نمایش قیمت از مرورگر کاربر
+- SocialFeed: ✅ TanStack Query caching فعال
+
+Stage Summary:
+
+**وضعیت فعلی پروژه:**
+- 20 API route، 8 صفحه، 60+ کامپوننت
+- TypeScript: 0 errors
+- coin-detail: نمایش قیمت واقعی حتی در rate-limit
+- source filter: اسکرول روان روی موبایل و دسکتاپ
+- SocialFeed: کش با TanStack Query
+- TetherWidget: fetch مستقیم از مرورگر کاربر
+
+**اصلاحات تکمیل‌شده این دور:**
+- رفع باگ قیمت صفر در coin-detail
+- بهبود Nobitex API (حذف forbidden header)
+- اسکرول روان فیلتر منابع (pan-x pan-y)
+- SocialFeed داینامیک با TanStack Query
+
+**توصیه‌های اولویت‌دار برای مرحله بعدی:**
+1. اضافه‌کردن prefetch هوشمند برای coin rows
+2. بهبود /api/feed (هنوز کند در cache miss)
+3. فشرده‌سازی worklog.md
