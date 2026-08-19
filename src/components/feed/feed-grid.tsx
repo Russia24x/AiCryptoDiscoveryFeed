@@ -88,7 +88,7 @@ export function FeedGrid({
       {/* Section header */}
       <div className="flex flex-wrap items-end justify-between gap-3 mb-6">
         <div>
-          <div className="flex items-center gap-2 text-[11px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-1.5">
+          <div className="flex items-center gap-2 text-[11px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-1.5" suppressHydrationWarning>
             <Filter className="w-3.5 h-3.5" />
             <span>{t.feed.feedLive}</span>
             {data?.fetchedAt && (
@@ -97,7 +97,7 @@ export function FeedGrid({
               </span>
             )}
           </div>
-          <h2 className="text-xl md:text-2xl font-bold flex items-center gap-3">
+          <h2 className="text-xl md:text-2xl font-bold flex items-center gap-3" suppressHydrationWarning>
             <span className="text-[var(--brand-text)]">{title}</span>
             <span className="text-sm font-latin text-[var(--brand-accent)] bg-[var(--brand-accent-soft)] px-2 py-0.5 rounded-md">
               {formatNumber(count, lang)}
