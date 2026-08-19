@@ -15,12 +15,14 @@ import {
   MessageCircle,
   Layers,
   TrendingUp,
+  TrendingDown,
   Bell,
   BellRing,
   X,
 } from "lucide-react";
 import { useLanguage } from "@/hooks/use-language";
 import { usePriceAlerts, type AlertDirection } from "@/hooks/use-price-alerts";
+import { GlassCard, ProgressBar } from "./ui-primitives";
 import { cn } from "@/lib/utils";
 
 interface CoinDetailProps {
@@ -275,31 +277,41 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
   const description = lang === "fa" ? (displayCoin.description.fa || displayCoin.description.en) : displayCoin.description.en;
 
   return (
-    <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-4 md:py-6">
+    <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-4 md:py-6 relative">
+      {/* Decorative gradient background */}
+      <div className="absolute inset-x-0 top-0 h-64 bg-gradient-to-b from-[var(--brand-accent)]/[0.04] via-transparent to-transparent pointer-events-none -z-10" />
+
       {/* Back button */}
       <button onClick={() => router.push("/crypto/market")} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium text-[var(--brand-muted)] hover:text-[var(--brand-text)] hover:bg-[var(--brand-surface)] transition-colors mb-4">
         <Back className="w-3.5 h-3.5" />
         {lang === "fa" ? "بازگشت به بازار" : "Back to market"}
       </button>
 
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        {displayCoin.image?.large && <img src={displayCoin.image.large} alt={displayCoin.name} className="w-12 h-12 rounded-full" />}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="font-display text-2xl md:text-3xl font-bold text-[var(--brand-text)]">{displayCoin.name}</h1>
-            <span className="text-sm font-latin text-[var(--brand-muted)] uppercase">{displayCoin.symbol}</span>
-            {displayCoin.market_cap_rank > 0 && (
-              <span className="text-[10px] font-latin text-[var(--brand-muted)] bg-[var(--brand-surface-2)] px-2 py-0.5 rounded-full">#{fa(displayCoin.market_cap_rank)}</span>
-            )}
-            {usingCmcFallback && (
-              <span className="text-[10px] font-latin text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
-                <AlertCircle className="w-2.5 h-2.5" />
-                {lang === "fa" ? "حالت محدود" : "Limited data"}
-              </span>
-            )}
-          </div>
-          <div className="flex items-baseline gap-2 mt-1">
+      {/* Header — modern GlassCard with glow */}
+      <GlassCard glow accent={up ? "#2dd4bf" : "#f87171"} className="p-4 md:p-5 mb-6">
+        <div className="flex items-center gap-3">
+          {displayCoin.image?.large && (
+            <img
+              src={displayCoin.image.large}
+              alt={displayCoin.name}
+              className="w-14 h-14 md:w-16 md:h-16 rounded-full ring-2 ring-[var(--brand-border)] shadow-lg shrink-0"
+            />
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="font-display text-2xl md:text-3xl font-bold text-[var(--brand-text)]">{displayCoin.name}</h1>
+              <span className="text-sm font-latin text-[var(--brand-muted)] uppercase">{displayCoin.symbol}</span>
+              {displayCoin.market_cap_rank > 0 && (
+                <span className="text-[10px] font-latin text-[var(--brand-muted)] bg-[var(--brand-surface-2)] px-2 py-0.5 rounded-full">#{fa(displayCoin.market_cap_rank)}</span>
+              )}
+              {usingCmcFallback && (
+                <span className="text-[10px] font-latin text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                  <AlertCircle className="w-2.5 h-2.5" />
+                  {lang === "fa" ? "حالت محدود" : "Limited data"}
+                </span>
+              )}
+            </div>
+            <div className="flex items-baseline gap-2 mt-1">
             <span className="font-latin tabular-nums text-2xl font-bold text-[var(--brand-text)]">{fa(fmtPrice(md.current_price.usd))}</span>
             <span className={cn("font-latin tabular-nums text-sm font-bold", up ? "text-[var(--brand-accent)]" : "text-red-400")}>
               {up ? "+" : ""}{fa(change24h.toFixed(2))}%
@@ -325,7 +337,8 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
             </span>
           )}
         </button>
-      </div>
+        </div>
+      </GlassCard>
 
       {/* Price Alert Panel */}
       {alertOpen && (
@@ -345,7 +358,7 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
 
       {/* Sparkline */}
       {md.sparkline_7d?.price && md.sparkline_7d.price.length > 0 && (
-        <div className="mb-6 p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
+        <GlassCard className="p-4 mb-6">
           <div className="flex items-center justify-between mb-2">
             <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)]">{lang === "fa" ? "نمودار ۷ روزه" : "7-day chart"}</div>
             <div className="flex items-center gap-2 text-[10px] font-latin text-[var(--brand-muted)]">
@@ -354,7 +367,7 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
             </div>
           </div>
           <Sparkline prices={md.sparkline_7d.price} accent={up ? "#2dd4bf" : "#f87171"} />
-        </div>
+        </GlassCard>
       )}
 
       {/* DeFi TVL and Fees sections removed for performance — DefiLlama APIs
@@ -384,7 +397,7 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
       </div>
 
       {/* Price changes */}
-      <div className="mb-6 p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
+      <GlassCard className="p-4 mb-6">
         <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-3">{lang === "fa" ? "تغییرات قیمت" : "Price Changes"}</div>
         <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
           <PriceChange label="1h" value={md.price_change_percentage_1h_in_currency?.usd} fa={fa} />
@@ -394,28 +407,34 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
           <PriceChange label="60d" value={md.price_change_percentage_60d_in_currency?.usd} fa={fa} />
           <PriceChange label="1y" value={md.price_change_percentage_1y_in_currency?.usd} fa={fa} />
         </div>
-      </div>
+      </GlassCard>
 
       {/* ATH / ATL */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
-        <div className="p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
-          <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-1">{lang === "fa" ? "بالاترین تاریخی (ATH)" : "All-Time High (ATH)"}</div>
+        <GlassCard glow accent="#f59e0b" className="p-4">
+          <div className="flex items-center gap-1.5 mb-1">
+            <TrendingUp className="w-3 h-3 text-amber-400" />
+            <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)]">{lang === "fa" ? "بالاترین تاریخی (ATH)" : "All-Time High"}</div>
+          </div>
           <div className="font-latin tabular-nums text-lg font-bold text-[var(--brand-text)]">{fa(fmtPrice(md.ath?.usd || 0))}</div>
           <div className="text-[10px] text-[var(--brand-muted)] mt-1">
-            {md.ath_date?.usd ? fa(fmtDate(md.ath_date.usd)) : ""} · <span className="text-red-400">{fa((md.ath_change_percentage?.usd || 0).toFixed(2))}%</span>
+            {md.ath_date?.usd ? fa(fmtDate(md.ath_date.usd)) : ""} · <span className="text-red-400 font-bold">{fa((md.ath_change_percentage?.usd || 0).toFixed(2))}%</span>
           </div>
-        </div>
-        <div className="p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
-          <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-1">{lang === "fa" ? "پایین‌ترین تاریخی (ATL)" : "All-Time Low (ATL)"}</div>
+        </GlassCard>
+        <GlassCard glow accent="#2dd4bf" className="p-4">
+          <div className="flex items-center gap-1.5 mb-1">
+            <TrendingDown className="w-3 h-3 text-[var(--brand-accent)]" />
+            <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)]">{lang === "fa" ? "پایین‌ترین تاریخی (ATL)" : "All-Time Low"}</div>
+          </div>
           <div className="font-latin tabular-nums text-lg font-bold text-[var(--brand-text)]">{fa(fmtPrice(md.atl?.usd || 0))}</div>
           <div className="text-[10px] text-[var(--brand-muted)] mt-1">
-            {md.atl_date?.usd ? fa(fmtDate(md.atl_date.usd)) : ""} · <span className="text-[var(--brand-accent)]">{fa((md.atl_change_percentage?.usd || 0).toFixed(2))}%</span>
+            {md.atl_date?.usd ? fa(fmtDate(md.atl_date.usd)) : ""} · <span className="text-[var(--brand-accent)] font-bold">{fa((md.atl_change_percentage?.usd || 0).toFixed(2))}%</span>
           </div>
-        </div>
+        </GlassCard>
       </div>
 
       {/* Supply */}
-      <div className="mb-6 p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
+      <GlassCard className="p-4 mb-6">
         <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-3">{lang === "fa" ? "عرضه" : "Supply"}</div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
           <div><span className="text-[var(--brand-muted)]">{lang === "fa" ? "در گردش: " : "Circulating: "}</span><span className="font-latin tabular-nums text-[var(--brand-text)]">{fa(fmtCompact(md.circulating_supply || 0))} {displayCoin.symbol.toUpperCase()}</span></div>
@@ -425,19 +444,20 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
         {/* Supply progress bar (circulating / max) */}
         {md.max_supply && md.circulating_supply && (
           <div className="mt-3">
-            <div className="h-1.5 w-full rounded-full bg-[var(--brand-surface-2)] overflow-hidden">
-              <div className="h-full rounded-full bg-[var(--brand-accent)]" style={{ width: `${Math.min(100, (md.circulating_supply / md.max_supply) * 100)}%` }} />
-            </div>
+            <ProgressBar
+              value={(md.circulating_supply / md.max_supply) * 100}
+              color="var(--brand-accent)"
+            />
             <div className="text-[10px] text-[var(--brand-muted)] mt-1 font-latin">
               {fa(((md.circulating_supply / md.max_supply) * 100).toFixed(1))}% {lang === "fa" ? "ماین شده" : "mined"}
             </div>
           </div>
         )}
-      </div>
+      </GlassCard>
 
       {/* Categories — from CoinGecko + CMC tags */}
       {((displayCoin.categories && displayCoin.categories.length > 0) || (cmcCoin?.tags && cmcCoin.tags.length > 0)) && (
-        <div className="mb-6 p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
+        <GlassCard className="p-4 mb-6">
           <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-2">{lang === "fa" ? "دسته‌ها و برچسب‌ها" : "Categories & Tags"}</div>
           <div className="flex flex-wrap gap-1.5">
             {/* CoinGecko categories */}
@@ -451,15 +471,15 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
               </span>
             ))}
           </div>
-        </div>
+        </GlassCard>
       )}
 
       {/* Description */}
       {description && (
-        <div className="p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
+        <GlassCard className="p-4">
           <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-2">{lang === "fa" ? "درباره" : "About"}</div>
           <div className="text-xs text-[var(--brand-text)] leading-relaxed prose-sm max-w-none" dir="auto" dangerouslySetInnerHTML={{ __html: description.split("\n").slice(0, 5).join("\n") }} />
-        </div>
+        </GlassCard>
       )}
     </div>
   );
