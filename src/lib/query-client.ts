@@ -13,25 +13,33 @@ import { QueryClient, isServer } from "@tanstack/react-query";
  *     and a unified cache.
  *
  * Default options rationale:
- *   - staleTime: 30s — short enough that data feels live (BTC, weather,
- *     SP500 update frequently) but long enough to avoid hammering APIs
- *     when navigating between pages.
- *   - gcTime: 5min — cached data is kept for 5 min after the last observer
+ *   - staleTime: 60s — most data in this app doesn't change more often than
+ *     once per minute, so 60s is a safe default. Individual queries override
+ *     with longer/shorter times as needed.
+ *   - gcTime: 10min — cached data is kept for 10 min after the last observer
  *     unsubscribes, so back-navigation feels instant.
- *   - retry: 1 — for transient failures (e.g., Cloudflare PoP switch),
- *     one retry is enough. Multiple retries slow down the UI.
- *   - refetchOnWindowFocus: true — when the user comes back to the tab,
- *     refresh all visible queries. Critical for live data (prices, weather).
+ *   - retry: 1 — for transient failures, one retry is enough.
+ *   - retryDelay: exponential backoff (default TanStack behavior).
+ *   - refetchOnWindowFocus: false — disabled by default to avoid hammering
+ *     rate-limited APIs (CoinGecko free tier is 30 calls/min). Individual
+ *     queries that need live data (like ticker prices) can opt in with
+ *     `refetchOnWindowFocus: true`.
  *   - refetchOnReconnect: true — when network comes back after offline.
+ *
+ * Per-query staleTime overrides (in components):
+ *   - Ticker prices: 30s (live-ish)
+ *   - Market data: 60s (medium)
+ *   - Fear/Greed, Altcoin Season: 5min (slow)
+ *   - Static metadata: 30min (very slow)
  */
 export function makeQueryClient() {
   return new QueryClient({
     defaultOptions: {
       queries: {
-        staleTime: 30 * 1000,
-        gcTime: 5 * 60 * 1000,
+        staleTime: 60 * 1000,
+        gcTime: 10 * 60 * 1000,
         retry: 1,
-        refetchOnWindowFocus: true,
+        refetchOnWindowFocus: false,
         refetchOnReconnect: true,
       },
     },

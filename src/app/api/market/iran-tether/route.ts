@@ -49,7 +49,7 @@ interface TetherData {
   cached?: boolean;
 }
 
-const FETCH_TIMEOUT_MS = 8000;
+const FETCH_TIMEOUT_MS = 3000;
 
 // In-memory cache for fallback when all upstreams fail
 let cached: TetherData | null = null;
@@ -190,9 +190,9 @@ async function tryWallex(): Promise<TetherData | null> {
 }
 
 export async function GET() {
-  // Try each source in order; first success wins.
-  // 1. Wallex (most accurate - direct USDTTMN market)
-  // 2. Nobitex (also direct USDT-RLS orderbook)
+  // Race all sources in parallel and use the first that returns successfully.
+  // This is much faster than sequential (was 5-16s with 8s timeouts each;
+  // now max 3s with parallel racing).
   //
   // IMPORTANT: We DO NOT fall back to open.er-api.com anymore. The previous
   // fallback returned the OFFICIAL USD->IRR rate (set by Central Bank of Iran),
@@ -201,9 +201,8 @@ export async function GET() {
   // saw 134,518 Toman (official rate) instead of ~187,000 (real market rate).
   // When we can't reach Iranian exchanges, we return an explicit "unavailable"
   // status so the UI can show "ناموجود" instead of misleading the user.
-  const sources = [tryWallex, tryNobitex];
-  for (const src of sources) {
-    const result = await src();
+  try {
+    const result = await Promise.any([tryWallex(), tryNobitex()]);
     if (result) {
       cached = result;
       return NextResponse.json(result, {
@@ -212,6 +211,9 @@ export async function GET() {
         },
       });
     }
+  } catch {
+    // Promise.any throws AggregateError if ALL promises reject — fall through
+    // to the cached/unavailable fallback below.
   }
 
   // All Iranian exchange upstreams failed.

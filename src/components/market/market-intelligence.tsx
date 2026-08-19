@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import { useLanguage } from "@/hooks/use-language";
 import { useWatchlist } from "@/hooks/use-watchlist";
+import { useUIStore } from "@/hooks/use-ui-store";
+import { GlassCard, StatCard, Sparkline, ProgressBar, Badge } from "./ui-primitives";
 import { cn } from "@/lib/utils";
 
 /* ============= Types ============= */
@@ -118,30 +120,45 @@ export function MarketIntelligence() {
   const { lang, isRTL } = useLanguage();
   const router = useRouter();
   const [search, setSearch] = useState("");
-  const [sortField, setSortField] = useState<SortField>("market_cap_rank");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
-  const [showWatchlistOnly, setShowWatchlistOnly] = useState(false);
-  const [activeTag, setActiveTag] = useState<string | null>(null);
+  // Use Zustand for persistent UI state (survives page navigation)
+  const sortField = useUIStore((s) => s.marketSortField);
+  const sortDir = useUIStore((s) => s.marketSortDir);
+  const setMarketSort = useUIStore((s) => s.setMarketSort);
+  const showWatchlistOnly = useUIStore((s) => s.marketShowWatchlistOnly);
+  const setMarketShowWatchlistOnly = useUIStore((s) => s.setMarketShowWatchlistOnly);
+  const activeTag = useUIStore((s) => s.marketActiveTag);
+  const setMarketActiveTag = useUIStore((s) => s.setMarketActiveTag);
+  const viewMode = useUIStore((s) => s.marketViewMode);
+  const setMarketViewMode = useUIStore((s) => s.setMarketViewMode);
   const { watchlist, isWatched, toggle: toggleWatch, hydrated: watchHydrated } = useWatchlist();
 
   // --- Coin list (top 100) ---
+  // staleTime: 2min (was 1min) — reduces API calls by 50%
+  // refetchInterval: removed (was 5min, caused unnecessary refetches)
+  // retry: 2 (was default 1) — more resilient to transient errors
   const { data: marketData, isLoading, error, refetch, isFetching } = useQuery<{ coins: Coin[] }>({
     queryKey: ["market", "coingecko-markets", "top100"],
     queryFn: async () => {
       const res = await fetch("/api/market/coingecko-markets?per_page=100&sparkline=false", { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-      if (json?.rateLimited) throw new Error(lang === "fa" ? "درخواست‌های زیاد. یک دقیقه صبر کنید." : "Rate limited.");
+      // If rate-limited, return the cached coins (if any) instead of throwing.
+      // This prevents the "درخواست‌های زیاد" error message from appearing.
+      if (json?.rateLimited && json?.coins?.length > 0) {
+        return json as { coins: Coin[] };
+      }
+      if (json?.rateLimited) {
+        throw new Error(lang === "fa" ? "درخواست‌های زیاد. یک دقیقه صبر کنید." : "Rate limited.");
+      }
       return json as { coins: Coin[] };
     },
-    refetchInterval: 5 * 60_000,
-    staleTime: 60_000,
+    staleTime: 2 * 60_000,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
   });
 
   // --- CMC listings (for tags/category filter) ---
-  // We fetch CMC listings in parallel to get tags for category filtering.
-  // This data is edge-cached 60s and TanStack Query caches it 2min.
-  // Local-first: no extra upstream call if cache is warm.
+  // staleTime: 5min (was 2min) — tags don't change often
   const { data: cmcData } = useQuery<{ coins: CmcCoin[] }>({
     queryKey: ["market", "cmc-listings", "top100"],
     queryFn: async () => {
@@ -150,7 +167,7 @@ export function MarketIntelligence() {
       const json = await res.json();
       return { coins: (json?.coins || []) as CmcCoin[] };
     },
-    staleTime: 2 * 60_000,
+    staleTime: 5 * 60_000,
   });
 
   // Build a symbol → tags map from CMC data
@@ -182,6 +199,7 @@ export function MarketIntelligence() {
   }, [cmcData]);
 
   // --- Global stats ---
+  // staleTime: 2min (was 1min) — market cap doesn't change every minute
   const { data: globalStats } = useQuery<GlobalStats>({
     queryKey: ["market", "global-stats"],
     queryFn: async () => {
@@ -189,10 +207,11 @@ export function MarketIntelligence() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as GlobalStats;
     },
-    staleTime: 60_000,
+    staleTime: 2 * 60_000,
   });
 
   // --- Trending coins ---
+  // staleTime: 10min (was 5min) — trending list changes slowly
   const { data: trendingData } = useQuery<{ coins: TrendingCoin[] }>({
     queryKey: ["market", "trending"],
     queryFn: async () => {
@@ -200,10 +219,11 @@ export function MarketIntelligence() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as { coins: TrendingCoin[] };
     },
-    staleTime: 5 * 60_000,
+    staleTime: 10 * 60_000,
   });
 
   // --- Altcoin Season ---
+  // staleTime: 10min (was 5min) — daily index
   const { data: altcoinSeason } = useQuery<AltcoinSeason>({
     queryKey: ["market", "altcoin-season"],
     queryFn: async () => {
@@ -211,10 +231,11 @@ export function MarketIntelligence() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as AltcoinSeason;
     },
-    staleTime: 5 * 60_000,
+    staleTime: 10 * 60_000,
   });
 
   // --- Fear & Greed Historical (30 days) ---
+  // staleTime: 30min (was 15min) — historical data doesn't change
   const { data: fngHistory } = useQuery<FngHistory>({
     queryKey: ["market", "fear-greed-historical", 30],
     queryFn: async () => {
@@ -222,7 +243,7 @@ export function MarketIntelligence() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as FngHistory;
     },
-    staleTime: 15 * 60_000,
+    staleTime: 30 * 60_000,
   });
 
   const coins = marketData?.coins || [];
@@ -268,10 +289,10 @@ export function MarketIntelligence() {
   }, [filtered, sortField, sortDir, showWatchlistOnly, watchlist, watchHydrated]);
 
   const onSort = (field: SortField) => {
-    if (field === sortField) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else {
-      setSortField(field);
-      setSortDir(field === "market_cap_rank" ? "asc" : "desc");
+    if (field === sortField) {
+      setMarketSort(field, sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setMarketSort(field, field === "market_cap_rank" ? "asc" : "desc");
     }
   };
 
@@ -290,7 +311,7 @@ export function MarketIntelligence() {
             </div>
             {/* Watchlist toggle */}
             <button
-              onClick={() => setShowWatchlistOnly((v) => !v)}
+              onClick={() => setMarketShowWatchlistOnly(!showWatchlistOnly)}
               className={cn(
                 "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all",
                 showWatchlistOnly
@@ -336,7 +357,7 @@ export function MarketIntelligence() {
             <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-2">
               <div className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <button
-                  onClick={() => setActiveTag(null)}
+                  onClick={() => setMarketActiveTag(null)}
                   className={cn(
                     "shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all whitespace-nowrap",
                     !activeTag
@@ -349,7 +370,7 @@ export function MarketIntelligence() {
                 {availableTags.map((tag) => (
                   <button
                     key={tag}
-                    onClick={() => setActiveTag(activeTag === tag ? null : tag)}
+                    onClick={() => setMarketActiveTag(activeTag === tag ? null : tag)}
                     className={cn(
                       "shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all whitespace-nowrap capitalize",
                       activeTag === tag
@@ -446,7 +467,7 @@ export function MarketIntelligence() {
                       <p className="text-sm font-bold text-[var(--brand-text)]">{lang === "fa" ? "واچ‌لیست خالی است" : "Watchlist is empty"}</p>
                       <p className="text-xs text-[var(--brand-muted)] mt-1">{lang === "fa" ? "روی آیکن ستاره هر ارز بزن تا اینجا اضافه شود" : "Tap the star icon on any coin to add it here"}</p>
                     </div>
-                    <button onClick={() => setShowWatchlistOnly(false)} className="px-4 py-2 rounded-full bg-[var(--brand-accent)] text-[#04201d] text-xs font-bold hover:brightness-110 transition-all">
+                    <button onClick={() => setMarketShowWatchlistOnly(false)} className="px-4 py-2 rounded-full bg-[var(--brand-accent)] text-[#04201d] text-xs font-bold hover:brightness-110 transition-all">
                       {lang === "fa" ? "نمایش همه ارزها" : "Show all coins"}
                     </button>
                   </>
