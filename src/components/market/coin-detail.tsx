@@ -135,20 +135,31 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
   const coinAlerts = alerts.filter((a) => a.coinId === coinId);
 
   // --- Primary: CoinGecko coin detail ---
-  const { data: coin, isLoading, error } = useQuery<CoinGeckoCoin>({
+  // staleTime: 5min (was 2min) — coin detail doesn't change often
+  // retry: 2 (was 1) with exponential backoff
+  // On rate-limit: we don't throw — we return null and let the UI fall
+  // back to CMC coin data (which has basic price + market cap info).
+  const { data: coin, isLoading, error } = useQuery<CoinGeckoCoin | null>({
     queryKey: ["market", "coingecko-coin", coinId],
     queryFn: async () => {
       const res = await fetch(`/api/market/coingecko-coin?id=${encodeURIComponent(coinId)}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-      if (json?.error) throw new Error(json.error);
-      if (json?.rateLimited) {
-        throw new Error(lang === "fa" ? "درخواست‌های زیاد. یک دقیقه صبر کنید." : "Rate limited. Try in a minute.");
+      // If rate-limited with cached data, serve it.
+      if (json?.rateLimited && json?.id) {
+        return json as CoinGeckoCoin;
       }
+      // If rate-limited with NO cached data, return null instead of throwing.
+      // The UI will fall back to CMC coin data.
+      if (json?.rateLimited) {
+        return null;
+      }
+      if (json?.error) throw new Error(json.error);
       return json as CoinGeckoCoin;
     },
-    staleTime: 2 * 60_000,
-    retry: 1,
+    staleTime: 5 * 60_000,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
   });
 
   // --- Secondary: CMC coin metadata (tags, logo, description, URLs) ---
@@ -171,7 +182,7 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
   const cmcSlug = useMemo(() => {
     if (!coin?.symbol || !cmcListings?.coins) return null;
     const match = cmcListings.coins.find(
-      (c) => c.symbol.toUpperCase() === coin.symbol.toUpperCase()
+      (c) => c.symbol.toUpperCase() === coin?.symbol?.toUpperCase()
     );
     return match?.slug || null;
   }, [coin?.symbol, cmcListings]);
@@ -286,7 +297,53 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
     return <CoinDetailSkeleton lang={lang} />;
   }
 
-  if (error || !coin) {
+  // If CoinGecko returned null (rate-limited, no cached data), but we have
+  // CMC coin data, construct a minimal CoinGeckoCoin-shaped object from CMC
+  // so the rest of the component can render with at least basic info.
+  let displayCoin = coin;
+  let usingCmcFallback = false;
+  if (!displayCoin && cmcCoin) {
+    usingCmcFallback = true;
+    displayCoin = {
+      id: coinId,
+      symbol: cmcCoin.symbol,
+      name: cmcCoin.name,
+      description: { en: cmcCoin.description, fa: cmcCoin.description },
+      links: {
+        homepage: cmcCoin.urls?.website || [],
+        twitter_screen_name: cmcCoin.urls?.twitter?.[0] || undefined,
+        subreddit_url: cmcCoin.urls?.reddit?.[0] || undefined,
+        repos_url: { github: cmcCoin.urls?.sourceCode || [], bitbucket: [] },
+      },
+      image: {
+        thumb: cmcCoin.logo,
+        small: cmcCoin.logo,
+        large: cmcCoin.logo,
+      },
+      market_cap_rank: 0,
+      categories: (cmcCoin.tags || []).map((t) => t.name),
+      market_data: {
+        current_price: { usd: 0 },
+        market_cap: { usd: 0 },
+        total_volume: { usd: 0 },
+        high_24h: { usd: 0 },
+        low_24h: { usd: 0 },
+        price_change_percentage_24h: 0,
+        price_change_percentage_24h_in_currency: { usd: 0 },
+        circulating_supply: 0,
+        total_supply: null,
+        max_supply: null,
+        ath: { usd: 0 },
+        ath_date: { usd: "" },
+        ath_change_percentage: { usd: 0 },
+        atl: { usd: 0 },
+        atl_date: { usd: "" },
+        atl_change_percentage: { usd: 0 },
+      },
+    } as unknown as CoinGeckoCoin;
+  }
+
+  if (error || !displayCoin) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3 text-center px-4">
         <AlertCircle className="w-8 h-8 text-amber-400" />
@@ -300,10 +357,11 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
     );
   }
 
-  const md = coin.market_data;
+  // Use the (possibly fallback) coin object for the rest of the render.
+  const md = displayCoin.market_data;
   const change24h = md.price_change_percentage_24h_in_currency?.usd || 0;
   const up = change24h >= 0;
-  const description = lang === "fa" ? (coin.description.fa || coin.description.en) : coin.description.en;
+  const description = lang === "fa" ? (displayCoin.description.fa || displayCoin.description.en) : displayCoin.description.en;
   const hasDefi = !!defiProtocol && defiProtocol.tvl > 0;
   const hasFees = !!defiFees && defiFees.fees24h > 0;
 
@@ -317,13 +375,19 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
 
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        {coin.image?.large && <img src={coin.image.large} alt={coin.name} className="w-12 h-12 rounded-full" />}
+        {displayCoin.image?.large && <img src={displayCoin.image.large} alt={displayCoin.name} className="w-12 h-12 rounded-full" />}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="font-display text-2xl md:text-3xl font-bold text-[var(--brand-text)]">{coin.name}</h1>
-            <span className="text-sm font-latin text-[var(--brand-muted)] uppercase">{coin.symbol}</span>
-            {coin.market_cap_rank && (
-              <span className="text-[10px] font-latin text-[var(--brand-muted)] bg-[var(--brand-surface-2)] px-2 py-0.5 rounded-full">#{fa(coin.market_cap_rank)}</span>
+            <h1 className="font-display text-2xl md:text-3xl font-bold text-[var(--brand-text)]">{displayCoin.name}</h1>
+            <span className="text-sm font-latin text-[var(--brand-muted)] uppercase">{displayCoin.symbol}</span>
+            {displayCoin.market_cap_rank > 0 && (
+              <span className="text-[10px] font-latin text-[var(--brand-muted)] bg-[var(--brand-surface-2)] px-2 py-0.5 rounded-full">#{fa(displayCoin.market_cap_rank)}</span>
+            )}
+            {usingCmcFallback && (
+              <span className="text-[10px] font-latin text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                <AlertCircle className="w-2.5 h-2.5" />
+                {lang === "fa" ? "حالت محدود" : "Limited data"}
+              </span>
             )}
           </div>
           <div className="flex items-baseline gap-2 mt-1">
@@ -358,8 +422,8 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
       {alertOpen && (
         <PriceAlertPanel
           coinId={coinId}
-          coinName={coin.name}
-          coinSymbol={coin.symbol}
+          coinName={displayCoin.name}
+          coinSymbol={displayCoin.symbol}
           currentPrice={md.current_price.usd}
           lang={lang}
           alerts={coinAlerts}
@@ -484,12 +548,12 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
 
       {/* External links */}
       <div className="flex flex-wrap gap-2 mb-6">
-        {coin.links?.homepage?.[0] && <ExtLink href={coin.links.homepage[0]} icon={<Globe className="w-3.5 h-3.5" />} label={lang === "fa" ? "وب‌سایت" : "Website"} />}
-        {coin.links?.twitter_screen_name && <ExtLink href={`https://twitter.com/${coin.links.twitter_screen_name}`} icon={<Twitter className="w-3.5 h-3.5" />} label="Twitter" />}
-        {coin.links?.subreddit_url && <ExtLink href={coin.links.subreddit_url} icon={<MessageCircle className="w-3.5 h-3.5" />} label="Reddit" />}
-        {coin.links?.repos_url?.github?.[0] && <ExtLink href={coin.links.repos_url.github[0]} icon={<Github className="w-3.5 h-3.5" />} label="GitHub" />}
-        <ExtLink href={`https://www.coingecko.com/en/coins/${coin.id}`} icon={<ExternalLink className="w-3.5 h-3.5" />} label="CoinGecko" />
-        <ExtLink href={`https://coinmarketcap.com/currencies/${cmcSlug || coin.id}/`} icon={<ExternalLink className="w-3.5 h-3.5" />} label="CMC" />
+        {displayCoin.links?.homepage?.[0] && <ExtLink href={displayCoin.links.homepage[0]} icon={<Globe className="w-3.5 h-3.5" />} label={lang === "fa" ? "وب‌سایت" : "Website"} />}
+        {displayCoin.links?.twitter_screen_name && <ExtLink href={`https://twitter.com/${displayCoin.links.twitter_screen_name}`} icon={<Twitter className="w-3.5 h-3.5" />} label="Twitter" />}
+        {displayCoin.links?.subreddit_url && <ExtLink href={displayCoin.links.subreddit_url} icon={<MessageCircle className="w-3.5 h-3.5" />} label="Reddit" />}
+        {displayCoin.links?.repos_url?.github?.[0] && <ExtLink href={displayCoin.links.repos_url.github[0]} icon={<Github className="w-3.5 h-3.5" />} label="GitHub" />}
+        <ExtLink href={`https://www.coingecko.com/en/coins/${displayCoin.id}`} icon={<ExternalLink className="w-3.5 h-3.5" />} label="CoinGecko" />
+        <ExtLink href={`https://coinmarketcap.com/currencies/${cmcSlug || displayCoin.id}/`} icon={<ExternalLink className="w-3.5 h-3.5" />} label="CMC" />
         {hasDefi && <ExtLink href={`https://defillama.com/protocol/${coinId}`} icon={<ExternalLink className="w-3.5 h-3.5" />} label="DefiLlama" />}
       </div>
 
@@ -539,9 +603,9 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
       <div className="mb-6 p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
         <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-3">{lang === "fa" ? "عرضه" : "Supply"}</div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-          <div><span className="text-[var(--brand-muted)]">{lang === "fa" ? "در گردش: " : "Circulating: "}</span><span className="font-latin tabular-nums text-[var(--brand-text)]">{fa(fmtCompact(md.circulating_supply || 0))} {coin.symbol.toUpperCase()}</span></div>
-          <div><span className="text-[var(--brand-muted)]">{lang === "fa" ? "کل: " : "Total: "}</span><span className="font-latin tabular-nums text-[var(--brand-text)]">{md.total_supply ? `${fa(fmtCompact(md.total_supply))} ${coin.symbol.toUpperCase()}` : "—"}</span></div>
-          <div><span className="text-[var(--brand-muted)]">{lang === "fa" ? "حداکثر: " : "Max: "}</span><span className="font-latin tabular-nums text-[var(--brand-text)]">{md.max_supply ? `${fa(fmtCompact(md.max_supply))} ${coin.symbol.toUpperCase()}` : "∞"}</span></div>
+          <div><span className="text-[var(--brand-muted)]">{lang === "fa" ? "در گردش: " : "Circulating: "}</span><span className="font-latin tabular-nums text-[var(--brand-text)]">{fa(fmtCompact(md.circulating_supply || 0))} {displayCoin.symbol.toUpperCase()}</span></div>
+          <div><span className="text-[var(--brand-muted)]">{lang === "fa" ? "کل: " : "Total: "}</span><span className="font-latin tabular-nums text-[var(--brand-text)]">{md.total_supply ? `${fa(fmtCompact(md.total_supply))} ${displayCoin.symbol.toUpperCase()}` : "—"}</span></div>
+          <div><span className="text-[var(--brand-muted)]">{lang === "fa" ? "حداکثر: " : "Max: "}</span><span className="font-latin tabular-nums text-[var(--brand-text)]">{md.max_supply ? `${fa(fmtCompact(md.max_supply))} ${displayCoin.symbol.toUpperCase()}` : "∞"}</span></div>
         </div>
         {/* Supply progress bar (circulating / max) */}
         {md.max_supply && md.circulating_supply && (
@@ -557,12 +621,12 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
       </div>
 
       {/* Categories — from CoinGecko + CMC tags */}
-      {((coin.categories && coin.categories.length > 0) || (cmcCoin?.tags && cmcCoin.tags.length > 0)) && (
+      {((displayCoin.categories && displayCoin.categories.length > 0) || (cmcCoin?.tags && cmcCoin.tags.length > 0)) && (
         <div className="mb-6 p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
           <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-2">{lang === "fa" ? "دسته‌ها و برچسب‌ها" : "Categories & Tags"}</div>
           <div className="flex flex-wrap gap-1.5">
             {/* CoinGecko categories */}
-            {coin.categories?.filter(c => c && c.length > 0).slice(0, 10).map((cat) => (
+            {displayCoin.categories?.filter(c => c && c.length > 0).slice(0, 10).map((cat) => (
               <span key={cat} className="text-[10px] px-2 py-1 rounded-full bg-[var(--brand-surface-2)] text-[var(--brand-muted)] border border-[var(--brand-border)]">{cat}</span>
             ))}
             {/* CMC tags (if not already shown from CoinGecko) */}
