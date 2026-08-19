@@ -95,14 +95,6 @@ interface TopGainer {
   tags: string[];
 }
 
-interface AltcoinSeason {
-  index: number;
-  season: string;
-  btcChange24h: number;
-  altcoinsCount: number;
-  outperformingCount: number;
-}
-
 interface FngHistory {
   data: Array<{ value: number; classification: string; timestamp: number; date: string }>;
 }
@@ -234,18 +226,6 @@ export function MarketIntelligence() {
       const res = await fetch("/api/market/trending", { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as { coins: TrendingCoin[] };
-    },
-    staleTime: 10 * 60_000,
-  });
-
-  // --- Altcoin Season ---
-  // staleTime: 10min (was 5min) — daily index
-  const { data: altcoinSeason } = useQuery<AltcoinSeason>({
-    queryKey: ["market", "altcoin-season"],
-    queryFn: async () => {
-      const res = await fetch("/api/market/altcoin-season", { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return (await res.json()) as AltcoinSeason;
     },
     staleTime: 10 * 60_000,
   });
@@ -739,29 +719,10 @@ export function MarketIntelligence() {
               </SidebarCard>
             )}
 
-            {/* Altcoin Season Gauge */}
-            {altcoinSeason && altcoinSeason.altcoinsCount > 0 && (
-              <SidebarCard
-                title={lang === "fa" ? "فصل آلت‌کوین‌ها" : "Altcoin Season"}
-                icon={<BarChart3 className="w-3.5 h-3.5" />}
-                accent="#a78bfa"
-              >
-                <div className="flex items-center gap-3">
-                  <AltcoinSeasonGauge index={altcoinSeason.index} lang={lang} />
-                  <div className="flex-1 min-w-0 text-xs space-y-1">
-                    <div className={cn("font-bold", altcoinSeason.index >= 75 ? "text-[var(--brand-accent)]" : altcoinSeason.index <= 25 ? "text-amber-400" : "text-[var(--brand-muted)]")}>
-                      {altcoinSeason.season}
-                    </div>
-                    <div className="text-[10px] text-[var(--brand-muted)]">
-                      {fa(altcoinSeason.outperformingCount, lang)} / {fa(altcoinSeason.altcoinsCount, lang)} {lang === "fa" ? "از BTC جلوتر" : "beating BTC"}
-                    </div>
-                    <div className="text-[10px] font-latin text-[var(--brand-muted)]">
-                      BTC 24h: <span className={altcoinSeason.btcChange24h >= 0 ? "text-[var(--brand-accent)]" : "text-red-400"}>{altcoinSeason.btcChange24h >= 0 ? "+" : ""}{altcoinSeason.btcChange24h.toFixed(2)}%</span>
-                    </div>
-                  </div>
-                </div>
-              </SidebarCard>
-            )}
+            {/* Altcoin Season section removed — the API was non-essential
+                and added 1 extra request per page load. The market page
+                now focuses on the most important data: top coins, trending,
+                top gainers, global stats, and Fear & Greed. */}
 
             {/* Fear & Greed Historical Chart */}
             {fngHistory?.data && fngHistory.data.length > 0 && (
@@ -870,24 +831,7 @@ function SidebarCard({ title, icon, accent, children }: { title: string; icon: R
   );
 }
 
-function AltcoinSeasonGauge({ index, lang }: { index: number; lang: "fa" | "en" }) {
-  const radius = 28;
-  const circumference = 2 * Math.PI * radius;
-  const arc = (index / 100) * circumference;
-  const color = index >= 75 ? "#22c55e" : index <= 25 ? "#f97316" : "#a78bfa";
-
-  return (
-    <div className="relative shrink-0">
-      <svg width="72" height="72" viewBox="0 0 72 72" className="-rotate-90">
-        <circle cx="36" cy="36" r={radius} fill="none" stroke="#1c2027" strokeWidth="8" />
-        <circle cx="36" cy="36" r={radius} fill="none" stroke={color} strokeWidth="8" strokeDasharray={`${arc} ${circumference - arc}`} strokeLinecap="round" />
-      </svg>
-      <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-sm font-bold font-latin" style={{ color }}>{fa(index, lang)}</span>
-      </div>
-    </div>
-  );
-}
+// AltcoinSeasonGauge removed — the API was non-essential.
 
 function FngChart({ data, lang }: { data: Array<{ value: number; classification: string; date: string }>; lang: "fa" | "en" }) {
   const reversed = [...data].reverse(); // oldest first

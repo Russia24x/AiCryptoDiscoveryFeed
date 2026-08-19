@@ -70,60 +70,21 @@ interface CoinGeckoCoin {
   };
 }
 
-interface DefiLlamaProtocol {
-  found: boolean;
-  name: string;
-  symbol: string;
-  category: string;
-  chain: string;
-  chains: string[];
-  tvl: number;
-  change_1h: number;
-  change_1d: number;
-  change_7d: number;
-  description: string;
-  url: string;
-  parentProtocol: string | null;
-  topChains: Array<{ chain: string; tvl: number }>;
-}
-
-interface DefiLlamaFees {
-  found: boolean;
-  name: string;
-  category: string;
-  protocolType: string;
-  matchedVersions: number;
-  fees24h: number;
-  fees7d: number;
-  fees30d: number;
-  fees1y: number;
-  feesAllTime: number;
-  annualizedFees: number;
-  monthlyAverageFees: number;
-  change1d: number;
-  change7d: number;
-  change30d: number;
-  change1m: number;
-  logo: string;
-  methodologyURL: string;
-  // Rich data from /summary/fees/{slug}
-  description?: string;
-  methodology?: Record<string, string>;
-  breakdownMethodology?: Record<string, Record<string, string>>;
-  feesChart?: Array<{ timestamp: number; value: number }>;
-}
+// DefiLlama interfaces removed — those APIs were too slow (11+ seconds) and
+// caused Cloudflare Worker resource limit errors. The page now uses only
+// CoinGecko + CoinMarketCap data, which is faster and sufficient.
 
 /**
  * CoinDetail — full coin detail page combining data from:
  *   1. CoinGecko (primary: price, market cap, supply, ATH/ATL, description, links, sparkline)
- *   2. DefiLlama (secondary: TVL data if the coin is a DeFi protocol)
+ *   2. CoinMarketCap (secondary: tags, logo, description, URLs — fallback when CoinGecko fails)
  *
  * Caching strategy (local-first, rate-limit aware):
- *   - CoinGecko coin detail: staleTime 2min, edge-cached 120s
- *   - DefiLlama protocol: staleTime 5min, edge-cached 300s
+ *   - CoinGecko coin detail: staleTime 5min, edge-cached 120s
+ *   - CMC coin metadata: staleTime 5min, edge-cached 300s
  *   - Both queries run in parallel (useQuery × 2)
- *   - If CoinGecko rate-limits (429), show error with retry
- *   - If DefiLlama has no data for this coin, silently skip (not all coins are DeFi)
+ *   - If CoinGecko rate-limits, fall back to CMC coin metadata
+ *   - If both fail, show error with retry button
  *   - TanStack Query caches both — navigating back to the same coin is instant
  */
 export function CoinDetail({ coinId }: CoinDetailProps) {
@@ -215,62 +176,6 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
     staleTime: 5 * 60_000,
     retry: 0,
     enabled: !!cmcSlug,
-  });
-
-  // --- Tertiary: DefiLlama protocol TVL ---
-  const { data: defiProtocol } = useQuery<DefiLlamaProtocol | null>({
-    queryKey: ["market", "defillama-protocol", coinId],
-    queryFn: async () => {
-      const res = await fetch(`/api/market/defillama-protocol?gecko_id=${encodeURIComponent(coinId)}`, { cache: "no-store" });
-      if (!res.ok) return null;
-      const json = await res.json();
-      if (json?.found && typeof json.tvl === "number" && json.tvl > 0) return json as DefiLlamaProtocol;
-      return null;
-    },
-    staleTime: 5 * 60_000,
-    retry: 0,
-    enabled: !!coinId,
-  });
-
-  // --- Tertiary: DefiLlama fees/revenue summary ---
-  const { data: defiFees } = useQuery<DefiLlamaFees | null>({
-    queryKey: ["market", "defillama-summary", coinId],
-    queryFn: async () => {
-      const res = await fetch(`/api/market/defillama-summary?gecko_id=${encodeURIComponent(coinId)}`, { cache: "no-store" });
-      if (!res.ok) return null;
-      const json = await res.json();
-      if (json?.found && (json.fees24h > 0 || json.fees30d > 0)) return json as DefiLlamaFees;
-      return null;
-    },
-    staleTime: 5 * 60_000,
-    retry: 0,
-    enabled: !!coinId,
-  });
-
-  // --- Quaternary: TVL history chart (only for DeFi protocols) ---
-  // Fetches /v2/historicalChainTvl/{chain} for the protocol's primary chain.
-  // Only runs if defiProtocol has a chain value. Edge-cached 5min.
-  const defiChain = defiProtocol?.chain || defiProtocol?.chains?.[0];
-  const { data: tvlHistory } = useQuery<Array<{ date: number; tvl: number }>>({
-    queryKey: ["market", "defillama-tvl-history", defiChain],
-    queryFn: async () => {
-      if (!defiChain) return [];
-      const res = await fetch(
-        `/api/market/defillama?path=historicalChainTvl/${encodeURIComponent(defiChain)}`,
-        { cache: "no-store" }
-      );
-      if (!res.ok) return [];
-      const json = await res.json();
-      if (!Array.isArray(json)) return [];
-      // Take last 90 days for a nice chart
-      return json.slice(-90).map((entry: { date: number; tvl: number }) => ({
-        date: entry.date * 1000,
-        tvl: entry.tvl,
-      }));
-    },
-    staleTime: 10 * 60_000,
-    retry: 0,
-    enabled: !!defiChain,
   });
 
   const fa = (n: string | number) =>
@@ -368,8 +273,6 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
   const change24h = md.price_change_percentage_24h_in_currency?.usd || 0;
   const up = change24h >= 0;
   const description = lang === "fa" ? (displayCoin.description.fa || displayCoin.description.en) : displayCoin.description.en;
-  const hasDefi = !!defiProtocol && defiProtocol.tvl > 0;
-  const hasFees = !!defiFees && defiFees.fees24h > 0;
 
   return (
     <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-4 md:py-6">
@@ -454,103 +357,10 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
         </div>
       )}
 
-      {/* DeFi TVL Section (only if DefiLlama has data) */}
-      {hasDefi && (
-        <div className="mb-6 p-4 rounded-xl border border-[var(--brand-accent)]/30 bg-[var(--brand-accent-soft)]">
-          <div className="flex items-center gap-2 mb-3">
-            <Layers className="w-4 h-4 text-[var(--brand-accent)]" />
-            <span className="text-xs font-bold text-[var(--brand-accent)] uppercase tracking-wider font-latin">{lang === "fa" ? "داده‌های دیفای" : "DeFi Data"}</span>
-            <span className="text-[10px] text-[var(--brand-muted)]">via DefiLlama</span>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <DefiStat label={lang === "fa" ? "TVL" : "TVL"} value={fa(fmtCompact(defiProtocol!.tvl))} />
-            <DefiStat label={lang === "fa" ? "تغییر ۲۴س" : "24h Change"} value={`${fa(defiProtocol!.change_1d.toFixed(2))}%`} change={defiProtocol!.change_1d} />
-            <DefiStat label={lang === "fa" ? "تغییر ۷ روز" : "7d Change"} value={`${fa(defiProtocol!.change_7d.toFixed(2))}%`} change={defiProtocol!.change_7d} />
-            <DefiStat label={lang === "fa" ? "زنجیره" : "Chain"} value={defiProtocol!.chain || defiProtocol!.chains?.[0] || "—"} />
-          </div>
-          {defiProtocol!.category && (
-            <div className="mt-3 flex items-center gap-2 text-xs">
-              <span className="text-[var(--brand-muted)]">{lang === "fa" ? "دسته:" : "Category:"}</span>
-              <span className="font-bold text-[var(--brand-text)]">{defiProtocol!.category}</span>
-            </div>
-          )}
-          <a href={`https://defillama.com/protocol/${coinId}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 mt-3 text-xs text-[var(--brand-accent)] hover:underline">
-            <ExternalLink className="w-3 h-3" />
-            {lang === "fa" ? "مشاهده در DefiLlama" : "View on DefiLlama"}
-          </a>
-
-          {/* TVL History Chart (90 days) */}
-          {tvlHistory && tvlHistory.length > 0 && (
-            <div className="mt-4 pt-3 border-t border-[var(--brand-accent)]/20">
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)]">
-                  {lang === "fa" ? "نمودار TVL (۹۰ روز)" : "TVL Chart (90d)"}
-                </div>
-                <div className="text-[10px] font-latin text-[var(--brand-muted)]">
-                  {defiChain && <span>{defiChain}</span>}
-                </div>
-              </div>
-              <TvlChart data={tvlHistory} lang={lang} />
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Fees & Revenue Section (only if DefiLlama has fees data) */}
-      {hasFees && (
-        <div className="mb-6 p-4 rounded-xl border border-[#f59e0b]/30 bg-[#f59e0b]/5">
-          <div className="flex items-center gap-2 mb-3">
-            <TrendingUp className="w-4 h-4 text-amber-400" />
-            <span className="text-xs font-bold text-amber-400 uppercase tracking-wider font-latin">{lang === "fa" ? "درآمد و کارمزد" : "Fees & Revenue"}</span>
-            <span className="text-[10px] text-[var(--brand-muted)]">via DefiLlama</span>
-            {defiFees!.matchedVersions > 1 && (
-              <span className="text-[10px] text-[var(--brand-muted)] bg-[var(--brand-surface-2)] px-1.5 py-0.5 rounded-full">
-                {fa(defiFees!.matchedVersions)} {lang === "fa" ? "نسخه" : "versions"}
-              </span>
-            )}
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <DefiStat label={lang === "fa" ? "کارمزد ۲۴س" : "Fees 24h"} value={fa(fmtCompact(defiFees!.fees24h))} change={defiFees!.change1d} />
-            <DefiStat label={lang === "fa" ? "کارمزد ۷ روز" : "Fees 7d"} value={fa(fmtCompact(defiFees!.fees7d))} />
-            <DefiStat label={lang === "fa" ? "کارمزد ۳۰ روز" : "Fees 30d"} value={fa(fmtCompact(defiFees!.fees30d))} />
-            <DefiStat label={lang === "fa" ? "کارمزد ۱ سال" : "Fees 1y"} value={fa(fmtCompact(defiFees!.fees1y))} />
-            <DefiStat label={lang === "fa" ? "سالانه" : "Annualized"} value={fa(fmtCompact(defiFees!.annualizedFees))} />
-            <DefiStat label={lang === "fa" ? "میانگین ماهانه" : "Monthly Avg"} value={fa(fmtCompact(defiFees!.monthlyAverageFees))} />
-            <DefiStat label={lang === "fa" ? "کل تاریخچه" : "All Time"} value={fa(fmtCompact(defiFees!.feesAllTime))} />
-            <DefiStat label={lang === "fa" ? "تغییر ۳۰ روز" : "30d Change"} value={`${fa(defiFees!.change30d.toFixed(2))}%`} change={defiFees!.change30d} />
-          </div>
-
-          {/* Fees history chart (30 days) */}
-          {defiFees!.feesChart && defiFees!.feesChart.length > 0 && (
-            <div className="mt-3">
-              <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-1">
-                {lang === "fa" ? "نمودار کارمزد ۳۰ روز" : "30-day fees chart"}
-              </div>
-              <Sparkline
-                prices={defiFees!.feesChart.map((d) => d.value)}
-                accent="#f59e0b"
-              />
-            </div>
-          )}
-
-          {/* Methodology (Revenue, HoldersRevenue, SupplySideRevenue descriptions) */}
-          {defiFees!.methodology && Object.keys(defiFees!.methodology).length > 0 && (
-            <div className="mt-3 pt-3 border-t border-[#f59e0b]/20">
-              <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-2">
-                {lang === "fa" ? "متدولوژی درآمد" : "Revenue Methodology"}
-              </div>
-              <div className="space-y-1.5">
-                {Object.entries(defiFees!.methodology).map(([key, value]) => (
-                  <div key={key} className="text-[10px] leading-relaxed">
-                    <span className="font-bold text-amber-400">{key}: </span>
-                    <span className="text-[var(--brand-muted)]">{value}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
+      {/* DeFi TVL and Fees sections removed for performance — DefiLlama APIs
+          were taking 11+ seconds to respond, causing Cloudflare Worker
+          resource limit errors. The page now uses only CoinGecko + CMC data,
+          which is faster and sufficient for most users. */}
 
       {/* External links */}
       <div className="flex flex-wrap gap-2 mb-6">
@@ -560,7 +370,6 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
         {displayCoin.links?.repos_url?.github?.[0] && <ExtLink href={displayCoin.links.repos_url.github[0]} icon={<Github className="w-3.5 h-3.5" />} label="GitHub" />}
         <ExtLink href={`https://www.coingecko.com/en/coins/${displayCoin.id}`} icon={<ExternalLink className="w-3.5 h-3.5" />} label="CoinGecko" />
         <ExtLink href={`https://coinmarketcap.com/currencies/${cmcSlug || displayCoin.id}/`} icon={<ExternalLink className="w-3.5 h-3.5" />} label="CMC" />
-        {hasDefi && <ExtLink href={`https://defillama.com/protocol/${coinId}`} icon={<ExternalLink className="w-3.5 h-3.5" />} label="DefiLlama" />}
       </div>
 
       {/* Stats grid */}
@@ -656,53 +465,6 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
   );
 }
 
-/* ============= TVL Chart (area chart with gradient) ============= */
-function TvlChart({ data, lang }: { data: Array<{ date: number; tvl: number }>; lang: "fa" | "en" }) {
-  if (!data || data.length === 0) return null;
-  const width = 600;
-  const height = 100;
-  const min = Math.min(...data.map((d) => d.tvl));
-  const max = Math.max(...data.map((d) => d.tvl));
-  const range = max - min || 1;
-  const fa = (n: string | number) =>
-    lang === "fa" ? String(n).replace(/[0-9]/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[+d]) : String(n);
-  const fmtCompact = (n: number) => {
-    const abs = Math.abs(n);
-    if (abs >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
-    if (abs >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
-    return `$${(n / 1e3).toFixed(0)}K`;
-  };
-
-  const points = data
-    .map((d, i) => {
-      const x = (i / (data.length - 1)) * width;
-      const y = height - ((d.tvl - min) / range) * height;
-      return `${x},${y}`;
-    })
-    .join(" ");
-
-  return (
-    <div>
-      {/* Chart */}
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-24" preserveAspectRatio="none">
-        <defs>
-          <linearGradient id="tvl-grad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#2dd4bf" stopOpacity="0.4" />
-            <stop offset="100%" stopColor="#2dd4bf" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <polyline points={`0,${height} ${points} ${width},${height}`} fill="url(#tvl-grad)" stroke="none" />
-        <polyline points={points} fill="none" stroke="#2dd4bf" strokeWidth="1.5" />
-      </svg>
-      {/* Min/Max labels */}
-      <div className="flex items-center justify-between text-[10px] font-latin text-[var(--brand-muted)] mt-1">
-        <span>90d low: {fa(fmtCompact(min))}</span>
-        <span>90d high: {fa(fmtCompact(max))}</span>
-      </div>
-    </div>
-  );
-}
-
 /* ============= Sparkline ============= */
 function Sparkline({ prices, accent }: { prices: number[]; accent: string }) {
   if (!prices || prices.length === 0) return null;
@@ -736,16 +498,6 @@ function StatCard({ label, value, accent }: { label: string; value: string; acce
     <div className="p-3 rounded-lg border border-[var(--brand-border)] bg-[var(--brand-surface)]">
       <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-1">{label}</div>
       <div className="font-latin tabular-nums text-sm font-bold" style={{ color: accent || "var(--brand-text)" }}>{value}</div>
-    </div>
-  );
-}
-
-/* ============= DeFi Stat ============= */
-function DefiStat({ label, value, change }: { label: string; value: string; change?: number }) {
-  return (
-    <div className="p-3 rounded-lg bg-[var(--brand-surface)]/50 border border-[var(--brand-accent)]/20">
-      <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-1">{label}</div>
-      <div className={cn("font-latin tabular-nums text-sm font-bold", change !== undefined ? (change >= 0 ? "text-[var(--brand-accent)]" : "text-red-400") : "text-[var(--brand-text)]")}>{value}</div>
     </div>
   );
 }

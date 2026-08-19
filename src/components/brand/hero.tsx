@@ -24,6 +24,7 @@ import {
   Settings as SettingsIcon,
   RefreshCw,
   AlertCircle,
+  ExternalLink,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useLanguage } from "@/hooks/use-language";
@@ -46,21 +47,10 @@ interface BtcData {
   low24h?: number;
 }
 
-interface TetherData {
-  price: number;        // Toman per USDT
-  change24h?: number;
-  high24h?: number;
-  low24h?: number;
-  volume24h?: number;
-  quoteVolume24h?: number;
-  bidPrice?: number;
-  askPrice?: number;
-  source?: string;
-  cached?: boolean;
-  fetchedAt?: string;
-  /** Set when Iranian exchange APIs are unreachable from the server. */
-  unavailable?: boolean;
-}
+// TetherData and Sp500Data interfaces removed — those API routes were deleted
+// because the upstream APIs (Wallex/Nobitex/Yahoo Finance) were either
+// geoblocked from Cloudflare Workers or too slow. The widgets now show a
+// static informational link instead of fetching live data.
 
 interface FngData {
   value: number;
@@ -68,22 +58,6 @@ interface FngData {
   yesterday?: number;
   lastWeek?: number;
   fetchedAt?: string;
-}
-
-interface Sp500Data {
-  symbol: string;
-  name: string;
-  price: number;
-  change24h: number;       // percent
-  changeAbs: number;       // points
-  high24h: number;
-  low24h: number;
-  previousClose: number;
-  source?: string;
-  fetchedAt?: string;
-  cached?: boolean;
-  unavailable?: boolean;
-  marketClosed?: boolean;
 }
 
 interface WeatherData {
@@ -97,13 +71,6 @@ interface WeatherData {
   emoji: string;
   isDay: boolean;
   fetchedAt?: string;
-}
-
-/** Format Toman price with thousand separators (Persian digits in FA mode). */
-function formatToman(price: number, lang: "fa" | "en"): string {
-  // Persian digits
-  const s = Math.round(price).toLocaleString("en-US");
-  return lang === "fa" ? s.replace(/[0-9]/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[+d]) : s;
 }
 
 /** Format BTC price with thousand separators. */
@@ -480,156 +447,62 @@ function BtcWidget() {
 }
 
 /* ============= Tether widget ============= */
+// Simplified — the /api/market/iran-tether route was removed because Wallex
+// and Nobitex APIs are geoblocked from Cloudflare Workers (US/EU regions).
+// Instead of showing "ناموجود" (unavailable) to every user, we now show a
+// static informational widget with a link to a real-time price source.
 function TetherWidget() {
   const { lang } = useLanguage();
-
-  // Tether/Toman price from Wallex (with Nobitex fallback). Refreshes every
-  // 30s. Returns `unavailable: true` when Iranian exchanges are unreachable
-  // (e.g., from Cloudflare US PoPs) — the UI shows "ناموجود" in that case.
-  const { data, isLoading } = useQuery<TetherData>({
-    queryKey: ["market", "iran-tether"],
-    queryFn: async () => {
-      const res = await fetch("/api/market/iran-tether", { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return (await res.json()) as TetherData;
-    },
-    refetchInterval: 30_000,
-    staleTime: 15_000,
-  });
-
-  const change = data?.change24h;
-  const up = (change ?? 0) >= 0;
-
   return (
     <WidgetCard
       title={lang === "fa" ? "تتر / تومان" : "USDT / Toman"}
       icon={<span className="text-[10px] font-bold font-latin">₮</span>}
       accent="#26a17b"
     >
-      {isLoading ? (
-        <SkeletonRow />
-      ) : data?.unavailable ? (
-        <div className="flex items-center gap-1.5 text-[11px] text-[var(--brand-muted)]">
-          <AlertCircle className="w-3 h-3" />
-          <span>{lang === "fa" ? "ناموجود" : "Unavailable"}</span>
+      <a
+        href="https://www.nobitex.com/"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block group"
+      >
+        <div className={cn("text-2xl md:text-3xl font-extrabold tabular-nums text-[var(--brand-text)] group-hover:text-[var(--brand-accent)] transition-colors", numFontClass(lang))}>
+          {lang === "fa" ? "نمایش زنده" : "Live price"}
         </div>
-      ) : data ? (
-        <>
-          <div className={cn("text-2xl md:text-3xl font-extrabold tabular-nums text-[var(--brand-text)]", numFontClass(lang))}>
-            {formatToman(data.price, lang)}
-          </div>
-          <div className={cn("flex items-center gap-1 text-[10px] text-[var(--brand-muted)] mt-1", numFontClass(lang))}>
-            <span>{lang === "fa" ? "تومان" : "Toman"}</span>
-            {data.cached && <span className="opacity-60">· cached</span>}
-            {change !== undefined && (
-              <span
-                className={cn(
-                  "flex items-center gap-0.5 ml-1 font-semibold",
-                  up ? "text-[var(--brand-accent)]" : "text-red-400"
-                )}
-              >
-                {up ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
-                {formatFa(Math.abs(change).toFixed(2), lang)}%
-              </span>
-            )}
-          </div>
-          {/* 24h high/low row — only show if both are available */}
-          {data.high24h !== undefined && data.low24h !== undefined && (
-            <div className={cn("flex items-center justify-between text-[9px] text-[var(--brand-muted)]/80 mt-1.5 pt-1.5 border-t border-[var(--brand-border)]/50", numFontClass(lang))}>
-              <span className="flex items-center gap-1">
-                <span className="opacity-60">{lang === "fa" ? "بالا:" : "H:"}</span>
-                <span className="text-[var(--brand-accent)]/80">{formatToman(data.high24h, lang)}</span>
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="opacity-60">{lang === "fa" ? "پایین:" : "L:"}</span>
-                <span className="text-red-400/80">{formatToman(data.low24h, lang)}</span>
-              </span>
-            </div>
-          )}
-        </>
-      ) : (
-        <FallbackMsg />
-      )}
+        <div className="flex items-center gap-1 text-[10px] text-[var(--brand-muted)] mt-1">
+          <span>{lang === "fa" ? "در Nobitex" : "on Nobitex"}</span>
+          <ExternalLink className="w-2.5 h-2.5 opacity-60 group-hover:opacity-100 transition-opacity" />
+        </div>
+      </a>
     </WidgetCard>
   );
 }
 
 /* ============= S&P 500 widget (English mode only — replaces Tether/Toman) ============= */
+// Simplified — the /api/market/sp500 route was removed because Yahoo Finance
+// often rate-limits or times out. We now show a static informational widget
+// with a link to a real-time source.
 function Sp500Widget() {
   const { lang } = useLanguage();
-
-  // S&P 500 index from Yahoo Finance. Refreshes every 60s — Yahoo data
-  // doesn't change faster than that during market hours.
-  const { data, isLoading } = useQuery<Sp500Data>({
-    queryKey: ["market", "sp500"],
-    queryFn: async () => {
-      const res = await fetch("/api/market/sp500", { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return (await res.json()) as Sp500Data;
-    },
-    refetchInterval: 60_000,
-    staleTime: 30_000,
-  });
-
-  const change = data?.change24h;
-  const up = (change ?? 0) >= 0;
-
   return (
     <WidgetCard
       title="S&P 500"
       icon={<span className="text-[10px] font-bold font-latin">$</span>}
       accent="#10b981"
     >
-      {isLoading ? (
-        <SkeletonRow />
-      ) : data?.unavailable ? (
-        <div className="flex items-center gap-1.5 text-[11px] text-[var(--brand-muted)]">
-          <AlertCircle className="w-3 h-3" />
-          <span>Market data unavailable</span>
+      <a
+        href="https://finance.yahoo.com/quote/%5EGSPC/"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block group"
+      >
+        <div className={cn("text-2xl md:text-3xl font-extrabold tabular-nums text-[var(--brand-text)] group-hover:text-[var(--brand-accent)] transition-colors", numFontClass(lang))}>
+          {lang === "fa" ? "نمایش زنده" : "Live price"}
         </div>
-      ) : data ? (
-        <>
-          <div className={cn("text-2xl md:text-3xl font-extrabold tabular-nums text-[var(--brand-text)]", numFontClass(lang))}>
-            {formatUsd(data.price, lang)}
-          </div>
-          <div className={cn("flex items-center gap-1 text-[10px] text-[var(--brand-muted)] mt-1", numFontClass(lang))}>
-            <span>USD</span>
-            {data.cached && <span className="opacity-60">· cached</span>}
-            {data.marketClosed && (
-              <span className="opacity-60">· closed</span>
-            )}
-            {change !== undefined && (
-              <span
-                className={cn(
-                  "flex items-center gap-0.5 ml-1 font-semibold",
-                  up ? "text-[var(--brand-accent)]" : "text-red-400"
-                )}
-              >
-                {up ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
-                {formatFa(Math.abs(change).toFixed(2), lang)}%
-                <span className="opacity-60 ml-1">
-                  ({up ? "+" : "-"}{formatFa(Math.abs(data.changeAbs).toFixed(2), lang)})
-                </span>
-              </span>
-            )}
-          </div>
-          {/* 24h high/low row */}
-          {data.high24h !== undefined && data.low24h !== undefined && (
-            <div className={cn("flex items-center justify-between text-[9px] text-[var(--brand-muted)]/80 mt-1.5 pt-1.5 border-t border-[var(--brand-border)]/50", numFontClass(lang))}>
-              <span className="flex items-center gap-1">
-                <span className="opacity-60">H:</span>
-                <span className="text-[var(--brand-accent)]/80">{formatUsd(data.high24h, lang)}</span>
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="opacity-60">L:</span>
-                <span className="text-red-400/80">{formatUsd(data.low24h, lang)}</span>
-              </span>
-            </div>
-          )}
-        </>
-      ) : (
-        <FallbackMsg />
-      )}
+        <div className="flex items-center gap-1 text-[10px] text-[var(--brand-muted)] mt-1">
+          <span>{lang === "fa" ? "در Yahoo Finance" : "on Yahoo Finance"}</span>
+          <ExternalLink className="w-2.5 h-2.5 opacity-60 group-hover:opacity-100 transition-opacity" />
+        </div>
+      </a>
     </WidgetCard>
   );
 }
@@ -883,4 +756,4 @@ function FallbackMsg() {
 }
 
 /* Helper exported for tests if needed */
-export { formatToman, formatUsd };
+export { formatUsd };

@@ -52,11 +52,8 @@
 /api/prices*
   Cache-Control: public, s-maxage=60, stale-while-revalidate=300
 
-# === API: market data (medium frequency) — 60s cache ===
+# === API: Binance ticker (live BTC) — 60s cache ===
 /api/market/binance-ticker*
-  Cache-Control: public, s-maxage=60, stale-while-revalidate=120
-
-/api/market/iran-tether*
   Cache-Control: public, s-maxage=60, stale-while-revalidate=120
 
 # === API: market data (slow-changing) — 5 min cache ===
@@ -72,9 +69,6 @@
 /api/market/coingecko-markets*
   Cache-Control: public, s-maxage=300, stale-while-revalidate=600
 
-/api/market/coingecko-categories*
-  Cache-Control: public, s-maxage=300, stale-while-revalidate=600
-
 /api/market/global-stats*
   Cache-Control: public, s-maxage=300, stale-while-revalidate=600
 
@@ -84,18 +78,11 @@
 /api/market/top-gainers*
   Cache-Control: public, s-maxage=300, stale-while-revalidate=600
 
-/api/market/altcoin-season*
-  Cache-Control: public, s-maxage=300, stale-while-revalidate=600
-
 # === API: Fear & Greed index — 30 min cache (updates 4x/day) ===
 /api/market/fear-greed*
   Cache-Control: public, s-maxage=1800, stale-while-revalidate=3600
 
 /api/market/fear-greed-historical*
-  Cache-Control: public, s-maxage=3600, stale-while-revalidate=86400
-
-# === API: DefiLlama (slow upstream, daily updates) — 1 hour cache ===
-/api/market/defillama*
   Cache-Control: public, s-maxage=3600, stale-while-revalidate=86400
 
 # === API: Coin detail pages — 5 min cache ===
@@ -105,10 +92,13 @@
 /api/market/coingecko-coin*
   Cache-Control: public, s-maxage=300, stale-while-revalidate=600
 
-# === API: SP500 (daily updates) — 1 hour cache ===
-/api/market/sp500*
-  Cache-Control: public, s-maxage=3600, stale-while-revalidate=86400
-
 # === API: Weather (medium frequency) — 10 min cache ===
 /api/weather*
   Cache-Control: public, s-maxage=600, stale-while-revalidate=1200
+
+# NOTE: The following API routes were removed in Phase 21 (simplification):
+# - /api/market/iran-tether (geoblocked from Cloudflare Workers)
+# - /api/market/sp500 (Yahoo Finance rate-limits/times out)
+# - /api/market/altcoin-season (non-essential)
+# - /api/market/defillama, defillama-protocol, defillama-summary (slow, non-essential)
+# - /api/market/coingecko-categories (unused — was dead code)
