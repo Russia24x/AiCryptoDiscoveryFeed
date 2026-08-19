@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Sparkles,
@@ -30,6 +30,7 @@ import { motion } from "framer-motion";
 import { useLanguage } from "@/hooks/use-language";
 import { useMounted } from "@/hooks/use-mounted";
 import { useLocalStorage } from "@/hooks/use-local-storage";
+import { useTetherPrice } from "@/hooks/use-tether-price";
 import { formatNumber } from "@/hooks/use-feed-state";
 import { cn } from "@/lib/utils";
 
@@ -453,26 +454,63 @@ function BtcWidget() {
 // static informational widget with a link to a real-time price source.
 function TetherWidget() {
   const { lang } = useLanguage();
+  const { data, refetch, isStale } = useTetherPrice();
+
+  // Trigger first fetch on mount (client-side only)
+  useEffect(() => {
+    if (!data || isStale) refetch();
+  }, [data, isStale, refetch]);
+
+  const fa = (n: string | number) =>
+    lang === "fa" ? String(n).replace(/[0-9]/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[+d]) : String(n);
+
   return (
     <WidgetCard
       title={lang === "fa" ? "تتر / تومان" : "USDT / Toman"}
       icon={<span className="text-[10px] font-bold font-latin">₮</span>}
       accent="#26a17b"
     >
-      <a
-        href="https://www.nobitex.com/"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="block group"
-      >
-        <div className={cn("text-2xl md:text-3xl font-extrabold tabular-nums text-[var(--brand-text)] group-hover:text-[var(--brand-accent)] transition-colors", numFontClass(lang))}>
-          {lang === "fa" ? "نمایش زنده" : "Live price"}
+      {data?.unavailable ? (
+        <a
+          href="https://www.nobitex.com/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block group"
+        >
+          <div className={cn("text-2xl md:text-3xl font-extrabold tabular-nums text-[var(--brand-text)] group-hover:text-[var(--brand-accent)] transition-colors", numFontClass(lang))}>
+            {lang === "fa" ? "نمایش زنده" : "Live price"}
+          </div>
+          <div className="flex items-center gap-1 text-[10px] text-[var(--brand-muted)] mt-1">
+            <span>{lang === "fa" ? "در Nobitex" : "on Nobitex"}</span>
+            <ExternalLink className="w-2.5 h-2.5 opacity-60 group-hover:opacity-100 transition-opacity" />
+          </div>
+        </a>
+      ) : data?.price ? (
+        <button
+          onClick={() => refetch()}
+          className="block w-full text-start group"
+          title={lang === "fa" ? "برای به‌روزرسانی کلیک کنید" : "Click to refresh"}
+        >
+          <div className={cn("text-2xl md:text-3xl font-extrabold tabular-nums text-[var(--brand-text)] group-hover:text-[var(--brand-accent)] transition-colors", numFontClass(lang))}>
+            {fa(Math.round(data.price).toLocaleString("en-US"))}
+          </div>
+          <div className="flex items-center gap-1 text-[10px] text-[var(--brand-muted)] mt-1">
+            <span>{lang === "fa" ? "تومان" : "Toman"}</span>
+            <span className="opacity-50">·</span>
+            <span className="font-latin">{data.source}</span>
+            {isStale && (
+              <span className="text-amber-400 inline-flex items-center gap-0.5">
+                · {lang === "fa" ? "به‌روزرسانی..." : "refreshing"}
+              </span>
+            )}
+          </div>
+        </button>
+      ) : (
+        <div className="space-y-2">
+          <div className="h-7 w-32 rounded bg-[var(--brand-surface-2)] animate-pulse" />
+          <div className="h-3 w-20 rounded bg-[var(--brand-surface-2)] animate-pulse" />
         </div>
-        <div className="flex items-center gap-1 text-[10px] text-[var(--brand-muted)] mt-1">
-          <span>{lang === "fa" ? "در Nobitex" : "on Nobitex"}</span>
-          <ExternalLink className="w-2.5 h-2.5 opacity-60 group-hover:opacity-100 transition-opacity" />
-        </div>
-      </a>
+      )}
     </WidgetCard>
   );
 }

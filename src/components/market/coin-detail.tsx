@@ -1,19 +1,17 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   ArrowLeft,
   ExternalLink,
-  Loader2,
   AlertCircle,
   Globe,
   Twitter,
   Github,
   MessageCircle,
-  Layers,
   TrendingUp,
   TrendingDown,
   Bell,
@@ -22,11 +20,10 @@ import {
 } from "lucide-react";
 import { useLanguage } from "@/hooks/use-language";
 import { usePriceAlerts, type AlertDirection } from "@/hooks/use-price-alerts";
-import { GlassCard, ProgressBar } from "./ui-primitives";
 import { cn } from "@/lib/utils";
 
 interface CoinDetailProps {
-  coinId: string; // CoinGecko coin ID (e.g., "bitcoin")
+  coinId: string;
 }
 
 /* ============= Types ============= */
@@ -50,13 +47,11 @@ interface CoinGeckoCoin {
     total_volume: { usd: number };
     high_24h: { usd: number };
     low_24h: { usd: number };
-    price_change_24h: number;
     price_change_percentage_1h_in_currency: { usd: number };
     price_change_percentage_24h_in_currency: { usd: number };
     price_change_percentage_7d_in_currency: { usd: number };
     price_change_percentage_30d_in_currency: { usd: number };
     price_change_percentage_60d_in_currency: { usd: number };
-    price_change_percentage_200d_in_currency: { usd: number };
     price_change_percentage_1y_in_currency: { usd: number };
     ath: { usd: number };
     ath_change_percentage: { usd: number };
@@ -72,51 +67,38 @@ interface CoinGeckoCoin {
   };
 }
 
-// DefiLlama interfaces removed — those APIs were too slow (11+ seconds) and
-// caused Cloudflare Worker resource limit errors. The page now uses only
-// CoinGecko + CoinMarketCap data, which is faster and sufficient.
-
 /**
- * CoinDetail — full coin detail page combining data from:
- *   1. CoinGecko (primary: price, market cap, supply, ATH/ATL, description, links, sparkline)
- *   2. CoinMarketCap (secondary: tags, logo, description, URLs — fallback when CoinGecko fails)
+ * CoinDetail — minimal, lightweight coin detail page.
  *
- * Caching strategy (local-first, rate-limit aware):
- *   - CoinGecko coin detail: staleTime 5min, edge-cached 120s
- *   - CMC coin metadata: staleTime 5min, edge-cached 300s
- *   - Both queries run in parallel (useQuery × 2)
- *   - If CoinGecko rate-limits, fall back to CMC coin metadata
- *   - If both fail, show error with retry button
- *   - TanStack Query caches both — navigating back to the same coin is instant
+ * Design goals (Phase 22):
+ *  - Minimal & modern: clean lines, no heavy glassmorphism, no gradients
+ *  - Lightweight: pure CSS, no backdrop-blur (which is GPU-intensive)
+ *  - Fast: only 2 API calls (coingecko-coin + cmc-coin), 5min staleTime
+ *  - Cohesive: uses the same design language as the rest of the site
+ *
+ * Data sources:
+ *  1. CoinGecko (primary): price, market cap, supply, ATH/ATL, description, links, sparkline
+ *  2. CoinMarketCap (fallback): tags, logo, description, URLs
  */
 export function CoinDetail({ coinId }: CoinDetailProps) {
   const { lang, isRTL } = useLanguage();
   const router = useRouter();
   const Back = isRTL ? ArrowLeft : ArrowRight;
   const [alertOpen, setAlertOpen] = useState(false);
-  const { alerts, addAlert, permission, requestPermission, count: alertCount } = usePriceAlerts();
+  const { alerts, addAlert, permission, requestPermission } = usePriceAlerts();
   const coinAlerts = alerts.filter((a) => a.coinId === coinId);
 
   // --- Primary: CoinGecko coin detail ---
-  // staleTime: 5min (was 2min) — coin detail doesn't change often
-  // retry: 2 (was 1) with exponential backoff
-  // On rate-limit: we don't throw — we return null and let the UI fall
-  // back to CMC coin data (which has basic price + market cap info).
+  // staleTime: 5min — coin detail doesn't change often
+  // On rate-limit: return null instead of throwing → fall back to CMC
   const { data: coin, isLoading, error } = useQuery<CoinGeckoCoin | null>({
     queryKey: ["market", "coingecko-coin", coinId],
     queryFn: async () => {
       const res = await fetch(`/api/market/coingecko-coin?id=${encodeURIComponent(coinId)}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-      // If rate-limited with cached data, serve it.
-      if (json?.rateLimited && json?.id) {
-        return json as CoinGeckoCoin;
-      }
-      // If rate-limited with NO cached data, return null instead of throwing.
-      // The UI will fall back to CMC coin data.
-      if (json?.rateLimited) {
-        return null;
-      }
+      if (json?.rateLimited && json?.id) return json as CoinGeckoCoin;
+      if (json?.rateLimited) return null;
       if (json?.error) throw new Error(json.error);
       return json as CoinGeckoCoin;
     },
@@ -126,36 +108,8 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
   });
 
   // --- Secondary: CMC coin metadata (tags, logo, description, URLs) ---
-  // Uses /api/market/cmc-listings (edge-cached 60s, already fetched by
-  // the market table) to find the CMC slug by matching CoinGecko symbol.
-  // Then fetches /api/market/cmc-coin?slug={slug} for rich metadata.
-  // Local-first: CMC listings data is shared via TanStack Query cache.
-  const { data: cmcListings } = useQuery<{ coins: Array<{ symbol: string; slug: string }> }>({
-    queryKey: ["market", "cmc-listings", "top100"],
-    queryFn: async () => {
-      const res = await fetch("/api/market/cmc-listings?limit=100", { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      return { coins: (json?.coins || []).map((c: { symbol: string; slug: string }) => ({ symbol: c.symbol, slug: c.slug })) };
-    },
-    staleTime: 2 * 60_000,
-  });
-
-  // Find CMC slug by matching CoinGecko coin symbol.
-  // If CoinGecko is rate-limited (coin is null), we can't match by symbol,
-  // so we use the coinId as the slug (e.g., "bitcoin" → "bitcoin").
-  // This works for most popular coins where CoinGecko ID == CMC slug.
-  const cmcSlug = useMemo(() => {
-    if (coin?.symbol && cmcListings?.coins) {
-      const match = cmcListings.coins.find(
-        (c) => c.symbol.toUpperCase() === coin?.symbol?.toUpperCase()
-      );
-      if (match) return match.slug;
-    }
-    // Fallback: use coinId as the CMC slug (works for most popular coins)
-    return coinId;
-  }, [coin?.symbol, cmcListings, coinId]);
-
+  // Uses coinId as the slug fallback (CoinGecko ID == CMC slug for most coins)
+  const cmcSlug = coinId;
   const { data: cmcCoin } = useQuery<{
     name: string;
     symbol: string;
@@ -168,7 +122,6 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
   } | null>({
     queryKey: ["market", "cmc-coin", cmcSlug],
     queryFn: async () => {
-      if (!cmcSlug) return null;
       const res = await fetch(`/api/market/cmc-coin?slug=${encodeURIComponent(cmcSlug)}`, { cache: "no-store" });
       if (!res.ok) return null;
       const json = await res.json();
@@ -207,12 +160,28 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
   };
 
   if (isLoading) {
-    return <CoinDetailSkeleton lang={lang} />;
+    return (
+      <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-8">
+        <div className="animate-pulse space-y-4">
+          <div className="h-4 w-32 rounded bg-[var(--brand-surface-2)]" />
+          <div className="flex items-center gap-3">
+            <div className="w-16 h-16 rounded-full bg-[var(--brand-surface-2)]" />
+            <div className="space-y-2">
+              <div className="h-6 w-32 rounded bg-[var(--brand-surface-2)]" />
+              <div className="h-4 w-24 rounded bg-[var(--brand-surface-2)]" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-16 rounded-lg bg-[var(--brand-surface-2)]" />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
   }
 
-  // If CoinGecko returned null (rate-limited, no cached data), but we have
-  // CMC coin data, construct a minimal CoinGeckoCoin-shaped object from CMC
-  // so the rest of the component can render with at least basic info.
+  // Build a fallback displayCoin from CMC data if CoinGecko is null
   let displayCoin = coin;
   let usingCmcFallback = false;
   if (!displayCoin && cmcCoin) {
@@ -228,11 +197,7 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
         subreddit_url: cmcCoin.urls?.reddit?.[0] || undefined,
         repos_url: { github: cmcCoin.urls?.sourceCode || [], bitbucket: [] },
       },
-      image: {
-        thumb: cmcCoin.logo,
-        small: cmcCoin.logo,
-        large: cmcCoin.logo,
-      },
+      image: { thumb: cmcCoin.logo, small: cmcCoin.logo, large: cmcCoin.logo },
       market_cap_rank: 0,
       categories: (cmcCoin.tags || []).map((t) => t.name),
       market_data: {
@@ -241,26 +206,31 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
         total_volume: { usd: 0 },
         high_24h: { usd: 0 },
         low_24h: { usd: 0 },
-        price_change_percentage_24h: 0,
+        price_change_percentage_1h_in_currency: { usd: 0 },
         price_change_percentage_24h_in_currency: { usd: 0 },
+        price_change_percentage_7d_in_currency: { usd: 0 },
+        price_change_percentage_30d_in_currency: { usd: 0 },
+        price_change_percentage_60d_in_currency: { usd: 0 },
+        price_change_percentage_1y_in_currency: { usd: 0 },
+        ath: { usd: 0 },
+        ath_change_percentage: { usd: 0 },
+        ath_date: { usd: "" },
+        atl: { usd: 0 },
+        atl_change_percentage: { usd: 0 },
+        atl_date: { usd: "" },
         circulating_supply: 0,
         total_supply: null,
         max_supply: null,
-        ath: { usd: 0 },
-        ath_date: { usd: "" },
-        ath_change_percentage: { usd: 0 },
-        atl: { usd: 0 },
-        atl_date: { usd: "" },
-        atl_change_percentage: { usd: 0 },
+        fully_diluted_valuation: null,
       },
-    } as unknown as CoinGeckoCoin;
+    } as CoinGeckoCoin;
   }
 
   if (error || !displayCoin) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 gap-3 text-center px-4">
-        <AlertCircle className="w-8 h-8 text-amber-400" />
-        <p className="text-sm text-[var(--brand-text)]">
+      <div className="mx-auto max-w-4xl px-4 py-20 text-center">
+        <AlertCircle className="w-8 h-8 text-amber-400 mx-auto mb-3" />
+        <p className="text-sm text-[var(--brand-text)] mb-4">
           {error instanceof Error ? error.message : "Unknown error"}
         </p>
         <button onClick={() => router.push("/crypto/market")} className="px-4 py-2 rounded-full bg-[var(--brand-accent)] text-[#04201d] text-xs font-bold hover:brightness-110">
@@ -270,39 +240,45 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
     );
   }
 
-  // Use the (possibly fallback) coin object for the rest of the render.
   const md = displayCoin.market_data;
   const change24h = md.price_change_percentage_24h_in_currency?.usd || 0;
   const up = change24h >= 0;
   const description = lang === "fa" ? (displayCoin.description.fa || displayCoin.description.en) : displayCoin.description.en;
+  const accentColor = up ? "var(--brand-accent)" : "#f87171";
 
   return (
-    <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-4 md:py-6 relative">
-      {/* Decorative gradient background */}
-      <div className="absolute inset-x-0 top-0 h-64 bg-gradient-to-b from-[var(--brand-accent)]/[0.04] via-transparent to-transparent pointer-events-none -z-10" />
-
+    <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-4 md:py-6">
       {/* Back button */}
-      <button onClick={() => router.push("/crypto/market")} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium text-[var(--brand-muted)] hover:text-[var(--brand-text)] hover:bg-[var(--brand-surface)] transition-colors mb-4">
+      <button
+        onClick={() => router.push("/crypto/market")}
+        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium text-[var(--brand-muted)] hover:text-[var(--brand-text)] hover:bg-[var(--brand-surface)] transition-colors mb-4"
+      >
         <Back className="w-3.5 h-3.5" />
         {lang === "fa" ? "بازگشت به بازار" : "Back to market"}
       </button>
 
-      {/* Header — modern GlassCard with glow */}
-      <GlassCard glow accent={up ? "#2dd4bf" : "#f87171"} className="p-4 md:p-5 mb-6">
-        <div className="flex items-center gap-3">
+      {/* Header — minimal, no glassmorphism */}
+      <header className="mb-6">
+        <div className="flex items-center gap-3 mb-2">
           {displayCoin.image?.large && (
             <img
               src={displayCoin.image.large}
               alt={displayCoin.name}
-              className="w-14 h-14 md:w-16 md:h-16 rounded-full ring-2 ring-[var(--brand-border)] shadow-lg shrink-0"
+              className="w-12 h-12 md:w-14 md:h-14 rounded-full shrink-0"
             />
           )}
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="font-display text-2xl md:text-3xl font-bold text-[var(--brand-text)]">{displayCoin.name}</h1>
-              <span className="text-sm font-latin text-[var(--brand-muted)] uppercase">{displayCoin.symbol}</span>
+              <h1 className="font-display text-xl md:text-2xl font-bold text-[var(--brand-text)]">
+                {displayCoin.name}
+              </h1>
+              <span className="text-sm font-latin text-[var(--brand-muted)] uppercase">
+                {displayCoin.symbol}
+              </span>
               {displayCoin.market_cap_rank > 0 && (
-                <span className="text-[10px] font-latin text-[var(--brand-muted)] bg-[var(--brand-surface-2)] px-2 py-0.5 rounded-full">#{fa(displayCoin.market_cap_rank)}</span>
+                <span className="text-[10px] font-latin text-[var(--brand-muted)] bg-[var(--brand-surface-2)] px-2 py-0.5 rounded-full">
+                  #{fa(displayCoin.market_cap_rank)}
+                </span>
               )}
               {usingCmcFallback && (
                 <span className="text-[10px] font-latin text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
@@ -312,33 +288,35 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
               )}
             </div>
             <div className="flex items-baseline gap-2 mt-1">
-            <span className="font-latin tabular-nums text-2xl font-bold text-[var(--brand-text)]">{fa(fmtPrice(md.current_price.usd))}</span>
-            <span className={cn("font-latin tabular-nums text-sm font-bold", up ? "text-[var(--brand-accent)]" : "text-red-400")}>
-              {up ? "+" : ""}{fa(change24h.toFixed(2))}%
-            </span>
-            <span className="text-[10px] text-[var(--brand-muted)]">24h</span>
+              <span className="font-latin tabular-nums text-2xl font-bold text-[var(--brand-text)]">
+                {fa(fmtPrice(md.current_price.usd))}
+              </span>
+              <span className={cn("font-latin tabular-nums text-sm font-bold", up ? "text-[var(--brand-accent)]" : "text-red-400")}>
+                {up ? "+" : ""}{fa(change24h.toFixed(2))}%
+              </span>
+              <span className="text-[10px] text-[var(--brand-muted)]">24h</span>
+            </div>
           </div>
+          {/* Price Alert Button */}
+          <button
+            onClick={() => setAlertOpen((v) => !v)}
+            className={cn(
+              "relative p-2 rounded-lg border transition-colors shrink-0",
+              coinAlerts.length > 0
+                ? "bg-[var(--brand-accent-soft)] border-[var(--brand-accent)]/40 text-[var(--brand-accent)]"
+                : "bg-[var(--brand-surface)] border-[var(--brand-border)] text-[var(--brand-muted)] hover:text-[var(--brand-text)]"
+            )}
+            aria-label={lang === "fa" ? "هشدار قیمت" : "Price alert"}
+          >
+            {coinAlerts.length > 0 ? <BellRing className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+            {coinAlerts.length > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-[var(--brand-accent)] text-[#04201d] text-[9px] font-bold font-latin">
+                {fa(coinAlerts.length)}
+              </span>
+            )}
+          </button>
         </div>
-        {/* Price Alert Button */}
-        <button
-          onClick={() => setAlertOpen((v) => !v)}
-          className={cn(
-            "relative p-2.5 rounded-full border transition-all shrink-0",
-            coinAlerts.length > 0
-              ? "bg-[var(--brand-accent-soft)] border-[var(--brand-accent)]/40 text-[var(--brand-accent)]"
-              : "bg-[var(--brand-surface)] border-[var(--brand-border)] text-[var(--brand-muted)] hover:text-[var(--brand-text)] hover:border-[var(--brand-accent)]/40"
-          )}
-          aria-label={lang === "fa" ? "هشدار قیمت" : "Price alert"}
-        >
-          {coinAlerts.length > 0 ? <BellRing className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
-          {coinAlerts.length > 0 && (
-            <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-[var(--brand-accent)] text-[#04201d] text-[9px] font-bold font-latin">
-              {fa(coinAlerts.length)}
-            </span>
-          )}
-        </button>
-        </div>
-      </GlassCard>
+      </header>
 
       {/* Price Alert Panel */}
       {alertOpen && (
@@ -356,24 +334,21 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
         />
       )}
 
-      {/* Sparkline */}
+      {/* Sparkline — minimal SVG, no gradients */}
       {md.sparkline_7d?.price && md.sparkline_7d.price.length > 0 && (
-        <GlassCard className="p-4 mb-6">
+        <section className="mb-6">
           <div className="flex items-center justify-between mb-2">
-            <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)]">{lang === "fa" ? "نمودار ۷ روزه" : "7-day chart"}</div>
-            <div className="flex items-center gap-2 text-[10px] font-latin text-[var(--brand-muted)]">
+            <h2 className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)]">
+              {lang === "fa" ? "نمودار ۷ روزه" : "7-day chart"}
+            </h2>
+            <div className="flex items-center gap-3 text-[10px] font-latin text-[var(--brand-muted)]">
               <span>H: {fa(fmtPrice(Math.max(...md.sparkline_7d.price)))}</span>
               <span>L: {fa(fmtPrice(Math.min(...md.sparkline_7d.price)))}</span>
             </div>
           </div>
-          <Sparkline prices={md.sparkline_7d.price} accent={up ? "#2dd4bf" : "#f87171"} />
-        </GlassCard>
+          <Sparkline prices={md.sparkline_7d.price} accent={accentColor} />
+        </section>
       )}
-
-      {/* DeFi TVL and Fees sections removed for performance — DefiLlama APIs
-          were taking 11+ seconds to respond, causing Cloudflare Worker
-          resource limit errors. The page now uses only CoinGecko + CMC data,
-          which is faster and sufficient for most users. */}
 
       {/* External links */}
       <div className="flex flex-wrap gap-2 mb-6">
@@ -386,7 +361,7 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
       </div>
 
       {/* Stats grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <section className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 mb-6">
         <StatCard label={lang === "fa" ? "مارکت کپ" : "Market Cap"} value={fa(fmtCompact(md.market_cap?.usd || 0))} />
         <StatCard label={lang === "fa" ? "حجم ۲۴س" : "24h Volume"} value={fa(fmtCompact(md.total_volume?.usd || 0))} />
         <StatCard label={lang === "fa" ? "بالاترین ۲۴س" : "24h High"} value={fa(fmtPrice(md.high_24h?.usd || 0))} accent="#2dd4bf" />
@@ -394,11 +369,13 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
         {md.fully_diluted_valuation?.usd && (
           <StatCard label={lang === "fa" ? "ارزش کامل" : "FDV"} value={fa(fmtCompact(md.fully_diluted_valuation.usd))} />
         )}
-      </div>
+      </section>
 
       {/* Price changes */}
-      <GlassCard className="p-4 mb-6">
-        <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-3">{lang === "fa" ? "تغییرات قیمت" : "Price Changes"}</div>
+      <section className="mb-6 p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
+        <h2 className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-3">
+          {lang === "fa" ? "تغییرات قیمت" : "Price Changes"}
+        </h2>
         <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
           <PriceChange label="1h" value={md.price_change_percentage_1h_in_currency?.usd} fa={fa} />
           <PriceChange label="24h" value={md.price_change_percentage_24h_in_currency?.usd} fa={fa} />
@@ -407,85 +384,126 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
           <PriceChange label="60d" value={md.price_change_percentage_60d_in_currency?.usd} fa={fa} />
           <PriceChange label="1y" value={md.price_change_percentage_1y_in_currency?.usd} fa={fa} />
         </div>
-      </GlassCard>
+      </section>
 
       {/* ATH / ATL */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
-        <GlassCard glow accent="#f59e0b" className="p-4">
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
+        <div className="p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
           <div className="flex items-center gap-1.5 mb-1">
             <TrendingUp className="w-3 h-3 text-amber-400" />
-            <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)]">{lang === "fa" ? "بالاترین تاریخی (ATH)" : "All-Time High"}</div>
+            <h3 className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)]">
+              {lang === "fa" ? "بالاترین تاریخی" : "All-Time High"}
+            </h3>
           </div>
-          <div className="font-latin tabular-nums text-lg font-bold text-[var(--brand-text)]">{fa(fmtPrice(md.ath?.usd || 0))}</div>
+          <div className="font-latin tabular-nums text-lg font-bold text-[var(--brand-text)]">
+            {fa(fmtPrice(md.ath?.usd || 0))}
+          </div>
           <div className="text-[10px] text-[var(--brand-muted)] mt-1">
-            {md.ath_date?.usd ? fa(fmtDate(md.ath_date.usd)) : ""} · <span className="text-red-400 font-bold">{fa((md.ath_change_percentage?.usd || 0).toFixed(2))}%</span>
+            {md.ath_date?.usd ? fa(fmtDate(md.ath_date.usd)) : ""} ·{" "}
+            <span className="text-red-400 font-bold">
+              {fa((md.ath_change_percentage?.usd || 0).toFixed(2))}%
+            </span>
           </div>
-        </GlassCard>
-        <GlassCard glow accent="#2dd4bf" className="p-4">
+        </div>
+        <div className="p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
           <div className="flex items-center gap-1.5 mb-1">
             <TrendingDown className="w-3 h-3 text-[var(--brand-accent)]" />
-            <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)]">{lang === "fa" ? "پایین‌ترین تاریخی (ATL)" : "All-Time Low"}</div>
+            <h3 className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)]">
+              {lang === "fa" ? "پایین‌ترین تاریخی" : "All-Time Low"}
+            </h3>
           </div>
-          <div className="font-latin tabular-nums text-lg font-bold text-[var(--brand-text)]">{fa(fmtPrice(md.atl?.usd || 0))}</div>
+          <div className="font-latin tabular-nums text-lg font-bold text-[var(--brand-text)]">
+            {fa(fmtPrice(md.atl?.usd || 0))}
+          </div>
           <div className="text-[10px] text-[var(--brand-muted)] mt-1">
-            {md.atl_date?.usd ? fa(fmtDate(md.atl_date.usd)) : ""} · <span className="text-[var(--brand-accent)] font-bold">{fa((md.atl_change_percentage?.usd || 0).toFixed(2))}%</span>
+            {md.atl_date?.usd ? fa(fmtDate(md.atl_date.usd)) : ""} ·{" "}
+            <span className="text-[var(--brand-accent)] font-bold">
+              {fa((md.atl_change_percentage?.usd || 0).toFixed(2))}%
+            </span>
           </div>
-        </GlassCard>
-      </div>
+        </div>
+      </section>
 
       {/* Supply */}
-      <GlassCard className="p-4 mb-6">
-        <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-3">{lang === "fa" ? "عرضه" : "Supply"}</div>
+      <section className="mb-6 p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
+        <h2 className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-3">
+          {lang === "fa" ? "عرضه" : "Supply"}
+        </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-          <div><span className="text-[var(--brand-muted)]">{lang === "fa" ? "در گردش: " : "Circulating: "}</span><span className="font-latin tabular-nums text-[var(--brand-text)]">{fa(fmtCompact(md.circulating_supply || 0))} {displayCoin.symbol.toUpperCase()}</span></div>
-          <div><span className="text-[var(--brand-muted)]">{lang === "fa" ? "کل: " : "Total: "}</span><span className="font-latin tabular-nums text-[var(--brand-text)]">{md.total_supply ? `${fa(fmtCompact(md.total_supply))} ${displayCoin.symbol.toUpperCase()}` : "—"}</span></div>
-          <div><span className="text-[var(--brand-muted)]">{lang === "fa" ? "حداکثر: " : "Max: "}</span><span className="font-latin tabular-nums text-[var(--brand-text)]">{md.max_supply ? `${fa(fmtCompact(md.max_supply))} ${displayCoin.symbol.toUpperCase()}` : "∞"}</span></div>
+          <div>
+            <span className="text-[var(--brand-muted)]">{lang === "fa" ? "در گردش: " : "Circulating: "}</span>
+            <span className="font-latin tabular-nums text-[var(--brand-text)]">
+              {fa(fmtCompact(md.circulating_supply || 0))} {displayCoin.symbol.toUpperCase()}
+            </span>
+          </div>
+          <div>
+            <span className="text-[var(--brand-muted)]">{lang === "fa" ? "کل: " : "Total: "}</span>
+            <span className="font-latin tabular-nums text-[var(--brand-text)]">
+              {md.total_supply ? `${fa(fmtCompact(md.total_supply))} ${displayCoin.symbol.toUpperCase()}` : "—"}
+            </span>
+          </div>
+          <div>
+            <span className="text-[var(--brand-muted)]">{lang === "fa" ? "حداکثر: " : "Max: "}</span>
+            <span className="font-latin tabular-nums text-[var(--brand-text)]">
+              {md.max_supply ? `${fa(fmtCompact(md.max_supply))} ${displayCoin.symbol.toUpperCase()}` : "∞"}
+            </span>
+          </div>
         </div>
-        {/* Supply progress bar (circulating / max) */}
         {md.max_supply && md.circulating_supply && (
           <div className="mt-3">
-            <ProgressBar
-              value={(md.circulating_supply / md.max_supply) * 100}
-              color="var(--brand-accent)"
-            />
+            <div className="h-1.5 w-full rounded-full bg-[var(--brand-surface-2)] overflow-hidden">
+              <div
+                className="h-full rounded-full bg-[var(--brand-accent)]"
+                style={{ width: `${Math.min(100, (md.circulating_supply / md.max_supply) * 100)}%` }}
+              />
+            </div>
             <div className="text-[10px] text-[var(--brand-muted)] mt-1 font-latin">
               {fa(((md.circulating_supply / md.max_supply) * 100).toFixed(1))}% {lang === "fa" ? "ماین شده" : "mined"}
             </div>
           </div>
         )}
-      </GlassCard>
+      </section>
 
-      {/* Categories — from CoinGecko + CMC tags */}
+      {/* Categories & Tags */}
       {((displayCoin.categories && displayCoin.categories.length > 0) || (cmcCoin?.tags && cmcCoin.tags.length > 0)) && (
-        <GlassCard className="p-4 mb-6">
-          <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-2">{lang === "fa" ? "دسته‌ها و برچسب‌ها" : "Categories & Tags"}</div>
+        <section className="mb-6 p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
+          <h2 className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-2">
+            {lang === "fa" ? "دسته‌ها و برچسب‌ها" : "Categories & Tags"}
+          </h2>
           <div className="flex flex-wrap gap-1.5">
-            {/* CoinGecko categories */}
             {displayCoin.categories?.filter(c => c && c.length > 0).slice(0, 10).map((cat) => (
-              <span key={cat} className="text-[10px] px-2 py-1 rounded-full bg-[var(--brand-surface-2)] text-[var(--brand-muted)] border border-[var(--brand-border)]">{cat}</span>
+              <span key={cat} className="text-[10px] px-2 py-1 rounded-full bg-[var(--brand-surface-2)] text-[var(--brand-muted)] border border-[var(--brand-border)]">
+                {cat}
+              </span>
             ))}
-            {/* CMC tags (if not already shown from CoinGecko) */}
             {cmcCoin?.tags?.filter(t => t.name).slice(0, 10).map((tag) => (
               <span key={tag.slug} className="text-[10px] px-2 py-1 rounded-full bg-[var(--brand-accent-soft)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/20">
                 {tag.name}
               </span>
             ))}
           </div>
-        </GlassCard>
+        </section>
       )}
 
       {/* Description */}
       {description && (
-        <GlassCard className="p-4">
-          <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-2">{lang === "fa" ? "درباره" : "About"}</div>
-          <div className="text-xs text-[var(--brand-text)] leading-relaxed prose-sm max-w-none" dir="auto" dangerouslySetInnerHTML={{ __html: description.split("\n").slice(0, 5).join("\n") }} />
-        </GlassCard>
+        <section className="p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
+          <h2 className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-2">
+            {lang === "fa" ? "درباره" : "About"}
+          </h2>
+          <div
+            className="text-xs text-[var(--brand-text)] leading-relaxed prose-sm max-w-none"
+            dir="auto"
+            dangerouslySetInnerHTML={{ __html: description.split("\n").slice(0, 5).join("\n") }}
+          />
+        </section>
       )}
     </div>
   );
 }
 
-/* ============= Sparkline ============= */
+/* ============= Sub-components (minimal, no GPU-intensive effects) ============= */
+
 function Sparkline({ prices, accent }: { prices: number[]; accent: string }) {
   if (!prices || prices.length === 0) return null;
   const min = Math.min(...prices);
@@ -500,47 +518,57 @@ function Sparkline({ prices, accent }: { prices: number[]; accent: string }) {
   }).join(" ");
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-20" preserveAspectRatio="none">
-      <defs>
-        <linearGradient id="spark-grad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={accent} stopOpacity="0.3" />
-          <stop offset="100%" stopColor={accent} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <polyline points={`0,${height} ${points} ${width},${height}`} fill="url(#spark-grad)" stroke="none" />
       <polyline points={points} fill="none" stroke={accent} strokeWidth="1.5" />
     </svg>
   );
 }
 
-/* ============= Stat Card ============= */
 function StatCard({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
     <div className="p-3 rounded-lg border border-[var(--brand-border)] bg-[var(--brand-surface)]">
-      <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-1">{label}</div>
-      <div className="font-latin tabular-nums text-sm font-bold" style={{ color: accent || "var(--brand-text)" }}>{value}</div>
+      <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-1">
+        {label}
+      </div>
+      <div
+        className="font-latin tabular-nums text-sm font-bold"
+        style={{ color: accent || "var(--brand-text)" }}
+      >
+        {value}
+      </div>
     </div>
   );
 }
 
-/* ============= Price Change ============= */
 function PriceChange({ label, value, fa }: { label: string; value?: number; fa: (n: string | number) => string }) {
   if (value === undefined || value === null) {
-    return <div className="text-center"><div className="text-[10px] text-[var(--brand-muted)] mb-1">{label}</div><div className="font-latin tabular-nums text-sm text-[var(--brand-muted)]">—</div></div>;
+    return (
+      <div className="text-center">
+        <div className="text-[10px] text-[var(--brand-muted)] mb-1">{label}</div>
+        <div className="font-latin tabular-nums text-sm text-[var(--brand-muted)]">—</div>
+      </div>
+    );
   }
   const up = value >= 0;
   return (
     <div className="text-center">
       <div className="text-[10px] text-[var(--brand-muted)] mb-1">{label}</div>
-      <div className={cn("font-latin tabular-nums text-sm font-bold", up ? "text-[var(--brand-accent)]" : "text-red-400")}>{up ? "+" : ""}{fa(value.toFixed(2))}%</div>
+      <div className={cn("font-latin tabular-nums text-sm font-bold", up ? "text-[var(--brand-accent)]" : "text-red-400")}>
+        {up ? "+" : ""}{fa(value.toFixed(2))}%
+      </div>
     </div>
   );
 }
 
-/* ============= External Link ============= */
 function ExtLink({ href, icon, label }: { href: string; icon: React.ReactNode; label: string }) {
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--brand-border)] bg-[var(--brand-surface)] text-xs font-medium text-[var(--brand-muted)] hover:text-[var(--brand-accent)] hover:border-[var(--brand-accent)]/40 transition-colors">
-      {icon}<span>{label}</span>
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--brand-border)] bg-[var(--brand-surface)] text-xs font-medium text-[var(--brand-muted)] hover:text-[var(--brand-accent)] hover:border-[var(--brand-accent)]/40 transition-colors"
+    >
+      {icon}
+      <span>{label}</span>
     </a>
   );
 }
@@ -588,14 +616,13 @@ function PriceAlertPanel({
       currentPrice,
     });
     if (added) {
-      // Reset form
       setTargetPrice(currentPrice.toFixed(2));
       setDirection("above");
     }
   };
 
   return (
-    <div className="mb-6 p-4 rounded-xl border border-[var(--brand-accent)]/30 bg-[var(--brand-accent-soft)] overflow-hidden">
+    <div className="mb-6 p-4 rounded-xl border border-[var(--brand-accent)]/30 bg-[var(--brand-accent-soft)]">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Bell className="w-4 h-4 text-[var(--brand-accent)]" />
@@ -606,12 +633,15 @@ function PriceAlertPanel({
             {fa(currentPrice.toFixed(2))} USD
           </span>
         </div>
-        <button onClick={onClose} className="p-1 rounded-full text-[var(--brand-muted)] hover:text-[var(--brand-text)] hover:bg-[var(--brand-surface)] transition-colors" aria-label="Close">
+        <button
+          onClick={onClose}
+          className="p-1 rounded-full text-[var(--brand-muted)] hover:text-[var(--brand-text)] hover:bg-[var(--brand-surface)] transition-colors"
+          aria-label="Close"
+        >
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
 
-      {/* Notification permission request */}
       {permission !== "granted" && (
         <div className="mb-3 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
           <p className="text-[10px] text-amber-400 mb-2">
@@ -626,7 +656,6 @@ function PriceAlertPanel({
         </div>
       )}
 
-      {/* Add alert form */}
       <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-2 mb-3">
         <select
           value={direction}
@@ -656,7 +685,6 @@ function PriceAlertPanel({
         </button>
       </form>
 
-      {/* Existing alerts list */}
       {alerts.length > 0 && (
         <div className="space-y-1.5">
           <div className="text-[10px] text-[var(--brand-muted)] uppercase tracking-wider font-latin mb-1">
@@ -672,7 +700,9 @@ function PriceAlertPanel({
                 <span className="text-[var(--brand-text)]">
                   {alert.direction === "above" ? (lang === "fa" ? "بالاتر از" : "Above") : (lang === "fa" ? "پایین‌تر از" : "Below")}
                 </span>
-                <span className="font-latin tabular-nums font-bold text-[var(--brand-text)]">${fa(alert.targetPrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}</span>
+                <span className="font-latin tabular-nums font-bold text-[var(--brand-text)]">
+                  ${fa(alert.targetPrice.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}
+                </span>
                 {alert.triggered && (
                   <span className="text-[9px] font-bold text-amber-400 bg-amber-400/10 px-1.5 py-0.5 rounded-full">
                     {lang === "fa" ? "فعال شد" : "TRIGGERED"}
@@ -683,29 +713,6 @@ function PriceAlertPanel({
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-/* ============= Loading Skeleton ============= */
-function CoinDetailSkeleton({ lang }: { lang: "fa" | "en" }) {
-  return (
-    <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-4 md:py-6">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="w-12 h-12 rounded-full shimmer" />
-        <div className="flex-1 space-y-2">
-          <div className="h-6 w-40 shimmer rounded" />
-          <div className="h-4 w-24 shimmer rounded" />
-        </div>
-      </div>
-      <div className="mb-6 h-24 shimmer rounded-xl" />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        {[1, 2, 3, 4].map((i) => <div key={i} className="h-16 shimmer rounded-lg" />)}
-      </div>
-      <div className="mb-6 h-32 shimmer rounded-xl" />
-      <div className="text-sm text-[var(--brand-muted)] text-center py-8">
-        {lang === "fa" ? "در حال بارگذاری جزئیات ارز..." : "Loading coin details..."}
-      </div>
     </div>
   );
 }

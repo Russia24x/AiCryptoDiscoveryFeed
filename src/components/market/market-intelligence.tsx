@@ -332,18 +332,13 @@ export function MarketIntelligence() {
   const onCoinClick = (coin: Coin) => router.push(`/crypto/market/${coin.id}`);
 
   return (
-    <div className="min-h-screen bg-[var(--brand-bg)] relative">
-      {/* Decorative gradient background */}
-      <div className="absolute inset-x-0 top-0 h-[480px] bg-gradient-to-b from-[var(--brand-accent)]/[0.04] via-transparent to-transparent pointer-events-none" />
-      <div className="absolute top-0 start-1/4 w-96 h-96 bg-[var(--brand-accent)]/[0.05] blur-3xl rounded-full pointer-events-none" />
-      <div className="absolute top-0 end-1/4 w-96 h-96 bg-purple-500/[0.04] blur-3xl rounded-full pointer-events-none" />
-
+    <div className="min-h-screen bg-[var(--brand-bg)]">
       {/* Sticky header */}
-      <div className="sticky top-16 z-30 bg-[var(--brand-bg)]/95 backdrop-blur-xl border-b border-[var(--brand-border)] relative">
+      <div className="sticky top-16 z-30 bg-[var(--brand-bg)]/95 backdrop-blur-xl border-b border-[var(--brand-border)]">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-3">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 flex-1 min-w-0">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-[var(--brand-accent)]/20 to-purple-500/10 border border-[var(--brand-accent)]/30 flex items-center justify-center shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-[var(--brand-accent-soft)] border border-[var(--brand-accent)]/30 flex items-center justify-center shrink-0">
                 <BarChart3 className="w-4 h-4 text-[var(--brand-accent)]" />
               </div>
               <h1 className="font-display text-lg md:text-xl font-bold text-[var(--brand-text)] truncate">
@@ -432,9 +427,9 @@ export function MarketIntelligence() {
         )}
       </div>
 
-      {/* Global Stats Bar — modern cards with gradient glow */}
+      {/* Global Stats Bar — minimal cards */}
       {globalStats && globalStats.totalMarketCap > 0 && (
-        <div className="border-b border-[var(--brand-border)] bg-gradient-to-b from-[var(--brand-surface)]/40 to-transparent">
+        <div className="border-b border-[var(--brand-border)] bg-[var(--brand-surface)]/40">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4">
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 md:gap-3">
               <StatCard
@@ -482,6 +477,16 @@ export function MarketIntelligence() {
           </div>
         </div>
       )}
+
+      {/* Market Overview — minimal hero section with key insights */}
+      <MarketOverview
+        globalStats={globalStats}
+        topGainers={topGainersData?.coins}
+        trending={trendingData?.coins}
+        lang={lang}
+        fa={fa}
+        fmtCompact={fmtCompact}
+      />
 
       {/* Main grid: coin table (left) + sidebar (right) */}
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4 md:py-6">
@@ -584,20 +589,18 @@ export function MarketIntelligence() {
                           <motion.tr
                             key={coin.id}
                             layout
-                            initial={{ opacity: 0, y: 8 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -8 }}
-                            transition={{ duration: 0.2, delay: Math.min(idx * 0.015, 0.3) }}
-                            whileHover={{ backgroundColor: "rgba(45, 212, 191, 0.05)" }}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.15, delay: Math.min(idx * 0.01, 0.2) }}
                             onClick={() => onCoinClick(coin)}
-                            className="border-b border-[var(--brand-border)]/50 cursor-pointer transition-colors group"
+                            className="border-b border-[var(--brand-border)]/50 cursor-pointer hover:bg-[var(--brand-accent)]/[0.04] transition-colors group"
                           >
                             <td className="px-3 py-2.5 text-start">
                               <div className="flex items-center gap-1.5">
                                 <span className="text-[var(--brand-muted)] font-latin">{fa(coin.market_cap_rank || "-", lang)}</span>
                                 {watchHydrated && (
-                                  <motion.button
-                                    whileTap={{ scale: 0.8 }}
+                                  <button
                                     onClick={(e) => { e.stopPropagation(); toggleWatch(coin.id); }}
                                     className={cn(
                                       "shrink-0 transition-colors",
@@ -606,7 +609,7 @@ export function MarketIntelligence() {
                                     aria-label={isWatched(coin.id) ? "Remove from watchlist" : "Add to watchlist"}
                                   >
                                     <Star className={cn("w-3 h-3", isWatched(coin.id) && "fill-current")} />
-                                  </motion.button>
+                                  </button>
                                 )}
                               </div>
                             </td>
@@ -643,11 +646,10 @@ export function MarketIntelligence() {
                       <motion.div
                         key={coin.id}
                         layout
-                        initial={{ opacity: 0, x: isRTL ? 20 : -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: isRTL ? -20 : 20 }}
-                        transition={{ duration: 0.2, delay: Math.min(idx * 0.02, 0.4) }}
-                        whileTap={{ scale: 0.98 }}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.15, delay: Math.min(idx * 0.01, 0.2) }}
                         className="w-full flex items-center gap-3 p-3 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)] hover:border-[var(--brand-accent)]/40 transition-colors"
                       >
                         <button onClick={() => onCoinClick(coin)} className="flex items-center gap-3 flex-1 min-w-0 text-start">
@@ -663,8 +665,7 @@ export function MarketIntelligence() {
                           </div>
                         </button>
                         {watchHydrated && (
-                          <motion.button
-                            whileTap={{ scale: 0.8 }}
+                          <button
                             onClick={() => toggleWatch(coin.id)}
                             className={cn(
                               "p-1 rounded-full shrink-0 transition-colors",
@@ -673,7 +674,7 @@ export function MarketIntelligence() {
                             aria-label={isWatched(coin.id) ? "Remove from watchlist" : "Add to watchlist"}
                           >
                             <Star className={cn("w-4 h-4", isWatched(coin.id) && "fill-current")} />
-                          </motion.button>
+                          </button>
                         )}
                       </motion.div>
                     );
@@ -816,17 +817,12 @@ function SortHeader({ label, field, sortField, sortDir, onSort, align }: { label
 
 function SidebarCard({ title, icon, accent, children }: { title: string; icon: React.ReactNode; accent: string; children: React.ReactNode }) {
   return (
-    <GlassCard glow accent={accent} className="p-4 overflow-hidden">
-      {/* Background gradient glow */}
-      <div
-        className="absolute -top-8 -end-8 w-24 h-24 rounded-full opacity-15 blur-2xl pointer-events-none"
-        style={{ backgroundColor: accent }}
-      />
-      <div className="relative flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-latin font-semibold mb-3" style={{ color: accent }}>
+    <GlassCard accent={accent} className="p-4 overflow-hidden">
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-latin font-semibold mb-3" style={{ color: accent }}>
         {icon}
         <span>{title}</span>
       </div>
-      <div className="relative">{children}</div>
+      <div>{children}</div>
     </GlassCard>
   );
 }
@@ -864,6 +860,160 @@ function FngChart({ data, lang }: { data: Array<{ value: number; classification:
         <polyline points={`0,${height} ${points} ${width},${height}`} fill="url(#fng-grad)" stroke="none" />
         <polyline points={points} fill="none" stroke="#2dd4bf" strokeWidth="1.5" />
       </svg>
+    </div>
+  );
+}
+
+/* ============= Market Overview (Phase 22) ============= */
+/**
+ * Minimal market overview section — sits between the stats bar and the
+ * coin table. Shows a brief market summary with:
+ *  - Market sentiment (bullish/bearish/neutral) based on 24h change
+ *  - Top gainer highlight (single coin)
+ *  - Trending coin highlight (single coin)
+ *  - BTC dominance progress bar
+ *
+ * Design: minimal, no blur, no gradients. Solid surfaces with accent colors.
+ */
+function MarketOverview({
+  globalStats,
+  topGainers,
+  trending,
+  lang,
+  fa,
+  fmtCompact,
+}: {
+  globalStats: GlobalStats | undefined;
+  topGainers: TopGainer[] | undefined;
+  trending: TrendingCoin[] | undefined;
+  lang: "fa" | "en";
+  fa: (n: string | number, lang: "fa" | "en") => string;
+  fmtCompact: (n: number) => string;
+}) {
+  if (!globalStats) return null;
+
+  const change = globalStats.totalMarketCapYesterdayPctChange || 0;
+  const isBullish = change > 1;
+  const isBearish = change < -1;
+  const sentiment = isBullish
+    ? { label: lang === "fa" ? "صعودی" : "Bullish", color: "#2dd4bf", icon: "▲" }
+    : isBearish
+    ? { label: lang === "fa" ? "نزولی" : "Bearish", color: "#f87171", icon: "▼" }
+    : { label: lang === "fa" ? "خنثی" : "Neutral", color: "#a78bfa", icon: "●" };
+
+  const topGainer = topGainers?.[0];
+  const trendingCoin = trending?.[0];
+
+  return (
+    <div className="border-b border-[var(--brand-border)] bg-[var(--brand-surface)]/40">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {/* Sentiment card */}
+          <div className="p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
+            <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-2">
+              {lang === "fa" ? "احساس بازار" : "Market Sentiment"}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-2xl font-bold" style={{ color: sentiment.color }}>
+                {sentiment.icon}
+              </span>
+              <div>
+                <div className="text-sm font-bold" style={{ color: sentiment.color }}>
+                  {sentiment.label}
+                </div>
+                <div className="text-[10px] text-[var(--brand-muted)] font-latin">
+                  {change >= 0 ? "+" : ""}{fa(change.toFixed(2), lang)}% 24h
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Top gainer highlight */}
+          {topGainer && (
+            <div className="p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
+              <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-2">
+                {lang === "fa" ? "بزرگترین صعودی" : "Top Gainer"}
+              </div>
+              <div className="flex items-center gap-2">
+                <img
+                  src={`https://s2.coinmarketcap.com/static/img/coins/64x64/${topGainer.id}.png`}
+                  alt={topGainer.name}
+                  className="w-6 h-6 rounded-full shrink-0"
+                  loading="lazy"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold text-[var(--brand-text)] truncate">
+                    {topGainer.name}
+                  </div>
+                  <div className="text-[10px] text-[var(--brand-muted)] font-latin uppercase">
+                    {topGainer.symbol}
+                  </div>
+                </div>
+                <div className="text-end">
+                  <div className="text-sm font-bold text-emerald-400 font-latin tabular-nums">
+                    +{fa(topGainer.percentChange24h.toFixed(2), lang)}%
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Trending highlight */}
+          {trendingCoin && (
+            <div className="p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
+              <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-2">
+                {lang === "fa" ? "داغ‌ترین" : "Trending"}
+              </div>
+              <div className="flex items-center gap-2">
+                {trendingCoin.thumb && (
+                  <img
+                    src={trendingCoin.thumb}
+                    alt={trendingCoin.name}
+                    className="w-6 h-6 rounded-full shrink-0"
+                    loading="lazy"
+                  />
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold text-[var(--brand-text)] truncate">
+                    {trendingCoin.name}
+                  </div>
+                  <div className="text-[10px] text-[var(--brand-muted)] font-latin uppercase">
+                    {trendingCoin.symbol}
+                  </div>
+                </div>
+                {trendingCoin.marketCapRank && (
+                  <div className="text-end">
+                    <div className="text-sm font-bold text-[var(--brand-accent)] font-latin">
+                      #{fa(trendingCoin.marketCapRank, lang)}
+                    </div>
+                    <div className="text-[10px] text-[var(--brand-muted)] font-latin">
+                      {lang === "fa" ? "رتبه" : "rank"}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* BTC dominance bar */}
+        {globalStats.btcDominance > 0 && (
+          <div className="mt-3 flex items-center gap-3 text-[10px]">
+            <span className="text-[var(--brand-muted)] font-latin uppercase tracking-wider shrink-0">
+              {lang === "fa" ? "تسلط بیت‌کوین" : "BTC Dominance"}
+            </span>
+            <div className="flex-1 h-1.5 rounded-full bg-[var(--brand-surface-2)] overflow-hidden">
+              <div
+                className="h-full rounded-full bg-[#f7931a]"
+                style={{ width: `${globalStats.btcDominance}%` }}
+              />
+            </div>
+            <span className="font-latin font-bold text-[#f7931a] tabular-nums shrink-0">
+              {fa(globalStats.btcDominance.toFixed(1), lang)}%
+            </span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
