@@ -152,12 +152,15 @@ export function SourceFilter({
    * preventDefault on touch. But wheel is fine.
    */
   const onWheel = (e: React.WheelEvent) => {
+    // Only intercept vertical wheel → horizontal scroll (trackpad gesture)
     if (Math.abs(e.deltaY) < Math.abs(e.deltaX)) return;
     const el = scrollRef.current;
     if (!el) return;
     if (el.scrollWidth <= el.clientWidth + 2) return;
     const delta = isRTL ? -e.deltaY : e.deltaY;
-    el.scrollBy({ left: delta, behavior: "auto" });
+    // Use 'auto' for instant scroll (feels more responsive than 'smooth'
+    // which can feel laggy on fast wheel events)
+    el.scrollLeft += delta;
   };
 
   /**
@@ -267,8 +270,15 @@ export function SourceFilter({
             // Hide scrollbar in all browsers via inline style (most reliable)
             scrollbarWidth: "none",
             msOverflowStyle: "none",
-            // Allow horizontal pan with touch (vertical page scroll still works)
-            touchAction: "pan-y",
+            // Allow both horizontal AND vertical touch gestures:
+            // - pan-x: horizontal swipe scrolls the pills
+            // - pan-y: vertical swipe scrolls the page
+            // This is the key fix — 'pan-y' alone blocks horizontal touch scroll
+            touchAction: "pan-x pan-y",
+            // Smooth scrolling on iOS Safari
+            WebkitOverflowScrolling: "touch",
+            // Prevent layout thrashing during scroll
+            willChange: "scroll-position",
           }}
         >
           {/* WebKit scrollbar hidden via global CSS rule (see globals.css) */}

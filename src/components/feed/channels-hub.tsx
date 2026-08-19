@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Send,
   Twitter,
@@ -390,9 +391,6 @@ function ChannelPreviewCard({
   lang: Language;
 }) {
   const { t } = useLanguage();
-  const [data, setData] = useState<ChannelData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [imgErrors, setImgErrors] = useState<Record<string, boolean>>({});
 
@@ -400,45 +398,24 @@ function ChannelPreviewCard({
   const COLLAPSED_COUNT = 3;
   const EXPANDED_COUNT = 8;
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
+  // Use TanStack Query for caching (5min staleTime — shared across mounts)
+  const { data, isLoading, refetch, isFetching } = useQuery<ChannelData>({
+    queryKey: ["channel", handle],
+    queryFn: async () => {
       const res = await fetch(
         `/api/channel?handle=${encodeURIComponent(handle)}`,
         { cache: "no-store" }
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json: ChannelData = await res.json();
-      setData(json);
-    } catch {
-      setData(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [handle]);
+      return (await res.json()) as ChannelData;
+    },
+    staleTime: 5 * 60_000,
+    gcTime: 10 * 60_000,
+    retry: 1,
+  });
 
-  // Manual refresh button — re-fetches with a fresh request (bypasses any
-  // edge cache by appending a `_t` query param).
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      const res = await fetch(
-        `/api/channel?handle=${encodeURIComponent(handle)}&_t=${Date.now()}`,
-        { cache: "no-store" }
-      );
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json: ChannelData = await res.json();
-      setData(json);
-    } catch {
-      // ignore — keep stale data
-    } finally {
-      setRefreshing(false);
-    }
-  }, [handle]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const loading = isLoading;
+  const refreshing = isFetching && !isLoading;
 
   const meta = CATEGORY_META[category];
   const posts = (data?.posts || []).slice(0, showAll ? EXPANDED_COUNT : COLLAPSED_COUNT);
@@ -483,7 +460,7 @@ function ChannelPreviewCard({
         </a>
         {/* Manual refresh button */}
         <button
-          onClick={onRefresh}
+          onClick={() => refetch()}
           disabled={refreshing}
           aria-label={lang === "fa" ? "بروزرسانی پست‌ها" : "Refresh posts"}
           className="p-1 rounded-full text-[var(--brand-muted)] hover:text-[var(--brand-accent)] hover:bg-[var(--brand-surface)] transition-colors shrink-0 disabled:opacity-50"

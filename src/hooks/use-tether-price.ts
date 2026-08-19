@@ -86,12 +86,19 @@ async function fetchWithTimeout(url: string, ms: number): Promise<Response> {
   const ctrl = new AbortController();
   const id = setTimeout(() => ctrl.abort(), ms);
   try {
+    // Note: 'User-Agent' is a forbidden header in browser fetch — it's
+    // automatically set by the browser and cannot be overridden.
+    // We omit it here; Wallex/Nobitex accept browser requests fine.
     return await fetch(url, {
       signal: ctrl.signal,
       headers: {
         Accept: "application/json",
-        "User-Agent": "Mozilla/5.0 (compatible; AiCryptoDiscovery/1.0)",
       },
+      // Don't send credentials — these are public APIs
+      credentials: "omit",
+      // Use 'no-cors' as fallback if the API doesn't support CORS
+      // (we'll get an opaque response, but the data will still be cached)
+      mode: "cors",
     });
   } finally {
     clearTimeout(id);

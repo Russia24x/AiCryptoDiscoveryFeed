@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import {
@@ -133,6 +133,49 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
     enabled: !!cmcSlug,
   });
 
+  // --- Tertiary: CMC listings (for price data when CoinGecko is rate-limited) ---
+  // This query is shared with the market table (same queryKey), so it's free
+  // if the user has already visited /crypto/market. It provides real price,
+  // volume, market_cap, percent_change data for the fallback.
+  const { data: cmcListings } = useQuery<{
+    coins: Array<{
+      id: number;
+      name: string;
+      symbol: string;
+      slug: string;
+      cmcRank: number;
+      price: number;
+      volume24h: number;
+      marketCap: number;
+      percentChange1h: number;
+      percentChange24h: number;
+      percentChange7d: number;
+      percentChange30d: number;
+      percentChange60d: number;
+      percentChange90d: number;
+      circulatingSupply: number;
+      totalSupply: number;
+      maxSupply: number | null;
+    }>;
+  }>({
+    queryKey: ["market", "cmc-listings", "top100"],
+    queryFn: async () => {
+      const res = await fetch("/api/market/cmc-listings?limit=100", { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      return { coins: json?.coins || [] };
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  // Find the matching CMC listing by slug or symbol
+  const cmcListing = useMemo(() => {
+    if (!cmcListings?.coins) return null;
+    return cmcListings.coins.find(
+      (c) => c.slug === coinId || c.symbol.toLowerCase() === coinId.toLowerCase()
+    ) || null;
+  }, [cmcListings, coinId]);
+
   const fa = (n: string | number) =>
     lang === "fa" ? String(n).replace(/[0-9]/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[+d]) : String(n);
 
@@ -182,46 +225,67 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
   }
 
   // Build a fallback displayCoin from CMC data if CoinGecko is null
+  // Use cmcListing for price/volume/market_cap data, cmcCoin for metadata
   let displayCoin = coin;
   let usingCmcFallback = false;
-  if (!displayCoin && cmcCoin) {
+  if (!displayCoin && (cmcCoin || cmcListing)) {
     usingCmcFallback = true;
+    const name = cmcCoin?.name || cmcListing?.name || coinId;
+    const symbol = cmcCoin?.symbol || cmcListing?.symbol || "";
+    const price = cmcListing?.price || 0;
+    const volume24h = cmcListing?.volume24h || 0;
+    const marketCap = cmcListing?.marketCap || 0;
+    const change1h = cmcListing?.percentChange1h || 0;
+    const change24h = cmcListing?.percentChange24h || 0;
+    const change7d = cmcListing?.percentChange7d || 0;
+    const change30d = cmcListing?.percentChange30d || 0;
+    const change60d = cmcListing?.percentChange60d || 0;
+    const change90d = cmcListing?.percentChange90d || 0;
+    const circulatingSupply = cmcListing?.circulatingSupply || 0;
+    const totalSupply = cmcListing?.totalSupply || 0;
+    const maxSupply = cmcListing?.maxSupply || null;
+    const rank = cmcListing?.cmcRank || 0;
+
     displayCoin = {
       id: coinId,
-      symbol: cmcCoin.symbol,
-      name: cmcCoin.name,
-      description: { en: cmcCoin.description, fa: cmcCoin.description },
+      symbol,
+      name,
+      description: { en: cmcCoin?.description || "", fa: cmcCoin?.description || "" },
       links: {
-        homepage: cmcCoin.urls?.website || [],
-        twitter_screen_name: cmcCoin.urls?.twitter?.[0] || undefined,
-        subreddit_url: cmcCoin.urls?.reddit?.[0] || undefined,
-        repos_url: { github: cmcCoin.urls?.sourceCode || [], bitbucket: [] },
+        homepage: cmcCoin?.urls?.website || [],
+        twitter_screen_name: cmcCoin?.urls?.twitter?.[0] || undefined,
+        subreddit_url: cmcCoin?.urls?.reddit?.[0] || undefined,
+        repos_url: { github: cmcCoin?.urls?.sourceCode || [], bitbucket: [] },
       },
-      image: { thumb: cmcCoin.logo, small: cmcCoin.logo, large: cmcCoin.logo },
-      market_cap_rank: 0,
-      categories: (cmcCoin.tags || []).map((t) => t.name),
+      image: {
+        thumb: cmcCoin?.logo || "",
+        small: cmcCoin?.logo || "",
+        large: cmcCoin?.logo || "",
+      },
+      market_cap_rank: rank,
+      categories: (cmcCoin?.tags || []).map((t) => t.name),
       market_data: {
-        current_price: { usd: 0 },
-        market_cap: { usd: 0 },
-        total_volume: { usd: 0 },
+        current_price: { usd: price },
+        market_cap: { usd: marketCap },
+        total_volume: { usd: volume24h },
         high_24h: { usd: 0 },
         low_24h: { usd: 0 },
-        price_change_percentage_1h_in_currency: { usd: 0 },
-        price_change_percentage_24h_in_currency: { usd: 0 },
-        price_change_percentage_7d_in_currency: { usd: 0 },
-        price_change_percentage_30d_in_currency: { usd: 0 },
-        price_change_percentage_60d_in_currency: { usd: 0 },
-        price_change_percentage_1y_in_currency: { usd: 0 },
+        price_change_percentage_1h_in_currency: { usd: change1h },
+        price_change_percentage_24h_in_currency: { usd: change24h },
+        price_change_percentage_7d_in_currency: { usd: change7d },
+        price_change_percentage_30d_in_currency: { usd: change30d },
+        price_change_percentage_60d_in_currency: { usd: change60d },
+        price_change_percentage_1y_in_currency: { usd: change90d },
         ath: { usd: 0 },
         ath_change_percentage: { usd: 0 },
         ath_date: { usd: "" },
         atl: { usd: 0 },
         atl_change_percentage: { usd: 0 },
         atl_date: { usd: "" },
-        circulating_supply: 0,
-        total_supply: null,
-        max_supply: null,
-        fully_diluted_valuation: null,
+        circulating_supply: circulatingSupply,
+        total_supply: totalSupply || null,
+        max_supply: maxSupply,
+        fully_diluted_valuation: marketCap ? { usd: marketCap } : null,
       },
     } as CoinGeckoCoin;
   }
