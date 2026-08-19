@@ -178,14 +178,20 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
     staleTime: 2 * 60_000,
   });
 
-  // Find CMC slug by matching CoinGecko coin symbol
+  // Find CMC slug by matching CoinGecko coin symbol.
+  // If CoinGecko is rate-limited (coin is null), we can't match by symbol,
+  // so we use the coinId as the slug (e.g., "bitcoin" → "bitcoin").
+  // This works for most popular coins where CoinGecko ID == CMC slug.
   const cmcSlug = useMemo(() => {
-    if (!coin?.symbol || !cmcListings?.coins) return null;
-    const match = cmcListings.coins.find(
-      (c) => c.symbol.toUpperCase() === coin?.symbol?.toUpperCase()
-    );
-    return match?.slug || null;
-  }, [coin?.symbol, cmcListings]);
+    if (coin?.symbol && cmcListings?.coins) {
+      const match = cmcListings.coins.find(
+        (c) => c.symbol.toUpperCase() === coin?.symbol?.toUpperCase()
+      );
+      if (match) return match.slug;
+    }
+    // Fallback: use coinId as the CMC slug (works for most popular coins)
+    return coinId;
+  }, [coin?.symbol, cmcListings, coinId]);
 
   const { data: cmcCoin } = useQuery<{
     name: string;
