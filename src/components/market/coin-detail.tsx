@@ -137,7 +137,7 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
   // This query is shared with the market table (same queryKey), so it's free
   // if the user has already visited /crypto/market. It provides real price,
   // volume, market_cap, percent_change data for the fallback.
-  const { data: cmcListings } = useQuery<{
+  const { data: cmcListings, isLoading: cmcListingsLoading } = useQuery<{
     coins: Array<{
       id: number;
       name: string;
@@ -202,7 +202,11 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
     }
   };
 
-  if (isLoading) {
+  // Wait for both CoinGecko AND cmcListings before showing fallback
+  // (cmcListings provides the real price data for the fallback)
+  const isLoadingAll = isLoading || (cmcListingsLoading && !coin);
+
+  if (isLoadingAll) {
     return (
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-8">
         <div className="animate-pulse space-y-4">
