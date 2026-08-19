@@ -3,7 +3,6 @@ import { SOURCES } from "@/lib/sources";
 import type { FeedItem, FeedResponse } from "@/types/feed";
 import type { Category } from "@/lib/sources";
 
-export const runtime = "edge";
 export const revalidate = 0; // always fresh — per-query response
 export const dynamic = "force-dynamic";
 
