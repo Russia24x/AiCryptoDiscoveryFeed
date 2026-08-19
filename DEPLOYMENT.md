@@ -1,159 +1,233 @@
 # Deployment Guide — Ai Crypto Discovery
 
-This guide covers deploying the project to **Cloudflare Pages** (free tier).
+This guide covers deploying the project to **Cloudflare Workers** (free tier, via @opennextjs/cloudflare).
+
+> **Migration note**: This project was previously deployed on Cloudflare Pages with the now-deprecated `@cloudflare/next-on-pages` adapter. As of August 2026, it uses the official `@opennextjs/cloudflare` adapter on Cloudflare Workers. The Worker size dropped from 10.6 MiB (over both free and paid limits) to 1.36 MiB gzip (well under the 3 MiB free limit).
 
 ---
 
 ## Prerequisites
 
 1. A GitHub account with the repo pushed
-2. A Cloudflare account (free)
-3. Node.js 18+ installed locally
+2. A Cloudflare account (free — **no credit card required**)
+3. Node.js 22+ installed locally (Cloudflare Workers Builds uses Node 24)
 
 ---
 
-## Option 1: Cloudflare Pages Dashboard (Recommended)
+## Option 1: Cloudflare Workers Builds (Recommended)
 
-### Step 1: Connect Repository
+This is the easiest method — Cloudflare auto-builds on every push to `main`.
+
+### Step 1: Create the Worker
 
 1. Log into [Cloudflare Dashboard](https://dash.cloudflare.com)
-2. Go to **Workers & Pages** → **Create application** → **Pages** → **Connect to Git**
+2. Go to **Workers & Pages** → **Create** → **Worker** → **Connect to Git repository**
 3. Select the `Russia24x/AiCryptoDiscoveryFeed` repository
-4. Choose a project name (e.g., `ai-crypto-discovery`)
+4. Choose a Worker name (e.g., `aidiscovery`)
 
 ### Step 2: Build Configuration
 
 | Setting | Value |
 |---|---|
-| **Framework preset** | Next.js |
-| **Build command** | `npx @cloudflare/next-on-pages@1` |
-| **Build output directory** | `.vercel/output/static` |
-| **Root directory** | (leave empty) |
-| **Environment variables** | (none required — see note below) |
+| **Production branch** | `main` |
+| **Build command** | `npm install && npm run build && npm run build:worker` |
+| **Deploy command** | `npx wrangler deploy` |
+| **Root directory** | `/` |
 
-### Step 3: Advanced Settings
+> **Important**: Do NOT use `npx @opennextjs/cloudflare build` directly in the build command — it triggers an npx cache download that can't find `wrangler`. The `npm run build:worker` script uses the locally-installed binary instead.
 
-In the Cloudflare Pages dashboard, under **Settings** → **Functions**:
+### Step 3: Runtime Settings
 
-- **Compatibility flags**: `nodejs_compat`
-- **Compatibility date**: `2024-09-25` or later
+In the Worker's **Settings** → **Runtime**:
 
-These are already configured in `wrangler.toml`.
+- **Compatibility date**: `2026-08-18` (or later)
+- **Compatibility flags**: `nodejs_compat`, `global_fetch_strictly_public`
+
+These are already set in `wrangler.jsonc`, but verify in the dashboard.
 
 ### Step 4: Deploy
 
-Click **Save and Deploy**. Cloudflare will:
-1. Clone the repo
-2. Run `npm install --legacy-peer-deps` (using `.npmrc`)
-3. Run `npx @cloudflare/next-on-pages@1`
-4. Deploy the output to global Cloudflare CDN
+1. Click **Save and Deploy**
+2. Wait for the build to complete (~30-60 seconds)
+3. Visit `https://<worker-name>.<your-subdomain>.workers.dev`
 
-**Build time**: ~3-5 minutes
+If you see "Hello world" instead of your app, the new version was uploaded but not promoted to production. Go to **Deployments** → find the latest version → click **"Deploy to production"** (or "Promote").
 
 ---
 
-## Option 2: Wrangler CLI
+## Option 2: Manual CLI Deploy
+
+For full control, deploy from your local machine:
 
 ```bash
-# Install wrangler
-npm install -g wrangler
+# 1. Install dependencies
+npm install
 
-# Login to Cloudflare
-wrangler login
+# 2. Login to Cloudflare (one-time, opens browser)
+npx wrangler login
 
-# Build
-npx @cloudflare/next-on-pages@1
+# 3. Build Next.js + OpenNext Worker
+npm run build
+npm run build:worker
 
-# Deploy
-wrangler pages deploy .vercel/output/static --project-name=ai-crypto-discovery
+# 4. Deploy to Cloudflare Workers
+npx wrangler deploy
 ```
 
+The first deploy will create the Worker automatically. Subsequent deploys update it.
+
 ---
 
-## Important Notes
+## Local Preview
 
-### 1. Edge Runtime
-All API routes use `export const runtime = "edge"`. This is **required** for Cloudflare Pages — the Node.js runtime is not available.
+Test the Worker locally before deploying:
 
-### 2. Image Optimization
-`next.config.ts` has `images.unoptimized: true` because Cloudflare Pages doesn't support the default Next.js image optimizer. Images are served as-is.
+```bash
+npm run preview
+```
 
-### 3. Peer Dependencies
-`.npmrc` contains `legacy-peer-deps=true` because `@cloudflare/next-on-pages` has a peer dependency on Next.js ≤15.5.2, but we use Next.js 16. The adapter works fine despite the warning.
+This runs `opennextjs-cloudflare build && opennextjs-cloudflare preview`, which starts the app in `workerd` (the actual Cloudflare runtime). Visit `http://localhost:8787`.
 
-### 4. Environment Variables
-**No environment variables are required**. All API keys are handled via keyless public APIs:
-- CoinMarketCap: `data-api/v3/*` (keyless)
-- CoinGecko: free tier (30 calls/min, no key)
-- DefiLlama: no key, no rate limit
-- Binance: public ticker (no key)
-- Open-Meteo: free (10K calls/day, no key)
+---
 
-### 5. Free Tier Limits
+## Free Tier Limits
 
-| Resource | Free Tier Limit | Our Usage |
+| Resource | Free Tier Limit | This Project's Usage |
 |---|---|---|
-| Builds | 500/month | ~10/month |
-| Bandwidth | Unlimited | — |
-| Requests | Unlimited | — |
-| Functions invocations | 20,000/day | ~5,000/day (with caching) |
-| Edge cache | Unlimited | — |
+| **Worker size (gzip)** | 3 MiB | **1.36 MiB** ✅ |
+| **Worker requests/day** | 100,000 | varies |
+| **CPU time per request** | 10 ms | most routes < 50 ms |
+| **Workers Static Assets** | 20 MiB total | ~1 MiB ✅ |
+| **R2 storage** | 10 GB | **not used** (no card required) |
+| **KV reads** | 100,000/day | not used |
+| **Build minutes** | unlimited | ~60s per build |
 
-**How we stay within limits:**
-- All API routes are edge-cached (60s-900s depending on data freshness)
-- TanStack Query adds client-side caching (30s-15min staleTime)
-- In-memory fallback cache when upstream APIs fail
-- No polling on server — all polling is client-side via TanStack Query
+### Cost: $0/month
 
-### 6. Iranian API Geo-blocking
-
-Some APIs are geo-blocked from certain Cloudflare PoPs:
-- **Binance**: blocked from US PoPs → fallback chain: Binance → Coinbase → CoinGecko
-- **Wallex/Nobitex**: may be blocked from US PoPs → returns `unavailable: true` (UI shows "ناموجود")
-- **CoinGecko**: rate-limited (30 calls/min) → retry with exponential backoff + in-memory cache
-
-This is by design — the fallback chains ensure the app works globally.
-
-### 7. TypeScript Strict Mode
-
-`tsconfig.json` has `strict: true` and `next.config.ts` has `ignoreBuildErrors: false`. The build will **fail** on any TypeScript error. This is intentional — it catches bugs before they reach production.
+The project is designed to run entirely on the free tier without a credit card.
 
 ---
 
-## Custom Domains
+## Configuration Files
 
-After deployment, you can add a custom domain in the Cloudflare Pages dashboard:
-1. Go to **Custom domains** → **Set up a custom domain**
-2. Enter your domain (e.g., `ai-crypto-discovery.pages.dev`)
-3. Cloudflare will configure DNS and SSL automatically
+### `wrangler.jsonc`
 
----
+The Worker configuration. Key fields:
 
-## Monitoring
+```jsonc
+{
+  "name": "aidiscovery",                    // Worker name in Cloudflare
+  "main": ".open-next/worker.js",          // Entry point (built by OpenNext)
+  "compatibility_date": "2026-08-18",      // Recent date for latest features
+  "compatibility_flags": [
+    "nodejs_compat",                        // Node.js API support
+    "global_fetch_strictly_public"          // Prevent internal URL fetches
+  ],
+  "assets": {
+    "directory": ".open-next/assets",      // Static assets
+    "binding": "ASSETS"                     // Worker binding name
+  }
+  // No r2_buckets binding — project is local-first
+}
+```
 
-- **Cloudflare Analytics**: Available in the dashboard (requests, bandwidth, function invocations)
-- **TanStack Query DevTools**: Available in development mode (floating button at bottom-left)
-- **Console logs**: Check browser console for any runtime errors
+### `open-next.config.ts`
+
+```ts
+import { defineCloudflareConfig } from "@opennextjs/cloudflare";
+
+// No incrementalCache override — all pages are "use client" and all API
+// routes are force-dynamic, so Next.js Incremental Cache is never invoked.
+// This keeps the project local-first and avoids R2 (which requires a card).
+export default defineCloudflareConfig({});
+```
+
+### `next.config.ts`
+
+- `initOpenNextCloudflareForDev()` — enables local Cloudflare bindings in dev
+- `images.unoptimized = true` — Cloudflare Workers doesn't support the default sharp-based optimizer
+- `experimental.optimizePackageImports` — tree-shake lucide-react and framer-motion
 
 ---
 
 ## Troubleshooting
 
-### Build Fails
-1. Check that `npm install --legacy-peer-deps` succeeds locally
-2. Check that `npx tsc --noEmit` returns 0 errors
-3. Check that `npm run build` succeeds locally
-4. Check Cloudflare Pages build logs for specific errors
+### "Hello world" instead of my app
 
-### API Routes Return 500
-1. Check that all routes have `export const runtime = "edge"`
-2. Check Cloudflare Functions logs in the dashboard
-3. Some upstream APIs may be temporarily down — check their status pages
+The new Worker version was uploaded but not promoted to production:
+1. Go to **Workers & Pages → your Worker → Deployments**
+2. Find the latest version
+3. Click **"Deploy to production"** (or "Promote")
 
-### Images Don't Load
-- Images from external sources (RSS, Telegram) use `referrerPolicy: "no-referrer"` to avoid hotlink protection
-- If images still don't load, it's likely the source website blocking Cloudflare IPs — not fixable on our end
+Or change the **Deploy command** from `npx wrangler versions upload` to `npx wrangler deploy` and trigger a new build.
+
+### "Worker exceeded the size limit of 3 MiB"
+
+Run `npx wrangler deploy --dry-run` to see the gzipped size. If over 3 MiB:
+- Check for heavy barrel imports (use `experimental.optimizePackageImports`)
+- Replace Node SDKs with raw `fetch` calls
+- Audit the bundle: `cd .open-next/server-functions/default && cat handler.mjs | esbuild --analyze`
+
+### "Cannot find package 'wrangler'"
+
+You're using `npx @opennextjs/cloudflare build` instead of `npm run build:worker`. The `npx` approach downloads a fresh copy to the npx cache that doesn't have access to your project's `wrangler` install. Always use `npm run build:worker` (which uses the local binary).
+
+### "Failed to produce a Cloudflare Pages build"
+
+This error appears if you're still using the old `@cloudflare/next-on-pages` adapter. Make sure:
+- `wrangler.jsonc` exists (not `wrangler.toml`)
+- Build command is `npm run build && npm run build:worker` (not `npx @cloudflare/next-on-pages`)
+- All `export const runtime = "edge"` lines are removed from source
+
+### Hydration mismatch errors
+
+If you see "Hydration failed because the server rendered HTML didn't match the client":
+- Check that `useMounted()` is used to gate renders that depend on `localStorage` or `window`
+- Verify `useSyncExternalStore` is used (not the `useEffect(() => setState(), [])` pattern)
+
+### CoinGecko rate-limited (429)
+
+The free CoinGecko API allows 30 requests/min. When rate-limited:
+- The market page falls back to CoinMarketCap data (with an amber "Limited data" banner)
+- The coin detail page falls back to CMC coin metadata
+- No action needed — the app continues to work with reduced data
+
+### iran-tether shows "unavailable"
+
+Wallex and Nobitex APIs are geoblocked from Cloudflare Workers (US/EU regions). This is a network limitation, not a code bug. The Toman price will show "ناموجود" until a proxy solution is implemented.
 
 ---
 
-_Last updated: 2026-08-19 — Phase 17 complete._
+## Architecture Notes
+
+- **No database**: All user data (bookmarks, watchlist, theme, language, search history) is in browser `localStorage`
+- **No server sessions**: Each request is stateless
+- **Edge caching**: API routes use `Cache-Control: s-maxage=X, stale-while-revalidate=Y` headers
+- **In-memory cache**: API routes have a module-scope `let cached = ...` fallback for when upstreams fail
+- **TanStack Query**: Client-side cache with `staleTime` per query (30s-30min depending on data freshness)
+- **Service Worker v2**: Offline-first with per-route caching and LRU eviction
+
+---
+
+## Useful Commands
+
+```bash
+# Local development
+npm run dev                    # Next.js dev server on :3000
+npm run preview                # workerd runtime on :8787 (production-fidelity)
+
+# Build
+npm run build                  # next build → .next/
+npm run build:worker           # opennextjs-cloudflare build → .open-next/
+
+# Deploy
+npm run deploy                 # build + wrangler deploy
+npx wrangler deploy --dry-run # check size without deploying
+
+# Type checking
+npx tsc --noEmit               # TypeScript check
+npm run lint                   # ESLint (0 errors, 4 warnings expected)
+
+# Cloudflare types
+npm run cf-typegen             # Generate cloudflare-env.d.ts from wrangler.jsonc
+```

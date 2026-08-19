@@ -2,7 +2,7 @@
 
 A modern, bilingual (Persian/English) content discovery + market intelligence platform aggregating live news, crypto prices, weather, and curated social media channels across five verticals: Crypto, AI, Tech, Gaming, and Entertainment.
 
-Built with Next.js 16, TypeScript, Tailwind CSS 4, TanStack Query v5, and shadcn/ui. Designed for Cloudflare Pages (free tier) — no database, fully stateless, all user preferences stored in browser localStorage.
+Built with Next.js 16, TypeScript, Tailwind CSS 4, TanStack Query v5, and shadcn/ui. Deployed on Cloudflare Workers via @opennextjs/cloudflare (free tier) — no database, no credit card required, fully stateless, all user preferences stored in browser localStorage.
 
 ---
 
@@ -53,11 +53,11 @@ Built with Next.js 16, TypeScript, Tailwind CSS 4, TanStack Query v5, and shadcn
 | **Language** | TypeScript 5 (strict mode, noImplicitAny) |
 | **Styling** | Tailwind CSS 4 + shadcn/ui (New York) |
 | **Server State** | TanStack Query v5 (QueryClient) |
-| **Client State** | localStorage hooks (no Zustand/Redux needed) |
+| **Client State** | localStorage hooks + Zustand (UI store) |
 | **Animations** | Framer Motion (AnimatePresence, layout) |
 | **Icons** | lucide-react |
 | **Fonts** | Vazirmatn (Persian), Inter (Latin), Estedad (display), JetBrains Mono (code) |
-| **Hosting** | Cloudflare Pages (free tier, edge runtime) |
+| **Hosting** | Cloudflare Workers (free tier, via @opennextjs/cloudflare) |
 | **Package manager** | npm |
 
 ---
@@ -144,7 +144,7 @@ ai-crypto-discovery/
 ### API Architecture
 
 All API routes use:
-- `runtime = "edge"` — Cloudflare Pages edge runtime
+- Node.js runtime (default, via OpenNext) — `runtime = "edge"` removed in Phase 21
 - `dynamic = "force-dynamic"` — always fresh
 - `revalidate = 0` — no ISR
 - `Cache-Control: public, s-maxage=X, stale-while-revalidate=Y` — edge caching
@@ -240,30 +240,32 @@ npm run build
 npm start
 ```
 
-### Cloudflare Pages Build
+### Cloudflare Workers Build
 
 ```bash
-npx @cloudflare/next-on-pages
-# Output: .vercel/output/static
+npm run build          # next build (creates .next/)
+npm run build:worker   # opennextjs-cloudflare build (creates .open-next/)
+# Output: .open-next/worker.js + .open-next/assets/
 ```
 
 ---
 
-## ☁️ Deployment to Cloudflare Pages
+## ☁️ Deployment to Cloudflare Workers
 
 See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for the complete guide.
 
 **Free tier limits (sufficient for this project):**
-- 500 builds per month
-- Unlimited bandwidth
-- Unlimited requests
-- 20,000 functions invocations per day
+- 100,000 Worker requests per day
+- 10 ms CPU time per request (free) / 50 ms (paid)
+- 1.36 MiB gzipped Worker (well under 3 MiB free limit)
+- No credit card required (Workers + Static Assets only, no R2)
 
 **Key notes:**
-- All API routes use `runtime = "edge"` (required for CF Pages)
-- `@cloudflare/next-on-pages` adapter converts Next.js to CF Pages format
-- `.npmrc` with `legacy-peer-deps=true` required for peer dep compatibility
-- `wrangler.toml` with `nodejs_compat` flag
+- All API routes run on Node.js runtime (via OpenNext) — `runtime = "edge"` removed
+- `@opennextjs/cloudflare` adapter converts Next.js to Cloudflare Workers format
+- `wrangler.jsonc` with `nodejs_compat` + `global_fetch_strictly_public` flags
+- No R2 binding (project is local-first, all data fetching client-side)
+- Worker name: `aidiscovery` (matches Cloudflare Dashboard)
 
 ---
 
@@ -312,9 +314,12 @@ The project requires **no environment variables** for basic operation. All confi
 | Script | Purpose |
 |---|---|
 | `npm run dev` | Start dev server (port 3000, Turbopack) |
-| `npm run build` | Production build (standard Next.js) |
+| `npm run build` | Production build (Next.js → .next/) |
+| `npm run build:worker` | OpenNext Cloudflare build (→ .open-next/) |
+| `npm run preview` | Build + preview in workerd (local Cloudflare runtime) |
+| `npm run deploy` | Build + deploy to Cloudflare Workers |
+| `npm run cf-typegen` | Generate TypeScript types for Cloudflare bindings |
 | `npm run lint` | ESLint check |
-| `npx @cloudflare/next-on-pages` | Build for Cloudflare Pages |
 
 ---
 

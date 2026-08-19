@@ -33,7 +33,7 @@ bun run dev
 | `bun run dev` | Start dev server (port 3000, Turbopack) |
 | `bun run lint` | ESLint check (must pass before commit) |
 | `bun run build` | Production build (standard Next.js) |
-| `bunx next-on-pages` | Build for Cloudflare Pages |
+| `npm run build:worker` | Build for Cloudflare Workers (OpenNext) |
 | `python3 scripts/audit-sources.py` | Audit all RSS sources for health |
 | `bash scripts/restart-dev.sh` | Restart dev server + clear caches |
 
@@ -314,8 +314,8 @@ bun run lint
 Must pass with 0 errors before committing. Fix warnings too.
 
 ### Build Fails on Cloudflare
-- Check that `@cloudflare/next-on-pages` is in `devDependencies`
-- Verify build command: `npx @cloudflare/next-on-pages@1`
+- Check that `@opennextjs/cloudflare` is in `devDependencies`
+- Verify build command: `npm run build:worker`
 - Build output: `.vercel/output/static`
 
 ---

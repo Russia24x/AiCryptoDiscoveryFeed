@@ -3215,3 +3215,109 @@ Stage Summary:
 - پروژه حالا کاملاً بدون نیاز به کارت اعتباری روی Cloudflare قابل دیپلویه (فقط Workers + Static Assets).
 - اگه در آینده صفحه‌ای به Server Component با fetch/revalidate واقعی تبدیل بشه، باید R2 (یا KV) دوباره اضافه بشه — نکته در کامنت open-next.config.ts مستند شده.
 - مراحل ۱۰ (preview)، ۱۱ (Workers Builds در داشبورد)، ۱۲ (cutover) هنوز باقی مونده و نیاز به اقدام دستی کاربر در داشبورد Cloudflare داره.
+
+---
+Task ID: 23
+Agent: main (autonomous dev session)
+Task: ارزیابی وضعیت پروژه، آزمایش QA با agent-browser، مدرن‌سازی UI صفحات بازار، رفع باگ‌های پیدا شده.
+
+Work Log:
+
+### مرحله 1: بررسی git log و worklog.md
+- آخرین commit: 653eefd (fix: fall back to CMC data when CoinGecko is rate-limited)
+- وضعیت: پروژه از next-on-pages به OpenNext مهاجرت کرده، Phase 18-19 کامل شده.
+- قابل توجه: فایل worklog.md خیلی بزرگ شده (3200+ خط) و قسماً تکراری.
+
+### مرحله 2: آزمایش QA با agent-browser روی production
+- صفحه اصلی (/): ✅ بدون خطا لود می‌شه (bodyHeight=8231، 80 مقاله)
+- /crypto/market: ✅ جدول بازار با 100 کوین لود می‌شه (Bitcoin $64,437)
+- /crypto/market/bitcoin: ❌ در اول تست خطای "CoinGecko rate limited" نشون می‌داد
+- /crypto, /ai, /tech صفحات: ✅ بدون خطا
+- API endpoints: همگی 200 برمی‌گردونن (به جز iran-tether که geoblocked هست)
+- Language toggle FA/EN: ✅ کار می‌کنه
+- Service Worker: ✅ register شده
+- Offline mode: ✅ صفحه از cache لود می‌شه
+- PWA install prompt: ✅ ظاهر می‌شه
+- /api/feed: ⚠️ 10.5s response time (بسیار کند)
+
+### مرحله 3: مدرن‌سازی UI صفحات بازار (Phase 20)
+**تغییرات اعمال‌شده در market-intelligence.tsx:**
+
+1. **Glassmorphism SidebarCard**: استفاده از GlassCard با backdrop-blur، gradient glow، hover lift
+2. **Modern StatCard**: جایگزینی StatPill با StatCard (آیکون، glow، change indicator)
+3. **Global Stats Grid**: responsive grid 2/3/6 ستون با 6 StatCard با accent رنگ‌های متفاوت
+4. **Top Gainers Widget** (NEW FEATURE): اضافه شدن بخش "بزرگترین صعودی‌ها (۲۴س)" در sidebar با 7 کوین برتر، badge شماره با رنگ‌های مدالی، تصاویر از CMC CDN
+5. **Trending Coins Redesign**: badge با رنگ‌های طلایی/نقره‌ای/برنزی برای top 3، نمایش market cap rank
+6. **Header Modernization**:
+   - Decorative gradient background با blur effect
+   - آیکون BarChart3 در جعبه گرادیانت
+   - Badge "LIVE" با dot pulsing
+   - Search input با focus ring
+7. **Fallback Indicator**: وقتی از CMC استفاده می‌شه (CoinGecko rate-limited)، banner amber نمایش داده می‌شه
+
+### مرحله 4: رفع باگ‌های پیدا‌شده
+
+**باگ ۱: coin detail page خطای "CoinGecko rate limited" نشون می‌داد**
+- علت: وقتی CoinGecko API 429 برمی‌گردوند، کامپوننت `throw new Error` می‌کرد و کل صفحه error می‌شد
+- رفع:
+  - queryFn به جای throw، `null` برمی‌گردونه
+  - اضافه‌شدن CMC fallback: اگر coin null باشه ولی cmcCoin موجود باشه، یک CoinGeckoCoin شبیه‌سازی‌شده از CMC ساخته می‌شه
+  - نمایش badge "حالت محدود / Limited data" در حالت fallback
+  - staleTime از 2min به 5min افزایش
+  - retry از 1 به 2 با exponential backoff
+
+**باگ ۲: cmcSlug null می‌شد وقتی coin null بود**
+- علت: cmcSlug با match کردن coin.symbol پیدا می‌شد، ولی اگه coin null باشه، cmcSlug هم null می‌شد و در نتیجه cmcCoin هم null
+- رفع: استفاده از coinId به‌عنوان slug fallback (CoinGecko ID == CMC slug برای اکثر کوین‌های پرطرفدار)
+
+### مرحله 5: تست نهایی production
+- /crypto/market/bitcoin: ✅ صفحه با h1 "Bitcoin" لود می‌شه، badge "Limited data" نمایش داده می‌شه، bodyHeight=1516
+- /crypto/market: ✅ صفحه با Top Gainers، Trending، LIVE badge لود می‌شه
+- هیچ خطای runtime ای در console نیست
+
+### ⚠️ مشکلات حل‌نشده
+
+1. **Worker exceeded resource limits** (گه‌گاه): در یک تست، Worker خطای 1102 گرفت. علت: /api/feed 10.5 ثانیه طول می‌کشه که احتمالاً CPU limit رایگان Cloudflare (10ms CPU، 50ms wall time) رو تجاوز می‌کنه.
+   - توصیه: باید /api/feed رو بهبود بدیم — شاید با کاهش تعداد source ها یا افزایش edge cache TTL یا انتقال به cron job.
+
+2. **iran-tether همچنان unavailable**: Wallex و Nobitex از Cloudflare Workers قابل دسترس نیستن (geoblocked). این یک محدودیت شبکه‌ای Cloudflare هست.
+
+3. **CoinGecko rate-limiting**: رایگان، محدودیت 30 req/min داره. اگه چند کاربر همزمان بازدید کنن، rate-limit می‌شه. fallback به CMC فعال هست ولی داده‌های کمتری داره.
+
+Stage Summary:
+
+**وضعیت فعلی پروژه:**
+- زیرساخت: Cloudflare Workers با OpenNext، 1.36 MiB gzip (زیر حد رایگان)
+- 27 API route، 8 صفحه، 60+ کامپوننت
+- TypeScript: تمیز (0 errors)
+- ESLint: 0 errors، 4 warnings (window.location.href در navigation handlers)
+- PWA: Service Worker v2، install prompt، offline-first
+- i18n: فارسی (RTL) + انگلیسی (LTR)
+- TanStack Query v5 با staleTime بهینه‌شده
+- Zustand store برای persistent UI state
+
+**اصلاحات تکمیل‌شده این دور:**
+- Phase 20: مدرن‌سازی UI market page با GlassCard و StatCard
+- اضافه‌شدن Top Gainers sidebar widget
+- Fallback به CMC در coin detail page (به جای خطای rate-limit)
+- استفاده از coinId به‌عنوان CMC slug fallback
+
+**توصیه‌های اولویت‌دار برای مرحله بعدی:**
+
+1. **[اولویت بالا] بهبود /api/feed برای جلوگیری از Worker resource limit**
+   - مشکل: 10.5s response time، گاهی Worker exceeded resource limit
+   - راه‌حل: کاهش تعداد source های همزمان، افزایش edge cache TTL، یا انتقال fetch به cron job
+
+2. **[اولویت متوسط] انتقال iran-tether به یک Worker منطقه‌ای دیگر**
+   - مشکل: Wallex/Nobitex از Cloudflare US/EU قابل دسترس نیستن
+   - راه‌حل: استفاده از یک proxy یا Worker با region خاورمیانه
+
+3. **[اولویت متوسط] کاهش کار با CoinGecko API با prefetch هوشمند**
+   - اضافه‌کردن query prefetch وقتی کاربر hover می‌کنه روی coin row
+   - استفاده از `placeholderData` برای نمایش داده‌های stale هنگام refetch
+
+4. **[اولویت پایین] مدرن‌سازی coin-detail.tsx با GlassCard**
+   - primitives آماده هستن (GlassCard, StatCard, Sparkline)، فقط integration لازمه
+
+5. **[پاک‌سازی] فشرده‌سازی worklog.md**
+   - فایل 3200+ خط شده، قسماً تکراری. می‌تونیم خلاصه‌ش کنیم به 500 خط.

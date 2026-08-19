@@ -63,7 +63,7 @@ All data comes from **free, no-API-key** services:
 | **Open-Meteo** | Weather + geocoding | 10K calls/day | No key |
 
 **Key insight**: We never call these APIs directly from the browser.
-All calls go through our own `/api/*` routes on Cloudflare Pages.
+All calls go through our own `/api/*` routes on Cloudflare Workers.
 
 ---
 
@@ -521,7 +521,7 @@ User navigates back to /crypto/market
 
 ## 📈 Resource Consumption Analysis
 
-### Cloudflare Pages Free Tier (20K invocations/day)
+### Cloudflare Workers Free Tier (100K requests/day)
 
 With edge caching, each API route is called at most once per cache TTL
 per Cloudflare region. Assuming 1 active region (e.g., Europe):
