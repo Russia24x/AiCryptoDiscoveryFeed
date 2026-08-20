@@ -262,6 +262,9 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
 
   // Build a fallback displayCoin from CMC data if CoinGecko is null
   // Use cmcListing for price/volume/market_cap data, cmcCoin for metadata
+  // Use geckoMarket for high_24h/low_24h/ath/atl if available (shared cache)
+  // If geckoMarket is also null (rate-limited), approximate high/low from
+  // current price and 24h change percentage
   let displayCoin = coin;
   let usingCmcFallback = false;
   if (!displayCoin && (cmcCoin || cmcListing)) {
@@ -281,6 +284,14 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
     const totalSupply = cmcListing?.totalSupply || 0;
     const maxSupply = cmcListing?.maxSupply || null;
     const rank = cmcListing?.cmcRank || 0;
+
+    // Approximate high_24h and low_24h from price and 24h change
+    // Formula: if change = +7.53%, then:
+    //   low_24h ≈ price / (1 + change/100)
+    //   high_24h ≈ price (if up) or price * (1 + |change|/100) (if down)
+    // This is only an approximation but better than showing $0
+    const high24h = geckoMarket?.high_24h || (change24h >= 0 ? price : price * (1 + Math.abs(change24h) / 100));
+    const low24h = geckoMarket?.low_24h || (change24h >= 0 ? price / (1 + change24h / 100) : price);
 
     displayCoin = {
       id: coinId,
@@ -304,16 +315,16 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
         current_price: { usd: price },
         market_cap: { usd: marketCap },
         total_volume: { usd: volume24h },
-        // high_24h and low_24h come from coingecko-markets (shared cache)
-        high_24h: { usd: geckoMarket?.high_24h || 0 },
-        low_24h: { usd: geckoMarket?.low_24h || 0 },
+        // high_24h and low_24h: use geckoMarket if available, otherwise approximate
+        high_24h: { usd: high24h },
+        low_24h: { usd: low24h },
         price_change_percentage_1h_in_currency: { usd: change1h },
         price_change_percentage_24h_in_currency: { usd: change24h },
         price_change_percentage_7d_in_currency: { usd: change7d },
         price_change_percentage_30d_in_currency: { usd: change30d },
         price_change_percentage_60d_in_currency: { usd: change60d },
         price_change_percentage_1y_in_currency: { usd: change90d },
-        // ath and atl come from coingecko-markets (shared cache)
+        // ath and atl: use geckoMarket if available, otherwise 0 (no good approximation)
         ath: { usd: geckoMarket?.ath || 0 },
         ath_change_percentage: { usd: 0 },
         ath_date: { usd: "" },
@@ -488,7 +499,8 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
         </div>
       </section>
 
-      {/* ATH / ATL */}
+      {/* ATH / ATL — only show if we have real data (not 0) */}
+      {(md.ath?.usd || 0) > 0 && (md.atl?.usd || 0) > 0 && (
       <section className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
         <div className="p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
           <div className="flex items-center gap-1.5 mb-1">
@@ -525,6 +537,7 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
           </div>
         </div>
       </section>
+      )}
 
       {/* Supply */}
       <section className="mb-6 p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
