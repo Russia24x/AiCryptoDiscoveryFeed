@@ -146,6 +146,19 @@ export const SOURCES: Source[] = [
     language: "fa",
     icon: "newspaper",
   },
+  {
+    id: "shahrsakhtafzar",
+    name: "ShahrSakhtAfzar",
+    nameFa: "شهر سخت‌افزار — اخبار",
+    url: "https://www.shahrsakhtafzar.com/fa/news",
+    // Joomla-based site — RSS is at /fa/news?format=feed&type=rss
+    // (NOT /fa/news/feed — that returns 404).
+    // Tested: 12 items, all tech news (phones, laptops, GPUs, gaming).
+    feed: "https://www.shahrsakhtafzar.com/fa/news?format=feed&type=rss",
+    category: "tech",
+    language: "fa",
+    icon: "newspaper",
+  },
 
   // ----- Gaming (بازی) -----
   {

@@ -156,7 +156,7 @@ function parseFeed(xml: string): ParsedItem[] {
   const entryReLocal = new RegExp(entryRe.source, "gi");
   while ((m = entryReLocal.exec(xml)) !== null) matches.push(m[0]);
 
-  for (const raw of matches.slice(0, 15)) {
+  for (const raw of matches.slice(0, 60)) {
     const title =
       raw.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]?.trim() || "";
     const link =
@@ -198,8 +198,12 @@ function parseFeed(xml: string): ParsedItem[] {
 }
 
 async function fetchFeed(source: (typeof SOURCES)[number]): Promise<ParsedItem[]> {
-  // In-memory cache — cache each source's parsed items for 5 minutes
-  const cacheKey = source.id;
+  // In-memory cache — cache by FEED URL (not source ID) so multiple
+  // sources that share the same feed URL (e.g., zoomit-main and
+  // zoomit-space both use https://www.zoomit.ir/feed/) reuse the same
+  // cache entry. This avoids fetching the same 500KB XML twice when
+  // both AI and Space categories are loaded.
+  const cacheKey = source.feed;
   const cached = feedCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
     return cached.items;
