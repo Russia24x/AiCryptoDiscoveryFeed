@@ -32,7 +32,6 @@ export default function CoinDetailPage() {
         onSearchChange={setSearch}
         onOpenBookmarks={() => setBookmarksOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
-        logoVariant="full"
       />
       <Ticker />
       <OfflineBanner />

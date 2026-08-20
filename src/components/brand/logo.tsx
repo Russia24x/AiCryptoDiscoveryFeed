@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import type { Language } from "@/lib/sources";
+import { CATEGORY_META, categoryLabel, type Language } from "@/lib/sources";
 
 interface LogoProps {
   className?: string;
@@ -9,40 +9,104 @@ interface LogoProps {
   showSub?: boolean;
   lang?: Language;
   /**
-   * Logo variant — controls which words are shown.
-   * - "full" (default): "Ai Crypto Discovery" — used on /crypto and the crypto sub-pages
-   * - "discovery": "Ai Discovery" — used on the home hub (no specific category)
-   * - "ai": "Ai" — minimal, just the "Ai" word
+   * Active category — when provided, shows the category name below
+   * the brand with the category's tint color. E.g. on /crypto, the
+   * logo shows "Ai24Discovery" with "Crypto" below in orange.
+   * Use "all" or omit to show just the brand without a category.
+   *
+   * Accepts string (not Category) because "social" is a route but
+   * not a feed Category.
    */
-  variant?: "full" | "discovery" | "ai";
+  activeCategory?: string;
 }
 
+/**
+ * Ai24Discovery brand logo.
+ *
+ * Brand colors:
+ *   Ai         → Cyan (#00ffff)
+ *   24         → White (#ffffff)
+ *   Discovery  → Bright Teal (#2dd4bf)
+ *
+ * When an activeCategory is provided, the category name appears below
+ * the brand in the category's tint color:
+ *   Crypto        → #f7931a (orange)
+ *   AI            → #2dd4bf (teal)
+ *   Tech          → #38bdf8 (blue)
+ *   Gaming        → #a78bfa (purple)
+ *   Entertainment → #f472b6 (pink)
+ *   Space         → #e8e6e1 (milky white)
+ *   Social        → #ef4444 (red)
+ */
 export function Logo({
   className,
   size = "md",
   showSub = false,
   lang = "fa",
-  variant = "full",
+  activeCategory,
 }: LogoProps) {
   const sizes = {
-    sm: { ai: "text-base", crypto: "text-base", discovery: "text-base", sub: "text-[10px]" },
-    md: { ai: "text-xl", crypto: "text-xl", discovery: "text-xl", sub: "text-xs" },
-    lg: { ai: "text-3xl md:text-4xl", crypto: "text-3xl md:text-4xl", discovery: "text-3xl md:text-4xl", sub: "text-sm" },
+    sm: { brand: "text-base", cat: "text-[10px]", sub: "text-[9px]" },
+    md: { brand: "text-xl", cat: "text-[11px]", sub: "text-[10px]" },
+    lg: { brand: "text-3xl md:text-4xl", cat: "text-sm md:text-base", sub: "text-xs" },
   } as const;
 
   const s = sizes[size];
 
+  // Category tint lookup — Social uses red (it's a route, not a feed
+  // Category, so it's not in CATEGORY_META).
+  const SOCIAL_TINT = "#ef4444";
+  const isSocial = activeCategory === "social";
+  const meta = !isSocial && activeCategory && activeCategory !== "all"
+    ? CATEGORY_META[activeCategory as keyof typeof CATEGORY_META]
+    : null;
+  const categoryTint = isSocial
+    ? SOCIAL_TINT
+    : meta?.tint || null;
+
+  // Category display name
+  let categoryName: string | null = null;
+  if (activeCategory && activeCategory !== "all") {
+    if (isSocial) {
+      categoryName = lang === "fa" ? "شبکه‌ها" : "Social";
+    } else if (meta) {
+      categoryName = lang === "fa" ? meta.label : meta.labelEn;
+    }
+  }
+
   return (
     <div className={cn("flex flex-col items-start leading-none", className)}>
-      <div className="flex items-baseline gap-1.5 font-extrabold tracking-tight font-display">
-        <span className={cn("text-[var(--brand-text)]", s.ai)}>Ai</span>
-        {variant === "full" && (
-          <span className={cn("text-[var(--brand-text)]", s.crypto)}>Crypto</span>
-        )}
-        <span className={cn("text-[var(--brand-accent)]", s.discovery)}>Discovery</span>
+      {/* Brand: Ai24Discovery */}
+      <div className="flex items-baseline gap-0.5 font-extrabold tracking-tight font-display">
+        <span className={cn(s.brand)} style={{ color: "#00ffff" }}>
+          Ai
+        </span>
+        <span className={cn(s.brand)} style={{ color: "#ffffff" }}>
+          24
+        </span>
+        <span className={cn(s.brand)} style={{ color: "#2dd4bf" }}>
+          Discovery
+        </span>
       </div>
+
+      {/* Active category name — shown below brand with category tint */}
+      {categoryName && categoryTint && (
+        <span
+          className={cn("mt-0.5 font-bold font-display tracking-wide", s.cat)}
+          style={{ color: categoryTint }}
+        >
+          {categoryName}
+        </span>
+      )}
+
+      {/* Optional sub-tagline */}
       {showSub && (
-        <span className={cn("mt-1 text-[var(--brand-muted)] font-latin tracking-[0.2em] uppercase", s.sub)}>
+        <span
+          className={cn(
+            "mt-1 text-[var(--brand-muted)] font-latin tracking-[0.2em] uppercase",
+            s.sub
+          )}
+        >
           {lang === "fa" ? "آینده · داده · هوشمندی" : "Future · Data · Intelligence"}
         </span>
       )}

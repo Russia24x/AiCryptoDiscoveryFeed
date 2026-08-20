@@ -161,7 +161,6 @@ export function CategoryPage({ category }: CategoryPageProps) {
         onSearchChange={setSearch}
         onOpenBookmarks={() => setBookmarksOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
-        logoVariant={category === "crypto" ? "full" : "discovery"}
       />
       <Ticker />
       <OfflineBanner />

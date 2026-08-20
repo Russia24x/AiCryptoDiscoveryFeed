@@ -26,12 +26,6 @@ interface HeaderProps {
   onSearchChange: (s: string) => void;
   onOpenBookmarks: () => void;
   onOpenSettings: () => void;
-  /**
-   * Logo variant — controls brand name shown in the header.
-   * - "full" (default): "Ai Crypto Discovery" — used on /crypto and crypto sub-pages
-   * - "discovery": "Ai Discovery" — used on the home hub
-   */
-  logoVariant?: "full" | "discovery";
 }
 
 const NAV_ICON: Record<string, React.ReactNode> = {
@@ -52,7 +46,6 @@ export function Header({
   onSearchChange,
   onOpenBookmarks,
   onOpenSettings,
-  logoVariant = "full",
 }: HeaderProps) {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -99,9 +92,9 @@ export function Header({
     >
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between gap-3">
-          {/* Logo */}
+          {/* Logo — Ai24Discovery + active category below */}
           <a href="#" className="flex items-center gap-2 shrink-0">
-            <Logo size="md" lang={lang} variant={logoVariant} />
+            <Logo size="md" lang={lang} activeCategory={activeCategory as any} />
           </a>
 
           {/* Desktop nav — modern button-style pills */}
@@ -278,7 +271,7 @@ export function Header({
         >
           <SheetHeader className="px-5 pt-5 pb-4 border-b border-[var(--brand-border)] sticky top-0 bg-[var(--brand-surface)] z-10">
             <SheetTitle className="flex items-center justify-between">
-              <Logo size="md" lang={lang} />
+              <Logo size="md" lang={lang} activeCategory={activeCategory as any} />
               <button
                 onClick={() => setMobileOpen(false)}
                 className="p-2 rounded-full hover:bg-[var(--brand-surface-2)] text-[var(--brand-muted)] hover:text-[var(--brand-text)] transition-colors"
