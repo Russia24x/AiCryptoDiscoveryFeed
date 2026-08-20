@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head><title>Tether Price Test</title></head>
+<body>
+<h1>Tether Price Test</h1>
+<div id="results">Testing...</div>
+<script>
+async function testFetch(name, url, options) {
+  try {
+    const res = await fetch(url, options);
+    const text = await res.text();
+    return { name, status: res.status, ok: res.ok, headers: {
+      'access-control-allow-origin': res.headers.get('access-control-allow-origin'),
+      'content-type': res.headers.get('content-type'),
+    }, bodyPreview: text.substring(0, 300) };
+  } catch(e) {
+    return { name, error: e.message };
+  }
+}
+
+async function run() {
+  const results = [];
+  
+  // Test 1: Nobitex orderbook
+  results.push(await testFetch('Nobitex GET /v2/orderbook/USDT-RLS', 
+    'https://api.nobitex.ir/v2/orderbook/USDT-RLS'));
+  
+  // Test 2: Nobitex stats
+  results.push(await testFetch('Nobitex POST /market/stats',
+    'https://api.nobitex.ir/market/stats', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ src_currency: 'usdt', dst_currency: 'rls' })
+    }));
+  
+  // Test 3: Wallex markets
+  results.push(await testFetch('Wallex GET /v1/markets',
+    'https://api.wallex.ir/v1/markets'));
+  
+  // Test 4: Nobitex with no-cors mode
+  try {
+    const res = await fetch('https://api.nobitex.ir/v2/orderbook/USDT-RLS', { mode: 'no-cors' });
+    results.push({ name: 'Nobitex no-cors', status: res.status, type: res.type });
+  } catch(e) {
+    results.push({ name: 'Nobitex no-cors', error: e.message });
+  }
+  
+  document.getElementById('results').innerHTML = '<pre>' + JSON.stringify(results, null, 2) + '</pre>';
+}
+
+run();
+</script>
+</body>
+</html>
