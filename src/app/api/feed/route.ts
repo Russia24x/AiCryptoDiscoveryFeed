@@ -359,8 +359,17 @@ export async function GET(request: Request) {
     if (r.status !== "fulfilled") continue;
     const { src, items } = r.value;
     if (!items.length) continue;
+
+    // Apply pathFilter if the source has one (e.g., Zoomit's main feed
+    // is used for /space/, /ai-articles/, etc. — we filter client-side
+    // by URL path to keep only relevant articles).
+    const filteredItems = src.pathFilter
+      ? items.filter((it) => it.link && it.link.includes(src.pathFilter!))
+      : items;
+
+    if (!filteredItems.length) continue;
     sourcesOk++;
-    for (const it of items) {
+    for (const it of filteredItems) {
       // Skip items missing both link AND title
       if (!it.title && !it.link) continue;
 

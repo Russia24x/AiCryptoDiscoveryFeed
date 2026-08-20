@@ -10,6 +10,7 @@ import {
   Cpu,
   Gamepad2,
   Film,
+  Rocket,
 } from "lucide-react";
 import { CATEGORY_META, categoryLabel } from "@/lib/sources";
 import type { Category } from "@/lib/sources";
@@ -59,6 +60,7 @@ const CATEGORY_ICONS = {
   tech: Cpu,
   gaming: Gamepad2,
   entertainment: Film,
+  space: Rocket,
 } as const;
 
 export function SmartImage({

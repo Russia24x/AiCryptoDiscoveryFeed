@@ -32,6 +32,7 @@ export interface TranslationKeys {
     tech: string;
     gaming: string;
     entertainment: string;
+    space: string;
     social: string;
     search: string;
     searchPlaceholder: string;
@@ -220,6 +221,7 @@ export const translations: Record<Language, TranslationKeys> = {
       tech: "فناوری",
       gaming: "بازی",
       entertainment: "سرگرمی",
+      space: "فضا",
       social: "شبکه‌ها",
       search: "جستجو",
       searchPlaceholder: "جستجو…",
@@ -414,6 +416,7 @@ export const translations: Record<Language, TranslationKeys> = {
       tech: "Tech",
       gaming: "Gaming",
       entertainment: "Entertainment",
+      space: "Space",
       social: "Social",
       search: "Search",
       searchPlaceholder: "Search…",

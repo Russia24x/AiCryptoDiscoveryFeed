@@ -23,6 +23,7 @@ export type Category =
   | "tech"
   | "gaming"
   | "entertainment"
+  | "space"
   | "all";
 
 export type Language = "fa" | "en";
@@ -37,6 +38,18 @@ export interface Source {
   language: Language;
   /** Optional icon name (lucide-react) for badge */
   icon?: string;
+  /**
+   * Optional path filter — when set, only items whose `link` URL
+   * contains this substring are shown. Used for sources like Zoomit
+   * whose category-specific RSS endpoints return HTML instead of XML
+   * (Zoomit migrated to a Next.js platform and broke /space/feed,
+   * /ai-articles/feed, etc.). We fall back to the main feed and
+   * filter client-side by URL path.
+   *
+   * Example: pathFilter: "/space/" keeps only links like
+   * https://www.zoomit.ir/space/465646-nasa-images-reveal-...
+   */
+  pathFilter?: string;
 }
 
 export const SOURCES: Source[] = [
@@ -54,16 +67,6 @@ export const SOURCES: Source[] = [
     category: "crypto",
     language: "fa",
     icon: "bitcoin",
-  },
-  {
-    id: "arzdigital-main",
-    name: "ArzDigital Feed",
-    nameFa: "آرزدیجیتال — اصلی",
-    url: "https://arzdigital.com/",
-    feed: "https://arzdigital.com/feed/",
-    category: "crypto",
-    language: "fa",
-    icon: "newspaper",
   },
   {
     id: "mihanblockchain-news",
@@ -85,7 +88,6 @@ export const SOURCES: Source[] = [
     language: "fa",
     icon: "graduation-cap",
   },
-  // ----- Digiato — category-specific feeds (tested: ~4.6s, 10 items each) -----
   {
     id: "digiato-crypto",
     name: "Digiato Crypto",
@@ -110,17 +112,20 @@ export const SOURCES: Source[] = [
   },
   {
     id: "zoomit-main",
-    name: "Zoomit Feed",
-    nameFa: "زومیت",
-    url: "https://www.zoomit.ir/",
+    name: "Zoomit AI",
+    nameFa: "زومیت — هوش مصنوعی",
+    url: "https://www.zoomit.ir/ai-articles",
+    // Zoomit migrated to a Next.js platform and broke category-specific
+    // RSS feeds (/ai-articles/feed returns HTML, not XML). We use the
+    // main feed and filter client-side by URL path /ai-articles/.
     feed: "https://www.zoomit.ir/feed/",
     category: "ai",
     language: "fa",
     icon: "cpu",
+    pathFilter: "/ai-articles/",
   },
 
   // ----- Tech (فناوری) -----
-  // NOTE: Shahrsakhtafzar RSS feed is broken (404 + 403). Removed.
   {
     id: "digiato-tech",
     name: "Digiato Tech",
@@ -194,6 +199,22 @@ export const SOURCES: Source[] = [
     category: "entertainment",
     language: "fa",
     icon: "sparkles",
+  },
+
+  // ----- Space (فضا) — Persian -----
+  {
+    id: "zoomit-space",
+    name: "Zoomit Space",
+    nameFa: "زومیت — فضا",
+    url: "https://www.zoomit.ir/space/",
+    // Zoomit's /space/feed returns HTML (Next.js platform migration broke
+    // category RSS). We use the main feed and filter client-side by URL
+    // path /space/ — about 10% of Zoomit articles are space-related.
+    feed: "https://www.zoomit.ir/feed/",
+    category: "space",
+    language: "fa",
+    icon: "rocket",
+    pathFilter: "/space/",
   },
 
   // ================================================================
@@ -359,6 +380,28 @@ export const SOURCES: Source[] = [
     language: "en",
     icon: "film",
   },
+
+  // ----- Space (فضا) — English -----
+  {
+    id: "space-com",
+    name: "Space.com",
+    nameFa: "اسپیس دات کام",
+    url: "https://www.space.com",
+    feed: "https://www.space.com/feeds/all",
+    category: "space",
+    language: "en",
+    icon: "rocket",
+  },
+  {
+    id: "nasa-news",
+    name: "NASA News",
+    nameFa: "ناسا — اخبار",
+    url: "https://www.nasa.gov",
+    feed: "https://www.nasa.gov/news-release/feed/",
+    category: "space",
+    language: "en",
+    icon: "rocket",
+  },
 ];
 
 /**
@@ -487,6 +530,14 @@ export const CATEGORY_META: Record<
     tint: "#f472b6",
     description: "سینما، تلویزیون، موسیقی و فرهنگ عامه",
     descriptionEn: "Cinema, TV, music, and pop culture",
+  },
+  space: {
+    label: "فضا",
+    labelEn: "Space",
+    icon: "rocket",
+    tint: "#e8e6e1",
+    description: "نجوم، کاوشگرهای فضایی، سیارات و کهکشان‌ها",
+    descriptionEn: "Astronomy, space probes, planets, and galaxies",
   },
 };
 
