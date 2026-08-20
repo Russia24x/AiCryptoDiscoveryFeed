@@ -41,11 +41,16 @@ interface Coin {
   price_change_percentage_1h_in_currency?: number;
   price_change_percentage_24h: number;
   price_change_percentage_7d_in_currency?: number;
+  price_change_percentage_30d_in_currency?: number;
+  price_change_percentage_60d_in_currency?: number;
+  price_change_percentage_90d_in_currency?: number;
   circulating_supply: number;
   total_supply: number | null;
   max_supply: number | null;
   ath: number;
   atl: number;
+  dominance?: number;
+  tags?: string[];
 }
 
 interface CmcCoin {
@@ -57,7 +62,16 @@ interface CmcCoin {
   price: number;
   volume24h: number;
   marketCap: number;
+  percentChange1h: number;
   percentChange24h: number;
+  percentChange7d: number;
+  percentChange30d: number;
+  percentChange60d: number;
+  percentChange90d: number;
+  circulatingSupply: number;
+  totalSupply: number;
+  maxSupply: number | null;
+  dominance: number;
   tags: string[];
 }
 
@@ -74,6 +88,11 @@ interface GlobalStats {
   stablecoinMarketCap: number;
   derivativesVolume24h: number;
   totalMarketCapYesterdayPctChange: number;
+  altcoinMarketCap?: number;
+  altcoinVolume24h?: number;
+  stablecoinVolume24h?: number;
+  activeMarketPairs?: number;
+  totalVolume24hYesterdayPctChange?: number;
 }
 
 interface TrendingCoin {
@@ -101,7 +120,7 @@ interface FngHistory {
   data: Array<{ value: number; classification: string; timestamp: number; date: string }>;
 }
 
-type SortField = "market_cap_rank" | "current_price" | "price_change_percentage_24h" | "total_volume" | "market_cap";
+type SortField = "market_cap_rank" | "current_price" | "price_change_percentage_24h" | "total_volume" | "market_cap" | "price_change_percentage_30d_in_currency";
 type SortDir = "asc" | "desc";
 
 const fa = (n: string | number, lang: "fa" | "en") =>
@@ -274,12 +293,19 @@ export function MarketIntelligence() {
         total_volume: c.volume24h,
         high_24h: 0,
         low_24h: 0,
+        price_change_percentage_1h_in_currency: c.percentChange1h,
         price_change_percentage_24h: c.percentChange24h,
-        circulating_supply: 0,
-        total_supply: null,
-        max_supply: null,
+        price_change_percentage_7d_in_currency: c.percentChange7d,
+        price_change_percentage_30d_in_currency: c.percentChange30d,
+        price_change_percentage_60d_in_currency: c.percentChange60d,
+        price_change_percentage_90d_in_currency: c.percentChange90d,
+        circulating_supply: c.circulatingSupply,
+        total_supply: c.totalSupply || null,
+        max_supply: c.maxSupply,
         ath: 0,
         atl: 0,
+        dominance: c.dominance,
+        tags: c.tags,
       } as Coin)))
     : coingeckoCoins;
 
@@ -578,8 +604,10 @@ export function MarketIntelligence() {
                         <SortHeader label={lang === "fa" ? "قیمت" : "Price"} field="current_price" sortField={sortField} sortDir={sortDir} onSort={onSort} align="end" />
                         <SortHeader label="24h %" field="price_change_percentage_24h" sortField={sortField} sortDir={sortDir} onSort={onSort} align="end" />
                         <th className="px-3 py-2 text-end font-bold text-[var(--brand-muted)] uppercase tracking-wider hidden lg:table-cell">7d</th>
+                        <SortHeader label="30d %" field="price_change_percentage_30d_in_currency" sortField={sortField} sortDir={sortDir} onSort={onSort} align="end" />
                         <SortHeader label={lang === "fa" ? "حجم" : "Volume"} field="total_volume" sortField={sortField} sortDir={sortDir} onSort={onSort} align="end" />
                         <SortHeader label={lang === "fa" ? "مارکت کپ" : "M.Cap"} field="market_cap" sortField={sortField} sortDir={sortDir} onSort={onSort} align="end" />
+                        <th className="px-3 py-2 text-end font-bold text-[var(--brand-muted)] uppercase tracking-wider hidden xl:table-cell">{lang === "fa" ? "تسلط" : "Dom"}</th>
                         <th className="px-3 py-2"></th>
                       </tr>
                     </thead>
@@ -588,6 +616,10 @@ export function MarketIntelligence() {
                       {sorted.map((coin, idx) => {
                         const change = coin.price_change_percentage_24h || 0;
                         const up = change >= 0;
+                        const change30d = coin.price_change_percentage_30d_in_currency;
+                        const up30d = (change30d ?? 0) >= 0;
+                        const isHot = Math.abs(change) >= 5;
+                        const isWatchedCoin = watchHydrated && isWatched(coin.id);
                         return (
                           <motion.tr
                             key={coin.id}
@@ -597,21 +629,29 @@ export function MarketIntelligence() {
                             exit={{ opacity: 0 }}
                             transition={{ duration: 0.15, delay: Math.min(idx * 0.01, 0.2) }}
                             onClick={() => onCoinClick(coin)}
-                            className="border-b border-[var(--brand-border)]/50 cursor-pointer hover:bg-[var(--brand-accent)]/[0.04] transition-colors group"
+                            className={cn(
+                              "border-b border-[var(--brand-border)]/50 cursor-pointer hover:bg-[var(--brand-accent)]/[0.04] transition-colors group",
+                              up && "bg-[var(--brand-accent)]/[0.015]",
+                              !up && "bg-red-500/[0.015]",
+                              isWatchedCoin && "border-l-2 border-l-[var(--brand-accent)]"
+                            )}
                           >
                             <td className="px-3 py-2.5 text-start">
                               <div className="flex items-center gap-1.5">
                                 <span className="text-[var(--brand-muted)] font-latin">{fa(coin.market_cap_rank || "-", lang)}</span>
+                                {isHot && (
+                                  <span className="text-[8px] font-latin font-bold px-1 py-0.5 rounded-full bg-orange-500/15 text-orange-400" title={lang === "fa" ? "بازار پرنوسان" : "Volatile"}>🔥</span>
+                                )}
                                 {watchHydrated && (
                                   <button
                                     onClick={(e) => { e.stopPropagation(); toggleWatch(coin.id); }}
                                     className={cn(
                                       "shrink-0 transition-colors",
-                                      isWatched(coin.id) ? "text-[var(--brand-accent)]" : "text-[var(--brand-muted)] opacity-0 group-hover:opacity-100 hover:text-[var(--brand-accent)]"
+                                      isWatchedCoin ? "text-[var(--brand-accent)]" : "text-[var(--brand-muted)] opacity-0 group-hover:opacity-100 hover:text-[var(--brand-accent)]"
                                     )}
-                                    aria-label={isWatched(coin.id) ? "Remove from watchlist" : "Add to watchlist"}
+                                    aria-label={isWatchedCoin ? "Remove from watchlist" : "Add to watchlist"}
                                   >
-                                    <Star className={cn("w-3 h-3", isWatched(coin.id) && "fill-current")} />
+                                    <Star className={cn("w-3 h-3", isWatchedCoin && "fill-current")} />
                                   </button>
                                 )}
                               </div>
@@ -620,14 +660,23 @@ export function MarketIntelligence() {
                               <div className="flex items-center gap-2">
                                 {coin.image && <img src={coin.image} alt={coin.name} className="w-5 h-5 rounded-full shrink-0" loading="lazy" />}
                                 <div className="min-w-0">
-                                  <div className="font-bold text-[var(--brand-text)] group-hover:text-[var(--brand-accent)] transition-colors truncate">{coin.name}</div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-bold text-[var(--brand-text)] group-hover:text-[var(--brand-accent)] transition-colors truncate">{coin.name}</span>
+                                    {coin.tags && coin.tags.length > 0 && (
+                                      <span className="text-[8px] font-latin font-bold px-1 py-0.5 rounded bg-[var(--brand-surface-2)] text-[var(--brand-muted)] hidden xl:inline">
+                                        {coin.tags.find(t => ["mineable","pow","pos","stablecoin","defi","layer-1"].includes(t)) || coin.tags[0]}
+                                      </span>
+                                    )}
+                                  </div>
                                   <div className="text-[10px] text-[var(--brand-muted)] font-latin uppercase">{coin.symbol}</div>
                                 </div>
                               </div>
                             </td>
-                            <td className="px-3 py-2.5 text-end font-latin tabular-nums text-[var(--brand-text)]">{fa(fmtPrice(coin.current_price), lang)}</td>
+                            <td className="px-3 py-2.5 text-end font-latin tabular-nums text-[var(--brand-text)]">
+                              {fa(fmtPrice(coin.current_price), lang)}
+                            </td>
                             <td className={cn("px-3 py-2.5 text-end font-latin tabular-nums font-bold", up ? "text-[var(--brand-accent)]" : "text-red-400")}>
-                              {up ? "+" : ""}{fa(change.toFixed(2), lang)}%
+                              {up ? "▲" : "▼"} {fa(Math.abs(change).toFixed(1), lang)}%
                             </td>
                             <td className="px-3 py-2.5 text-end hidden lg:table-cell">
                               <MiniTrend
@@ -636,8 +685,18 @@ export function MarketIntelligence() {
                                 change7d={coin.price_change_percentage_7d_in_currency}
                               />
                             </td>
+                            <td className={cn("px-3 py-2.5 text-end font-latin tabular-nums font-bold", up30d ? "text-[var(--brand-accent)]" : "text-red-400")}>
+                              {change30d != null ? `${up30d ? "+" : ""}${fa(change30d.toFixed(1), lang)}%` : "—"}
+                            </td>
                             <td className="px-3 py-2.5 text-end font-latin tabular-nums text-[var(--brand-muted)]">{fa(fmtCompact(coin.total_volume), lang)}</td>
                             <td className="px-3 py-2.5 text-end font-latin tabular-nums text-[var(--brand-muted)]">{fa(fmtCompact(coin.market_cap), lang)}</td>
+                            <td className="px-3 py-2.5 text-end hidden xl:table-cell">
+                              {coin.dominance ? (
+                                <span className="font-latin tabular-nums text-[var(--brand-muted)]" title={`${coin.name} dominance`}>
+                                  {fa(coin.dominance.toFixed(1), lang)}%
+                                </span>
+                              ) : "—"}
+                            </td>
                             <td className="px-3 py-2.5 text-end"><ExternalLink className="w-3.5 h-3.5 text-[var(--brand-muted)] opacity-0 group-hover:opacity-100 transition-opacity" /></td>
                           </motion.tr>
                         );
@@ -1066,23 +1125,65 @@ function MarketOverview({
           )}
         </div>
 
-        {/* BTC dominance bar */}
+        {/* BTC + ETH dominance bars */}
         {globalStats.btcDominance > 0 && (
-          <div className="mt-3 flex items-center gap-3 text-[10px]">
-            <span className="text-[var(--brand-muted)] font-latin uppercase tracking-wider shrink-0">
-              {lang === "fa" ? "تسلط بیت‌کوین" : "BTC Dominance"}
-            </span>
-            <div className="flex-1 h-1.5 rounded-full bg-[var(--brand-surface-2)] overflow-hidden">
-              <div
-                className="h-full rounded-full bg-[#f7931a]"
-                style={{ width: `${globalStats.btcDominance}%` }}
-              />
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+            {/* BTC dominance */}
+            <div className="flex items-center gap-3 text-[10px]">
+              <span className="text-[var(--brand-muted)] font-latin uppercase tracking-wider shrink-0 w-12">
+                BTC
+              </span>
+              <div className="flex-1 h-1.5 rounded-full bg-[var(--brand-surface-2)] overflow-hidden">
+                <div className="h-full rounded-full bg-[#f7931a]" style={{ width: `${globalStats.btcDominance}%` }} />
+              </div>
+              <span className="font-latin font-bold text-[#f7931a] tabular-nums shrink-0">
+                {fa(globalStats.btcDominance.toFixed(1), lang)}%
+              </span>
             </div>
-            <span className="font-latin font-bold text-[#f7931a] tabular-nums shrink-0">
-              {fa(globalStats.btcDominance.toFixed(1), lang)}%
-            </span>
+            {/* ETH dominance */}
+            {globalStats.ethDominance > 0 && (
+              <div className="flex items-center gap-3 text-[10px]">
+                <span className="text-[var(--brand-muted)] font-latin uppercase tracking-wider shrink-0 w-12">
+                  ETH
+                </span>
+                <div className="flex-1 h-1.5 rounded-full bg-[var(--brand-surface-2)] overflow-hidden">
+                  <div className="h-full rounded-full bg-[#627eea]" style={{ width: `${globalStats.ethDominance * 5}%` }} />
+                </div>
+                <span className="font-latin font-bold text-[#627eea] tabular-nums shrink-0">
+                  {fa(globalStats.ethDominance.toFixed(1), lang)}%
+                </span>
+              </div>
+            )}
           </div>
         )}
+
+        {/* Market breakdown stats */}
+        <div className="mt-3 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 text-[10px]">
+          <div className="p-2 rounded-lg bg-[var(--brand-surface-2)]/50">
+            <div className="text-[var(--brand-muted)] uppercase tracking-wider">{lang === "fa" ? "آلت‌کوین" : "Altcoins"}</div>
+            <div className="font-latin font-bold text-[var(--brand-text)] tabular-nums">{fa(fmtCompact(globalStats.altcoinMarketCap || 0), lang)}</div>
+          </div>
+          <div className="p-2 rounded-lg bg-[var(--brand-surface-2)]/50">
+            <div className="text-[var(--brand-muted)] uppercase tracking-wider">{lang === "fa" ? "دیفای" : "DeFi"}</div>
+            <div className="font-latin font-bold text-[var(--brand-text)] tabular-nums">{fa(fmtCompact(globalStats.defiMarketCap), lang)}</div>
+          </div>
+          <div className="p-2 rounded-lg bg-[var(--brand-surface-2)]/50">
+            <div className="text-[var(--brand-muted)] uppercase tracking-wider">{lang === "fa" ? "استیبل" : "Stable"}</div>
+            <div className="font-latin font-bold text-[var(--brand-text)] tabular-nums">{fa(fmtCompact(globalStats.stablecoinMarketCap), lang)}</div>
+          </div>
+          <div className="p-2 rounded-lg bg-[var(--brand-surface-2)]/50">
+            <div className="text-[var(--brand-muted)] uppercase tracking-wider">{lang === "fa" ? "مشتقات" : "Derivatives"}</div>
+            <div className="font-latin font-bold text-[var(--brand-text)] tabular-nums">{fa(fmtCompact(globalStats.derivativesVolume24h || 0), lang)}</div>
+          </div>
+          <div className="p-2 rounded-lg bg-[var(--brand-surface-2)]/50">
+            <div className="text-[var(--brand-muted)] uppercase tracking-wider">{lang === "fa" ? "صرافی‌ها" : "Exchanges"}</div>
+            <div className="font-latin font-bold text-[var(--brand-text)] tabular-nums">{fa(globalStats.activeExchanges.toLocaleString(), lang)}</div>
+          </div>
+          <div className="p-2 rounded-lg bg-[var(--brand-surface-2)]/50">
+            <div className="text-[var(--brand-muted)] uppercase tracking-wider">{lang === "fa" ? "ارزها" : "Coins"}</div>
+            <div className="font-latin font-bold text-[var(--brand-text)] tabular-nums">{fa(globalStats.activeCryptoCurrencies.toLocaleString(), lang)}</div>
+          </div>
+        </div>
       </div>
     </div>
   );
