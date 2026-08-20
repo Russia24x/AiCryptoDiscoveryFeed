@@ -166,12 +166,22 @@ function cleanArticleHtml(html: string): string {
   // Replace disallowed tags with their inner text
   out = out.replace(/<\/?([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>/g, (full, tag) => {
     if (allowed.has(tag.toLowerCase())) {
-      // For <a> tags, only keep href
+      // For <a> tags, only keep href — and reject dangerous schemes
+      // (javascript:, data:, vbscript:, file:). These can execute when
+      // the user clicks the link, so we drop the href entirely and
+      // leave a plain anchor with no navigation.
       if (tag.toLowerCase() === "a") {
         const hrefMatch = full.match(/href=["']([^"']*)["']/i);
         const targetAttr = ' target="_blank" rel="noopener noreferrer nofollow"';
         if (hrefMatch) {
-          return `<a href="${hrefMatch[1]}"${targetAttr}>`;
+          const href = hrefMatch[1].trim();
+          // Reject anything that isn't http(s) or a relative URL.
+          // Most valid article links are absolute https.
+          if (/^https?:\/\//i.test(href) || /^\//.test(href) || /^#/i.test(href) || /^mailto:/i.test(href)) {
+            return `<a href="${href}"${targetAttr}>`;
+          }
+          // Dangerous or weird scheme (javascript:, data:, vbscript:, etc.)
+          return "<a>";
         }
         return "<a>";
       }
@@ -180,8 +190,15 @@ function cleanArticleHtml(html: string): string {
         const srcMatch = full.match(/src=["']([^"']*)["']/i);
         const altMatch = full.match(/alt=["']([^"']*)["']/i);
         if (srcMatch) {
-          const alt = altMatch ? altMatch[1] : "";
-          return `<img src="${srcMatch[1]}" alt="${alt}" loading="lazy" referrerpolicy="no-referrer" />`;
+          const src = srcMatch[1].trim();
+          // Only allow http(s) and protocol-relative (//example.com) URLs.
+          // data: URLs in <img> can be huge SVGs that leak state, so we
+          // reject them too. Relative URLs would 404 against our domain.
+          if (/^https?:\/\//i.test(src) || /^\/\//.test(src)) {
+            const alt = altMatch ? altMatch[1] : "";
+            return `<img src="${src}" alt="${alt}" loading="lazy" referrerpolicy="no-referrer" />`;
+          }
+          return "";
         }
         return "";
       }

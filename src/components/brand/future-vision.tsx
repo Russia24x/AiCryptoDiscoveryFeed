@@ -95,7 +95,7 @@ export function FutureVision() {
                   {pillar.text}
                 </p>
                 <div
-                  className="absolute bottom-0 left-0 right-0 h-0.5 rounded-b-xl opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute bottom-0 inset-x-0 h-0.5 rounded-b-xl opacity-0 group-hover:opacity-100 transition-opacity"
                   style={{ backgroundColor: p.accent }}
                 />
               </article>

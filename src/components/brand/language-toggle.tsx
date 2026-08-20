@@ -86,7 +86,7 @@ export function LanguageIconButton({ className }: LanguageToggleProps) {
       <Languages className="w-4 h-4" />
       {hydrated && (
         <span
-          className="absolute -bottom-0.5 -right-0.5 text-[9px] font-bold font-latin bg-[var(--brand-accent)] text-[#04201d] rounded px-0.5 leading-tight"
+          className="absolute -bottom-0.5 -end-0.5 text-[9px] font-bold font-latin bg-[var(--brand-accent)] text-[#04201d] rounded px-0.5 leading-tight"
           suppressHydrationWarning
         >
           {lang.toUpperCase()}

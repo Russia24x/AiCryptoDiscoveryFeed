@@ -101,8 +101,8 @@ export function Ticker() {
 
   return (
     <div className="border-b border-[var(--brand-border)] bg-[var(--brand-surface)]/40 overflow-hidden relative">
-      {/* Live indicator */}
-      <div className="absolute left-0 top-0 bottom-0 z-20 flex items-center pl-3 pr-4 bg-gradient-to-r from-[var(--brand-bg)] via-[var(--brand-bg)]/95 to-transparent">
+      {/* Live indicator — anchored to the inline-start (left in LTR, right in RTL) */}
+      <div className="absolute inset-inline-start-0 top-0 bottom-0 z-20 flex items-center ps-3 pe-4 bg-gradient-to-r from-[var(--brand-bg)] via-[var(--brand-bg)]/95 to-transparent">
         <span className="flex items-center gap-1.5 text-[10px] font-latin uppercase tracking-wider text-[var(--brand-accent)]">
           <span className="relative flex h-1.5 w-1.5">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--brand-accent)] opacity-75" />
@@ -116,10 +116,10 @@ export function Ticker() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div
           className="relative h-10 flex items-center overflow-hidden"
-          style={{ paddingLeft: "5rem" }}
+          style={{ paddingInlineStart: "5rem" }}
         >
-          {/* Right-edge fade */}
-          <div className="absolute right-0 top-0 bottom-0 w-12 z-10 pointer-events-none bg-gradient-to-l from-[var(--brand-bg)] to-transparent" />
+          {/* Inline-end fade */}
+          <div className="absolute inset-inline-end-0 top-0 bottom-0 w-12 z-10 pointer-events-none bg-gradient-to-l from-[var(--brand-bg)] to-transparent" />
 
           <div
             className="flex items-center gap-6 animate-marquee whitespace-nowrap"

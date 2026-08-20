@@ -78,17 +78,47 @@ function stripHtml(input: string): string {
 
 /** Try a few common paths to extract a primary image from a feed item. */
 function extractImage(itemXml: string, content: string): string | undefined {
+  const rawCandidates: string[] = [];
+
   const mediaMatch =
     itemXml.match(/<media:thumbnail[^>]+url=["']([^"']+)["']/i) ||
     itemXml.match(/<media:content[^>]+url=["']([^"']+)["']/i) ||
     itemXml.match(/<enclosure[^>]+url=["']([^"']+)["']/i);
-  if (mediaMatch) return mediaMatch[1];
+  if (mediaMatch) rawCandidates.push(mediaMatch[1]);
 
   const imgTag = itemXml.match(/<image><url>([^<]+)<\/url>/i);
-  if (imgTag) return imgTag[1];
+  if (imgTag) rawCandidates.push(imgTag[1]);
 
   const htmlImg = content.match(/<img[^>]+src=["']([^"']+)["']/i);
-  if (htmlImg) return htmlImg[1];
+  if (htmlImg) rawCandidates.push(htmlImg[1]);
+
+  // Normalise + validate each candidate:
+  //  1. Decode HTML entities that survive RSS CDATA extraction (&amp; → &)
+  //  2. Strip trailing junk that some feeds append after a real URL
+  //     (e.g. "...file.mp4,url1080:https://..." — we keep only the first)
+  //  3. Reject obviously non-image URLs (.mp4, .webm, .mov, etc.)
+  //  4. Require http(s) scheme — relative URLs would 404 the browser.
+  for (const raw of rawCandidates) {
+    if (!raw) continue;
+    let url = raw
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .trim();
+    // Some feeds glue multiple URLs with commas — keep only the first.
+    if (url.includes(",")) url = url.split(",")[0].trim();
+    // Some feeds put a trailing `?w=480&amp;q=75` etc. — already decoded above.
+    if (!/^https?:\/\//i.test(url)) continue;
+    // Reject video URLs (gamefa, some enclosures) — they will not render
+    // as <img src> and the browser will just log a network error.
+    if (/\.(mp4|webm|mov|avi|mkv|m4v)(\?|$)/i.test(url)) continue;
+    // Require a path that looks like an image OR has no extension (some
+    // CDNs serve images via query strings). We deliberately allow URLs
+    // with no extension at all (e.g. /media/cover-abc123?w=480&q=75).
+    return url;
+  }
 
   return undefined;
 }

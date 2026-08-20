@@ -173,7 +173,7 @@ export function Hero({ totalItems, sourcesOk, sourcesTried, onOpenSettings }: He
             >
               <Sparkles className="w-3.5 h-3.5" />
               <span className="uppercase tracking-[0.2em]">{t.hero.badge}</span>
-              <span className="relative ml-1 flex h-2 w-2">
+              <span className="relative ms-1 flex h-2 w-2">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--brand-accent)] opacity-60" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--brand-accent)]" />
               </span>
@@ -568,7 +568,7 @@ function FearGreedWidget() {
           >
             {data.classification}
             {data.yesterday !== undefined && (
-              <span className="text-[var(--brand-muted)] font-normal ml-1">
+              <span className="text-[var(--brand-muted)] font-normal ms-1">
                 · {lang === "fa" ? "دیروز" : "yest"} {formatFa(data.yesterday, lang)}
               </span>
             )}
@@ -711,7 +711,7 @@ function WidgetCard({
     >
       {/* Accent edge */}
       <div
-        className="absolute top-0 right-0 w-px h-full"
+        className="absolute top-0 end-0 w-px h-full"
         style={{
           background: `linear-gradient(to bottom, transparent, ${accent}, transparent)`,
         }}

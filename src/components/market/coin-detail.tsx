@@ -21,6 +21,7 @@ import {
 import { useLanguage } from "@/hooks/use-language";
 import { usePriceAlerts, type AlertDirection } from "@/hooks/use-price-alerts";
 import { cn } from "@/lib/utils";
+import { markdownToHtml, truncateMarkdown } from "@/lib/markdown";
 
 interface CoinDetailProps {
   coinId: string;
@@ -487,6 +488,32 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
         )}
       </section>
 
+      {/* 24h Range Bar — visualises where current price sits between
+          low_24h and high_24h. Only shown when both bounds are real
+          (non-zero) and the range is positive (high > low). Zero API
+          cost — uses data already fetched from CoinGecko. */}
+      {(md.high_24h?.usd || 0) > 0 && (md.low_24h?.usd || 0) > 0 &&
+       md.high_24h.usd > md.low_24h.usd && (
+        <section className="mb-6 p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)]">
+              {lang === "fa" ? "بازه ۲۴ ساعته" : "24h Range"}
+            </h2>
+            <span className="text-[10px] font-latin text-[var(--brand-muted)]">
+              {fa(((md.high_24h.usd - md.low_24h.usd) / md.low_24h.usd * 100).toFixed(2))}% {lang === "fa" ? "نوسان" : "range"}
+            </span>
+          </div>
+          <RangeBar
+            low={md.low_24h.usd}
+            high={md.high_24h.usd}
+            current={md.current_price.usd}
+            fa={fa}
+            fmtPrice={fmtPrice}
+            lang={lang}
+          />
+        </section>
+      )}
+
       {/* Price changes */}
       <section className="mb-6 p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
         <h2 className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-3">
@@ -601,13 +628,13 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
       {/* Description */}
       {description && (
         <section className="p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
-          <h2 className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-2">
+          <h2 className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-3">
             {lang === "fa" ? "درباره" : "About"}
           </h2>
           <div
-            className="text-xs text-[var(--brand-text)] leading-relaxed prose-sm max-w-none"
+            className="article-body text-sm text-[var(--brand-text)] leading-relaxed max-w-none prose-sm"
             dir="auto"
-            dangerouslySetInnerHTML={{ __html: description.split("\n").slice(0, 5).join("\n") }}
+            dangerouslySetInnerHTML={{ __html: markdownToHtml(truncateMarkdown(description, 3)) }}
           />
         </section>
       )}
@@ -616,6 +643,67 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
 }
 
 /* ============= Sub-components (minimal, no GPU-intensive effects) ============= */
+
+/**
+ * RangeBar — visualises where the current price sits between a low and a
+ * high bound. Pure SVG + CSS, zero JS animation, zero API cost.
+ *
+ * Layout:
+ *   Low label  [============●================]  High label
+ *              ↑ gradient bar   ↑ marker
+ *
+ * The bar uses a horizontal gradient from red (low) → amber (mid) → teal
+ * (high) so the user can see at a glance whether the current price is
+ * in the lower or upper half of the 24h range.
+ */
+function RangeBar({
+  low,
+  high,
+  current,
+  fa,
+  fmtPrice,
+  lang,
+}: {
+  low: number;
+  high: number;
+  current: number;
+  fa: (n: string | number) => string;
+  fmtPrice: (n: number) => string;
+  lang: "fa" | "en";
+}) {
+  // Clamp current to [low, high] so the marker stays within the bar.
+  const clamped = Math.max(low, Math.min(high, current));
+  const pct = ((clamped - low) / (high - low)) * 100;
+  // Marker is a small dot on the bar.
+  return (
+    <div>
+      <div className="relative h-2 rounded-full overflow-hidden bg-[var(--brand-surface-2)]">
+        {/* Gradient track: red → amber → teal */}
+        <div
+          className="absolute inset-0 rounded-full"
+          style={{
+            background:
+              "linear-gradient(to right, #f87171 0%, #fbbf24 50%, #2dd4bf 100%)",
+            opacity: 0.5,
+          }}
+        />
+        {/* Marker */}
+        <div
+          className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 border-[var(--brand-bg)] bg-[var(--brand-text)] shadow-md"
+          style={{ insetInlineStart: `calc(${pct}% - 6px)` }}
+        />
+      </div>
+      <div className="flex items-center justify-between mt-2 text-[10px] font-latin tabular-nums">
+        <span className="text-red-400">{fa(fmtPrice(low))}</span>
+        <span className="text-[var(--brand-muted)]">
+          {lang === "fa" ? "اکنون: " : "Now: "}
+          <span className="font-bold text-[var(--brand-text)]">{fa(fmtPrice(current))}</span>
+        </span>
+        <span className="text-[var(--brand-accent)]">{fa(fmtPrice(high))}</span>
+      </div>
+    </div>
+  );
+}
 
 function Sparkline({ prices, accent }: { prices: number[]; accent: string }) {
   if (!prices || prices.length === 0) return null;

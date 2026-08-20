@@ -709,6 +709,8 @@ export function MarketIntelligence() {
                   {sorted.map((coin, idx) => {
                     const change = coin.price_change_percentage_24h || 0;
                     const up = change >= 0;
+                    const change1h = coin.price_change_percentage_1h_in_currency;
+                    const change7d = coin.price_change_percentage_7d_in_currency;
                     return (
                       <motion.div
                         key={coin.id}
@@ -717,15 +719,34 @@ export function MarketIntelligence() {
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         transition={{ duration: 0.15, delay: Math.min(idx * 0.01, 0.2) }}
-                        className="w-full flex items-center gap-3 p-3 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)] hover:border-[var(--brand-accent)]/40 transition-colors"
+                        className={cn(
+                          "w-full flex items-center gap-3 p-3 rounded-xl border bg-[var(--brand-surface)] transition-colors",
+                          up
+                            ? "border-[var(--brand-accent)]/15 hover:border-[var(--brand-accent)]/40"
+                            : "border-red-500/15 hover:border-red-500/40"
+                        )}
                       >
                         <button onClick={() => onCoinClick(coin)} className="flex items-center gap-3 flex-1 min-w-0 text-start">
                           <span className="text-[10px] font-latin text-[var(--brand-muted)] w-5 text-center shrink-0">{fa(coin.market_cap_rank || "-", lang)}</span>
-                          {coin.image && <img src={coin.image} alt={coin.name} className="w-8 h-8 rounded-full shrink-0" loading="lazy" />}
+                          {coin.image && <img src={coin.image} alt={coin.name} className="w-8 h-8 rounded-full shrink-0 ring-1 ring-[var(--brand-border)]" loading="lazy" />}
                           <div className="min-w-0 flex-1">
                             <div className="font-bold text-sm text-[var(--brand-text)] truncate">{coin.name}</div>
-                            <div className="text-[10px] text-[var(--brand-muted)] font-latin uppercase">{coin.symbol}</div>
+                            <div className="flex items-center gap-1.5">
+                              <div className="text-[10px] text-[var(--brand-muted)] font-latin uppercase">{coin.symbol}</div>
+                              {coin.tags && coin.tags.length > 0 && (
+                                <span className="text-[8px] font-latin font-bold px-1 py-0.5 rounded bg-[var(--brand-surface-2)] text-[var(--brand-muted)]">
+                                  {coin.tags.find(t => ["mineable","pow","pos","stablecoin","defi","layer-1"].includes(t)) || coin.tags[0]}
+                                </span>
+                              )}
+                            </div>
                           </div>
+                          {/* MiniTrend — adds a 3-point trend sparkline to mobile cards.
+                              Zero API cost: uses 1h/24h/7d changes already in the row. */}
+                          <MiniTrend
+                            change1h={change1h}
+                            change24h={change}
+                            change7d={change7d}
+                          />
                           <div className="text-end shrink-0">
                             <div className="font-latin tabular-nums text-sm font-bold text-[var(--brand-text)]">{fa(fmtPrice(coin.current_price), lang)}</div>
                             <div className={cn("font-latin tabular-nums text-[10px] font-bold", up ? "text-[var(--brand-accent)]" : "text-red-400")}>{up ? "+" : ""}{fa(change.toFixed(2), lang)}%</div>
