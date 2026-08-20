@@ -36,37 +36,48 @@ async function fetchCMC(): Promise<{ coins: unknown[]; fetchedAt: string } | nul
     const ctrl = new AbortController();
     const id = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
 
-    const url = "https://api.coinmarketcap.com/data-api/v3/cryptocurrency/listing?start=1&limit=20&sortBy=market_cap&sortType=desc&convert=USD";
+    // Use EXACT same URL + headers as /api/market/cmc-listings (proven to work)
+    const url = "https://api.coinmarketcap.com/data-api/v3/cryptocurrency/listing?start=1&limit=20&sortBy=market_cap&sortType=desc";
 
     const res = await fetch(url, {
       signal: ctrl.signal,
-      headers: { Accept: "application/json" },
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Mozilla/5.0 (compatible; AiCryptoDiscoveryBot/1.0)",
+      },
     });
     clearTimeout(id);
 
     if (!res.ok) return null;
     const data = await res.json();
-    const allCoins = data?.data || [];
+
+    // CMC keyless API returns data in: data.cryptoCurrencyList
+    const rawList = data?.data?.cryptoCurrencyList;
+    if (!Array.isArray(rawList)) return null;
 
     // Filter to our ticker symbols and take top 10
     const tickerCoins = TICKER_SYMBOLS.map(sym =>
-      allCoins.find((c: { symbol: string }) =>
+      rawList.find((c: { symbol: string }) =>
         c.symbol?.toUpperCase() === sym
       )
     ).filter(Boolean).slice(0, 10);
 
     if (tickerCoins.length < 5) return null;
 
-    const coins = tickerCoins.map((c: any) => ({
-      id: c.slug || c.symbol?.toLowerCase() || "",
-      symbol: c.symbol?.toUpperCase() || "",
-      name: c.name || "",
-      image: `https://s2.coinmarketcap.com/static/img/coins/64x64/${c.id}.png`,
-      price: c.quote?.USD?.price || 0,
-      change24h: c.quote?.USD?.percentChange24h || 0,
-      marketCap: c.quote?.USD?.marketCap || 0,
-      volume: c.quote?.USD?.volume24h || 0,
-    }));
+    // Parse using same logic as cmc-listings route
+    const coins = tickerCoins.map((c: any) => {
+      const quote = c?.quotes?.[0] || {};
+      return {
+        id: c.slug || c.symbol?.toLowerCase() || "",
+        symbol: c.symbol?.toUpperCase() || "",
+        name: c.name || "",
+        image: `https://s2.coinmarketcap.com/static/img/coins/64x64/${c.id}.png`,
+        price: Number(quote.price) || 0,
+        change24h: Number(quote.percentChange24h) || 0,
+        marketCap: Number(quote.marketCap) || 0,
+        volume: Number(quote.volume24h) || 0,
+      };
+    });
 
     return { coins, fetchedAt: new Date().toISOString() };
   } catch {
