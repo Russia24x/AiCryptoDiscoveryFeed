@@ -630,8 +630,21 @@ function WeatherWidget({ onOpenSettings }: { onOpenSettings?: () => void }) {
   // Use `useLocalStorage` (SSR-safe via `useSyncExternalStore`) instead of
   // the `useEffect(() => setCity(readCity()), [])` pattern that triggers
   // React 19's ESLint `set-state-in-effect` warning.
-  const city = useLocalStorage<CityChoice>(WEATHER_KEY, DEFAULT_CITY);
+  // The stored shape is the StoredCity from SettingsPanel: {id, name, country, lat, lon}.
+  // We use that as-is and fall back to DEFAULT_CITY if the stored shape
+  // is invalid (missing lat/lon).
+  const storedCity = useLocalStorage<any>(WEATHER_KEY, DEFAULT_CITY);
   const hydrated = useMounted();
+
+  // Normalize: SettingsPanel stores {name, country} but we display
+  // nameFa/nameEn. Use `name` as a fallback for both.
+  const city: CityChoice = {
+    id: String(storedCity?.id ?? DEFAULT_CITY.id),
+    nameFa: storedCity?.nameFa ?? storedCity?.name ?? DEFAULT_CITY.nameFa,
+    nameEn: storedCity?.nameEn ?? storedCity?.name ?? DEFAULT_CITY.nameEn,
+    lat: typeof storedCity?.lat === "number" ? storedCity.lat : DEFAULT_CITY.lat,
+    lon: typeof storedCity?.lon === "number" ? storedCity.lon : DEFAULT_CITY.lon,
+  };
 
   // Fetch weather whenever city changes — TanStack Query automatically
   // refetches when the queryKey changes (i.e., when city.lat/lon change).

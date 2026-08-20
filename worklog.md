@@ -5247,3 +5247,172 @@ Stage Summary:
 1. [deploy] user باید CLOUDFLARE_API_TOKEN تنظیم کنه و `npm run deploy` اجرا کنه
 2. [test] تست روی production بعد از deploy — مخصوصاً مقالات mihanblockchain، digiato، gamefa
 3. [Phase E] اضافه کردن JSON-LD headline و image به extractMeta برای غنی‌تر کردن metadata
+
+---
+Task ID: 40
+Agent: main (autonomous dev session)
+Task: رفع باگ بحرانی — خرابی صفحه هنگام تغییر شهر در ویجت آب‌وهوا.
+
+Work Log:
+
+### SESSION-START-SYNC-CHECK
+- Repository: /home/z/my-project/AiCryptoDiscoveryFeed
+- Branch: main
+- git fetch origin: ✅ Success
+- git status: clean, up-to-date (commit 0c572a8)
+- rev-list: behind=0, ahead=0
+- Verdict: ✅ Up-to-date and clean — proceeding.
+
+### مرحله ۱: بازتولید باگ
+1. dev server رو start کردم
+2. localStorage رو با city object شبیه‌سازی کردم (مثل چیزی که SettingsPanel ذخیره می‌کنه):
+   ```js
+   localStorage.setItem('acd:weather-city', JSON.stringify({id: 12345, name: 'Isfahan', country: 'Iran', lat: 32.65, lon: 51.66}));
+   ```
+3. صفحه رو reload کردم
+4. نتیجه: **صفحه خراب شد** با پیام "This page couldn't load — Reload to try again, or go back."
+
+### مرحله ۲: پیدا کردن علت اصلی (با dev server logs)
+در `/tmp/next-dev.log` خطای زیر پیدا شد:
+
+```
+[browser] The result of getSnapshot should be cached to avoid an infinite loop
+    at useLocalStorage (src/hooks/use-local-storage.ts:62:30)
+    at WeatherWidget (src/components/brand/hero.tsx:633:31)
+
+[browser] Maximum update depth exceeded.
+    at Hero (src/components/brand/hero.tsx:291:13)
+    at Home (src/app/page.tsx:104:9)
+```
+
+**علت ریشه‌ای:**
+`useLocalStorage` از `useSyncExternalStore` استفاده می‌کرد. در `getSnapshot`، هر بار `JSON.parse(raw)` فراخوانی می‌شد که یک **object جدید** با reference متفاوت ایجاد می‌کرد.
+
+React's `useSyncExternalStore` مقادیر برگشتی getSnapshot رو با `Object.is` مقایسه می‌کنه تا تشخیص بده آیا تغییری رخ داده. چون JSON.parse هر بار یک object جدید می‌ساخت، React فکر می‌کرد داده‌ها تغییر کردن و re-render می‌کرد. این یک **infinite loop** ایجاد می‌کرد → "Maximum update depth exceeded" → صفحه خراب می‌شد.
+
+**چرا وقتی localStorage خالیه این اتفاق نمی‌افتاد؟**
+چون در حالت خالی، `getSnapshot` همان `defaultValue` رو برمی‌گردوند (که module-level constant هست و reference ثابت داره). پس React تغییری نمی‌دید و re-render نمی‌کرد.
+
+### مرحله ۳: رفع باگ اصلی — caching snapshot
+فایل: `src/hooks/use-local-storage.ts`
+
+**راه‌حل:**
+- `cachedRawRef` و `cachedValueRef` اضافه شد
+- `getSnapshot` حالا cache می‌کنه:
+  - اگه `raw` (localStorage string) از آخرین بار تغییر نکرده، همون cached value رو برمی‌گردونه (همان reference)
+  - اگه تغییر کرده، `parse` می‌کنه و cache رو update می‌کنه
+- این باعث می‌شه React's `Object.is` comparison موفق بشه و infinite loop متوقف بشه
+
+همچنین:
+- `getSnapshot` و `getServerSnapshot` با `useCallback` wrap شدند تا reference پایدار بمونن
+- اگر `raw` parse نشه (invalid JSON)، cache پاک می‌شه و `defaultValue` برمی‌گرده
+
+### مرحله ۴: رفع باگ ثانویه — type mismatch بین SettingsPanel و WeatherWidget
+
+**مشکل:** SettingsPanel این shape رو ذخیره می‌کرد:
+```ts
+{id, name, country, lat, lon}
+```
+
+ولی WeatherWidget انتظار داشت:
+```ts
+{id, nameFa, nameEn, lat, lon}
+```
+
+پس وقتی کاربر شهر رو در SettingsPanel تغییر می‌داد، `city.nameFa` و `city.nameEn` هر دو `undefined` بودن و title ویجت خراب می‌شد.
+
+**راه‌حل:** فایل `src/components/brand/hero.tsx`:
+
+```tsx
+// قبل:
+const city = useLocalStorage<CityChoice>(WEATHER_KEY, DEFAULT_CITY);
+
+// بعد:
+const storedCity = useLocalStorage<any>(WEATHER_KEY, DEFAULT_CITY);
+const city: CityChoice = {
+  id: String(storedCity?.id ?? DEFAULT_CITY.id),
+  nameFa: storedCity?.nameFa ?? storedCity?.name ?? DEFAULT_CITY.nameFa,
+  nameEn: storedCity?.nameEn ?? storedCity?.name ?? DEFAULT_CITY.nameEn,
+  lat: typeof storedCity?.lat === "number" ? storedCity.lat : DEFAULT_CITY.lat,
+  lon: typeof storedCity?.lon === "number" ? storedCity.lon : DEFAULT_CITY.lon,
+};
+```
+
+حالا city از هر دو shape (SettingsPanel و legacy) کار می‌کنه.
+
+### مرحله ۵: رفع باگ سوم — event name mismatch
+
+**مشکل:** `useLocalStorage` به این event گوش می‌داد:
+```js
+window.addEventListener(`acd:${key}-changed`, callback);
+// با key = "acd:weather-city"
+// → "acd:acd:weather-city-changed"
+```
+
+ولی SettingsPanel این event رو dispatch می‌کرد:
+```js
+window.dispatchEvent(new CustomEvent("acd:weather-city-changed", {detail: obj}));
+// ← یک "acd:" کمتر!
+```
+
+پس event‌ها هیچ‌وقت match نمی‌شدن و live updates کار نمی‌کرد.
+
+**راه‌حل:** event name convention سراسری هماهنگ شد:
+- فایل `src/hooks/use-local-storage.ts`:
+  - subscribeFn: `acd:${key}-changed` → `${key}-changed` (key خودش "acd:" داره)
+  - writeLocalStorage: `acd:${key}-changed` → `${key}-changed`
+- فایل `src/components/brand/settings-panel.tsx`:
+  - `dispatchEvent("acd:weather-city-changed")` → `dispatchEvent(\`${WEATHER_KEY}-changed\`)` = `"acd:weather-city-changed"`
+
+این با convention بقیه hooks (use-bookmarks، use-read-later، use-theme، use-language، use-search-history) همخوانی داره.
+
+### مرحله ۶: تست محلی کامل
+**تست ۱ — صفحه با bad localStorage load می‌شه (سناریوی باگ):**
+- localStorage با `{id, name, country, lat, lon}` set شد
+- صفحه reload شد
+- نتیجه: ✅ صفحه load شد، widget title "ISFAHAN" (نه crash)
+
+**تست ۲ — live city change:**
+- صفحه load شد با پیش‌فرض تهران
+- localStorage رو Shiraz set کردم و event dispatch کردم
+- نتیجه: ✅ widget title فوراً "SHIRAZ" شد (نه reload لازم)
+
+**تست ۳ — چندین تغییر پشت سر هم:**
+- Tehran → Isfahan → Shiraz → Tabriz
+- نتیجه: ✅ همه درست کار کرد، هیچ crash ای نبود
+
+**تست ۴ — invalid JSON در localStorage:**
+- localStorage رو به `'invalid-json{'` set کردم
+- نتیجه: ✅ widget به Tehran (default) fallback کرد، هیچ crash ای نبود
+
+### مرحله ۷: تست نهایی
+- TypeScript: 0 errors ✅
+- ESLint: 0 errors, 0 warnings ✅
+- Build: success ✅
+
+### خلاصه تغییرات:
+3 فایل، 68+/12- lines:
+- `src/hooks/use-local-storage.ts` (+60/-?): snapshot caching + event name fix
+- `src/components/brand/hero.tsx` (+15/-?): WeatherWidget city shape normalization
+- `src/components/brand/settings-panel.tsx` (+5/-?): event name convention fix
+
+Stage Summary:
+
+**وضعیت فعلی پروژه:**
+- 21 API route، 9 صفحه، 60+ کامپوننت
+- TypeScript: 0 errors ✅
+- ESLint: 0 errors, 0 warnings ✅
+- Build: success ✅
+- تغییر شهر آب‌وهوا حالا بدون خرابی صفحه کار می‌کنه
+
+**اصلاحات تکمیل‌شده این دور:**
+1. [CRITICAL] رفع infinite loop در useLocalStorage (getSnapshot caching)
+2. [HIGH] رفع type mismatch بین SettingsPanel و WeatherWidget
+3. [HIGH] رفع event name mismatch (acd:acd:weather-city-changed → acd:weather-city-changed)
+4. پایداری در برابر invalid JSON در localStorage
+5. Convention سراسری event name با بقیه hooks هماهنگ شد
+
+**توصیه‌های اولویت‌دار برای مرحله بعدی:**
+1. [deploy] user باید CLOUDFLARE_API_TOKEN تنظیم کنه و `npm run deploy` اجرا کنه
+2. [test] بعد از deploy، تغییر شهر در settings panel رو تست کنه
+3. [Phase E] اضافه کردن fallback برای geocode API (که در محیط test fetch fail داشت)

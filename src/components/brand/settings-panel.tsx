@@ -124,7 +124,10 @@ export function SettingsPanel({ open, onOpenChange }: SettingsPanelProps) {
       };
       try {
         localStorage.setItem(WEATHER_KEY, JSON.stringify(obj));
-        window.dispatchEvent(new CustomEvent("acd:weather-city-changed", { detail: obj }));
+        // Event name is `${WEATHER_KEY}-changed` = "acd:weather-city-changed".
+        // This matches useLocalStorage's subscribeFn convention (which
+        // listens for `${key}-changed` where key already includes "acd:").
+        window.dispatchEvent(new CustomEvent(`${WEATHER_KEY}-changed`, { detail: obj }));
         setCurrentCity(obj);
         toast.success(
           lang === "fa"
