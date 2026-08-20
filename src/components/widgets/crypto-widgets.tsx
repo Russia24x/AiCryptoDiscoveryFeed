@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { TrendingUp, TrendingDown } from "lucide-react";
 import { useLanguage } from "@/hooks/use-language";
 import { useCryptoPrice } from "@/hooks/use-crypto-price";
@@ -101,6 +102,7 @@ interface CoinListing {
 
 function TopGainersWidget() {
   const { lang } = useLanguage();
+  const router = useRouter();
   const { data, isLoading } = useQuery<{ coins: CoinListing[] }>({
     queryKey: ["market", "top-gainers"],
     queryFn: async () => {
@@ -125,19 +127,32 @@ function TopGainersWidget() {
           ))}
         </div>
       ) : data?.coins?.length ? (
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           {data.coins.slice(0, 5).map((coin, i) => (
-            <div key={coin.id} className="flex items-center justify-between gap-2 text-xs">
+            <button
+              key={coin.id}
+              onClick={() => router.push(`/crypto/market/${coin.slug || coin.symbol.toLowerCase()}`)}
+              className="w-full flex items-center justify-between gap-2 text-xs py-1 px-1 -mx-1 rounded-md hover:bg-[var(--brand-surface-2)] transition-colors text-start group"
+            >
               <div className="flex items-center gap-2 min-w-0">
-                <span className="text-[10px] font-latin text-[var(--brand-muted)] w-4 text-start">
-                  {(i + 1).toString().replace(/[0-9]/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[+d])}
+                <span className="text-[10px] font-latin text-[var(--brand-muted)] w-4 text-start shrink-0">
+                  {formatFa(String(i + 1), lang)}
                 </span>
-                <span className="font-bold text-[var(--brand-text)] truncate">{coin.symbol}</span>
+                <img
+                  src={`https://s2.coinmarketcap.com/static/img/coins/32x32/${coin.id}.png`}
+                  alt={coin.name}
+                  className="w-4 h-4 rounded-full shrink-0 ring-1 ring-[var(--brand-border)]"
+                  loading="lazy"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                />
+                <span className="font-bold text-[var(--brand-text)] group-hover:text-emerald-400 transition-colors truncate">
+                  {coin.symbol}
+                </span>
                 <span className="text-[10px] text-[var(--brand-muted)] truncate hidden sm:inline">
                   {coin.name}
                 </span>
               </div>
-              <div className={cn("flex items-center gap-1 shrink-0", numFontClass(lang))}>
+              <div className={cn("flex items-center gap-1.5 shrink-0", numFontClass(lang))}>
                 <span className="text-[var(--brand-muted)] tabular-nums">
                   ${formatUsd(coin.price, lang)}
                 </span>
@@ -148,7 +163,7 @@ function TopGainersWidget() {
                   +{formatFa(coin.percentChange24h.toFixed(1), lang)}%
                 </span>
               </div>
-            </div>
+            </button>
           ))}
         </div>
       ) : (

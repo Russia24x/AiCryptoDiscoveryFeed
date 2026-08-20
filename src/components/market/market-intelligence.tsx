@@ -224,7 +224,7 @@ export function MarketIntelligence() {
       .filter(([, count]) => count >= 2) // At least 2 coins have this tag
       .sort((a, b) => b[1] - a[1])
       .slice(0, 12)
-      .map(([tag]) => tag);
+      .map(([tag, count]) => ({ tag, count }));
   }, [cmcData]);
 
   // --- Global stats ---
@@ -427,26 +427,40 @@ export function MarketIntelligence() {
                 <button
                   onClick={() => setMarketActiveTag(null)}
                   className={cn(
-                    "shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all whitespace-nowrap",
+                    "shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all whitespace-nowrap",
                     !activeTag
                       ? "bg-[var(--brand-accent)] text-[#04201d]"
                       : "bg-[var(--brand-surface)] border border-[var(--brand-border)] text-[var(--brand-muted)] hover:text-[var(--brand-text)]"
                   )}
                 >
                   {lang === "fa" ? "همه" : "All"}
+                  {/* Coin count badge — shows total coins */}
+                  <span className={cn(
+                    "min-w-[14px] h-3.5 px-1 flex items-center justify-center rounded-full text-[9px] font-latin",
+                    !activeTag ? "bg-[#04201d]/20 text-[#04201d]" : "bg-[var(--brand-surface-2)] text-[var(--brand-muted)]"
+                  )}>
+                    {fa(coins.length, lang)}
+                  </span>
                 </button>
-                {availableTags.map((tag) => (
+                {availableTags.map(({ tag, count }) => (
                   <button
                     key={tag}
                     onClick={() => setMarketActiveTag(activeTag === tag ? null : tag)}
                     className={cn(
-                      "shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all whitespace-nowrap capitalize",
+                      "shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all whitespace-nowrap capitalize",
                       activeTag === tag
                         ? "bg-[var(--brand-accent)] text-[#04201d]"
                         : "bg-[var(--brand-surface)] border border-[var(--brand-border)] text-[var(--brand-muted)] hover:text-[var(--brand-text)] hover:border-[var(--brand-accent)]/30"
                     )}
                   >
                     {tag.replace(/-/g, " ")}
+                    {/* Coin count badge — shows how many coins have this tag */}
+                    <span className={cn(
+                      "min-w-[14px] h-3.5 px-1 flex items-center justify-center rounded-full text-[9px] font-latin",
+                      activeTag === tag ? "bg-[#04201d]/20 text-[#04201d]" : "bg-[var(--brand-surface-2)] text-[var(--brand-muted)]"
+                    )}>
+                      {fa(count, lang)}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -584,7 +598,7 @@ export function MarketIntelligence() {
                               "border-b border-[var(--brand-border)]/50 cursor-pointer hover:bg-[var(--brand-accent)]/[0.04] transition-colors group",
                               up && "bg-[var(--brand-accent)]/[0.015]",
                               !up && "bg-red-500/[0.015]",
-                              isWatchedCoin && "border-l-2 border-l-[var(--brand-accent)]"
+                              isWatchedCoin && "border-s-2 border-s-[var(--brand-accent)]"
                             )}
                           >
                             <td className="px-3 py-2.5 text-start">
@@ -995,7 +1009,46 @@ function MarketPulse({
   fmtCompact: (n: number) => string;
   usingFallback: boolean;
 }) {
-  if (!globalStats || globalStats.totalMarketCap <= 0) return null;
+  // Loading skeleton — mirrors the layout so the transition to loaded
+  // data is smooth (no layout shift). Donut placeholders with proper
+  // sizes prevent the page from jumping when data arrives.
+  if (!globalStats || globalStats.totalMarketCap <= 0) {
+    return (
+      <div className="border-b border-[var(--brand-border)] bg-[var(--brand-surface)]/40">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4">
+          {/* Row 1 skeleton — 3 hero stats */}
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="p-3 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)] space-y-2">
+                <div className="h-3 w-16 rounded shimmer" />
+                <div className="h-5 w-24 rounded shimmer" />
+                <div className="h-3 w-12 rounded shimmer" />
+              </div>
+            ))}
+          </div>
+          {/* Row 2 skeleton — donut + breakdown grid */}
+          <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4">
+            <div className="flex items-center gap-3 p-3 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
+              <div className="w-20 h-20 rounded-full shimmer shrink-0" />
+              <div className="flex-1 space-y-2">
+                <div className="h-3 w-12 rounded shimmer" />
+                <div className="h-3 w-12 rounded shimmer" />
+                <div className="h-3 w-12 rounded shimmer" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <div key={i} className="p-2 rounded-lg bg-[var(--brand-surface-2)]/40 border border-[var(--brand-border)]/30 space-y-1.5">
+                  <div className="h-3 w-14 rounded shimmer" />
+                  <div className="h-4 w-20 rounded shimmer" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const change = globalStats.totalMarketCapYesterdayPctChange || 0;
   const isBullish = change > 1;

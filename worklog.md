@@ -4458,3 +4458,134 @@ Stage Summary:
 3. [Phase F] IndexedDB برای کش coin detail responses
 4. [Phase G] Virtual scrolling برای جدول ۱۰۰ کوین
 5. [Phase H] بهبود skeleton screens با shimmer effect
+
+---
+Task ID: 35
+Agent: main (autonomous dev session)
+Task: پولیش مرحله قبل — بهبود skeleton states، RTL fixes، Sparkline gradient، error state.
+
+Work Log:
+
+### SESSION-START-SYNC-CHECK
+- Repository: /home/z/my-project/AiCryptoDiscoveryFeed
+- Branch: main
+- git fetch origin: ✅ Success
+- git status: clean, up-to-date (commit 21890e5)
+- rev-list: behind=0, ahead=0
+- Verdict: ✅ Up-to-date and clean — proceeding.
+
+### مرحله ۱: تست QA با agent-browser روی local dev server
+- /crypto/market: bodyH=6294, 3 donut circles, 13 tag count badges ✅
+- /crypto/market/bitcoin: bodyH=1505, 6 price change bars, supply bar با "Remaining" ✅
+- /crypto/market/ethereum: sparkline با gradient + circle marker, ATH/ATL cycle bar ✅
+- /crypto: 4 widgets کار می‌کنن ✅
+
+### مرحله ۲: پولیش RTL
+- coin-detail.tsx: Price Alert badge `-right-1` → `-end-1` (مهم برای RTL)
+- market-intelligence.tsx: watched coin row `border-l-2 border-l-[var(--brand-accent)]` →
+  `border-s-2 border-s-[var(--brand-accent)]` (inline-start به جای left)
+
+### مرحله ۳: Sparkline با gradient area fill + live marker
+قبلاً: خط ساده بدون fill.
+حالاً:
+- linearGradient عمودی: 35% opacity در بالا → 0% در پایین
+- path با area fill (`M 0,height L x1,y1 L x2,y2 ... L width,height Z`)
+- polyline با `vectorEffect="non-scaling-stroke"` (ضخامت خط ثابت می‌مونه
+  حتی وقتی SVG scale می‌شه)
+- circle در نقطه آخر به‌عنوان "live" marker (رنگ accent، stroke رنگ bg)
+- `strokeLinejoin="round"` + `strokeLinecap="round"` برای corners smooth
+- unique gradient ID با hashString (جلوگیری از collision وقتی چند Sparkline رندر می‌شن)
+- تست شد: ETH sparkline درست رندر می‌شه (gradient + circle + defs)
+
+### مرحله ۴: coin-detail skeleton (۱۷ عنصر placeholder)
+قبلاً: فقط ۴ مستطیل خالی.
+حالاً: skeleton کامل که layout صفحه رو mirror می‌کنه (no layout shift):
+- Back button placeholder
+- Header: image circle + name + symbol + rank badge + price + alert button
+- Sparkline placeholder (h-20 w-full)
+- External links row (5 pill placeholders)
+- Stats grid (4 cards با label + value placeholders)
+- Price changes section (6 cells با label + number + bar placeholders)
+- ATH/ATL section (label + cycle bar placeholder)
+- Supply section (3 columns + progress bar placeholder)
+- animate-pulse برای smooth loading effect
+
+### مرحله ۵: coin-detail error state بهبود یافته
+قبلاً: AlertCircle + error message + Back to market button.
+حالاً:
+- AlertCircle بزرگ‌تر (w-10 h-10)
+- h2 "داده‌ها بارگذاری نشد"
+- p با error message یا fallback text
+- دو button: "تلاش مجدد" (Retry با RefreshCw icon) + "بازگشت به بازار"
+- استفاده از `refetch` از useQuery (قبلاً استخراج نشده بود)
+
+### مرحله ۶: MarketPulse skeleton (loading state)
+قبلاً: وقتی globalStats در حال بارگذاری بود، MarketPulse `null` برمی‌گردوند
+و باعث می‌شد فضای خالی بالا صفحه بمونه.
+حالاً: skeleton کامل با layout یکسان:
+- Row 1: 3 stat placeholders (label + value + change)
+- Row 2: donut circle placeholder (w-20 h-20 rounded-full) + 3 legend placeholders
+- Row 2 right: 6 breakdown stat placeholders
+- همه با `.shimmer` class (animation)
+
+### مرحله ۷: Category filter bar با count badges
+قبلاً: فقط نام tag (مثلاً "Layer 1").
+حالاً: نام tag + count badge (مثلاً "Layer 1 ۲۸"):
+- `availableTags` تغییر کرد: `string[]` → `{ tag, count }[]`
+- button "همه" هم count badge داره (تعداد کل کوین‌ها)
+- count badge رنگ متفاوت داره:
+  - وقتی tag فعال است: bg-[#04201d]/20 text-[#04201d]
+  - وقتی tag غیرفعال است: bg-[var(--brand-surface-2)] text-[var(--brand-muted)]
+- `inline-flex items-center gap-1.5` برای چینش مناسب
+
+### مرحله ۸: TopGainers widget با coin images + clickable
+قبلاً: فقط symbol + name + price + percent (متن ساده، غیرقابل کلیک).
+حالاً:
+- button clickable → router.push به `/crypto/market/${coin.slug || coin.symbol.toLowerCase()}`
+- coin image (32x32 از CMC CDN) با ring-1 ring-[var(--brand-border)]
+- onError handler: image مخفی می‌شه اگه load نشه (graceful degradation)
+- hover effect: bg-[var(--brand-surface-2)] + text-emerald-400 برای symbol
+- padding و rounded-md برای بهتر hover UX
+
+### مرحله ۹: تست نهایی
+- TypeScript: 0 errors ✅
+- ESLint: 0 errors, 0 warnings ✅
+- Build: success ✅
+- /crypto/market: 3 donut circles + 13 tag count badges + skeleton درست کار می‌کنه
+- /crypto/market/bitcoin: 6 price change bars + supply bar با "باقی‌مانده" ✅
+- /crypto/market/ethereum: sparkline با gradient + live marker + defs ✅
+- /crypto: 4 widgets کار می‌کنن (ETH, SOL, TopGainers, Dominance) ✅
+
+### خلاصه تغییرات:
+3 فایل، 222+/32- lines:
+- `coin-detail.tsx` (+160/-?): skeleton کامل + error state با retry + Sparkline gradient
+  + Price Alert badge RTL fix
+- `market-intelligence.tsx` (+65/-?): MarketPulse skeleton + tag count badges + RTL fix
+  برای watched coin border
+- `crypto-widgets.tsx` (+29/-?): TopGainers clickable + coin images + hover effects
+
+Stage Summary:
+
+**وضعیت فعلی پروژه:**
+- 21 API route، 8 صفحه، 60+ کامپوننت
+- TypeScript: 0 errors ✅
+- ESLint: 0 errors, 0 warnings ✅
+- Build: success ✅
+- همه skeleton states کامل با mirror layout (no layout shift)
+- Sparkline با gradient area + live marker
+- TopGainers با coin images + clickable navigation
+
+**اصلاحات تکمیل‌شده این دور:**
+1. RTL: Price Alert badge `-end-1`، watched coin border `border-s-*`
+2. Sparkline upgrade: gradient fill + area path + live marker dot + non-scaling stroke
+3. coin-detail skeleton کامل (۱۷ عنصر placeholder، mirror layout)
+4. coin-detail error state با Retry button + Back button
+5. MarketPulse skeleton (donut + breakdown grid با shimmer)
+6. Category filter با count badges (هر tag نشون می‌ده چند کوین داره)
+7. TopGainers widget: coin images + clickable + hover effect
+
+**توصیه‌های اولویت‌دار برای مرحله بعدی:**
+1. [deploy] user باید `CLOUDFLARE_API_TOKEN` تنظیم کنه و `npm run deploy` اجرا کنه
+2. [Phase E] Prefetch هوشمند با hover روی coin rows (TanStack Query prefetch)
+3. [Phase F] IndexedDB برای کش coin detail responses
+4. [Phase G] Virtual scrolling برای جدول ۱۰۰ کوین

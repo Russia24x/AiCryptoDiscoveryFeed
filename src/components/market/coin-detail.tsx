@@ -16,6 +16,7 @@ import {
   TrendingDown,
   Bell,
   BellRing,
+  RefreshCw,
   X,
 } from "lucide-react";
 import { useLanguage } from "@/hooks/use-language";
@@ -92,7 +93,7 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
   // --- Primary: CoinGecko coin detail ---
   // staleTime: 5min — coin detail doesn't change often
   // On rate-limit: return null instead of throwing → fall back to CMC
-  const { data: coin, isLoading, error } = useQuery<CoinGeckoCoin | null>({
+  const { data: coin, isLoading, error, refetch } = useQuery<CoinGeckoCoin | null>({
     queryKey: ["market", "coingecko-coin", coinId],
     queryFn: async () => {
       const res = await fetch(`/api/market/coingecko-coin?id=${encodeURIComponent(coinId)}`, { cache: "no-store" });
@@ -240,21 +241,75 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
   const isLoadingAll = isLoading || (cmcListingsLoading && !coin);
 
   if (isLoadingAll) {
+    // Skeleton — mirrors the layout of the loaded page so the transition
+    // from loading → loaded is smooth (no layout shift).
     return (
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-8">
-        <div className="animate-pulse space-y-4">
-          <div className="h-4 w-32 rounded bg-[var(--brand-surface-2)]" />
+        <div className="animate-pulse space-y-6">
+          {/* Back button placeholder */}
+          <div className="h-4 w-28 rounded bg-[var(--brand-surface-2)]" />
+          {/* Header: image + name + price */}
           <div className="flex items-center gap-3">
-            <div className="w-16 h-16 rounded-full bg-[var(--brand-surface-2)]" />
-            <div className="space-y-2">
-              <div className="h-6 w-32 rounded bg-[var(--brand-surface-2)]" />
-              <div className="h-4 w-24 rounded bg-[var(--brand-surface-2)]" />
+            <div className="w-14 h-14 rounded-full bg-[var(--brand-surface-2)] shrink-0" />
+            <div className="space-y-2 flex-1">
+              <div className="flex items-center gap-2">
+                <div className="h-6 w-28 rounded bg-[var(--brand-surface-2)]" />
+                <div className="h-3 w-10 rounded bg-[var(--brand-surface-2)]" />
+                <div className="h-3 w-8 rounded bg-[var(--brand-surface-2)]" />
+              </div>
+              <div className="flex items-baseline gap-2">
+                <div className="h-7 w-28 rounded bg-[var(--brand-surface-2)]" />
+                <div className="h-4 w-14 rounded bg-[var(--brand-surface-2)]" />
+              </div>
             </div>
+            <div className="w-8 h-8 rounded-lg bg-[var(--brand-surface-2)] shrink-0" />
           </div>
+          {/* Sparkline placeholder */}
+          <div className="h-20 w-full rounded-xl bg-[var(--brand-surface-2)]/60" />
+          {/* External links row */}
+          <div className="flex flex-wrap gap-2">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="h-6 w-16 rounded-full bg-[var(--brand-surface-2)]" />
+            ))}
+          </div>
+          {/* Stats grid (4 cards) */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-16 rounded-lg bg-[var(--brand-surface-2)]" />
+              <div key={i} className="p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)] space-y-2">
+                <div className="h-3 w-12 rounded bg-[var(--brand-surface-2)]" />
+                <div className="h-5 w-20 rounded bg-[var(--brand-surface-2)]" />
+              </div>
             ))}
+          </div>
+          {/* Price changes placeholder */}
+          <div className="p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)] space-y-3">
+            <div className="h-3 w-20 rounded bg-[var(--brand-surface-2)]" />
+            <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <div key={i} className="space-y-1.5">
+                  <div className="h-3 w-6 rounded bg-[var(--brand-surface-2)] mx-auto" />
+                  <div className="h-4 w-10 rounded bg-[var(--brand-surface-2)] mx-auto" />
+                  <div className="h-1 w-full rounded-full bg-[var(--brand-surface-2)]" />
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* ATH/ATL + Supply sections */}
+          <div className="p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)] space-y-3">
+            <div className="h-3 w-32 rounded bg-[var(--brand-surface-2)]" />
+            <div className="h-2 w-full rounded-full bg-[var(--brand-surface-2)]" />
+          </div>
+          <div className="p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)] space-y-3">
+            <div className="h-3 w-16 rounded bg-[var(--brand-surface-2)]" />
+            <div className="grid grid-cols-3 gap-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="space-y-1.5">
+                  <div className="h-3 w-10 rounded bg-[var(--brand-surface-2)]" />
+                  <div className="h-4 w-16 rounded bg-[var(--brand-surface-2)]" />
+                </div>
+              ))}
+            </div>
+            <div className="h-2 w-full rounded-full bg-[var(--brand-surface-2)]" />
           </div>
         </div>
       </div>
@@ -342,13 +397,32 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
   if (error || !displayCoin) {
     return (
       <div className="mx-auto max-w-4xl px-4 py-20 text-center">
-        <AlertCircle className="w-8 h-8 text-amber-400 mx-auto mb-3" />
-        <p className="text-sm text-[var(--brand-text)] mb-4">
-          {error instanceof Error ? error.message : "Unknown error"}
+        <AlertCircle className="w-10 h-10 text-amber-400 mx-auto mb-4" />
+        <h2 className="text-lg font-bold text-[var(--brand-text)] mb-2">
+          {lang === "fa" ? "داده‌ها بارگذاری نشد" : "Couldn't load data"}
+        </h2>
+        <p className="text-sm text-[var(--brand-muted)] mb-6 max-w-sm mx-auto">
+          {error instanceof Error
+            ? error.message
+            : lang === "fa"
+              ? "لطفاً دوباره تلاش کنید یا به بازار برگردید."
+              : "Please try again or go back to the market."}
         </p>
-        <button onClick={() => router.push("/crypto/market")} className="px-4 py-2 rounded-full bg-[var(--brand-accent)] text-[#04201d] text-xs font-bold hover:brightness-110">
-          {lang === "fa" ? "بازگشت به بازار" : "Back to market"}
-        </button>
+        <div className="flex items-center justify-center gap-2">
+          <button
+            onClick={() => refetch()}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[var(--brand-accent)] text-[#04201d] text-xs font-bold hover:brightness-110 transition-all"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            {lang === "fa" ? "تلاش مجدد" : "Retry"}
+          </button>
+          <button
+            onClick={() => router.push("/crypto/market")}
+            className="px-4 py-2 rounded-full bg-[var(--brand-surface)] border border-[var(--brand-border)] text-[var(--brand-text)] text-xs font-bold hover:border-[var(--brand-accent)]/40 hover:text-[var(--brand-accent)] transition-all"
+          >
+            {lang === "fa" ? "بازگشت به بازار" : "Back to market"}
+          </button>
+        </div>
       </div>
     );
   }
@@ -423,7 +497,7 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
           >
             {coinAlerts.length > 0 ? <BellRing className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
             {coinAlerts.length > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-[var(--brand-accent)] text-[#04201d] text-[9px] font-bold font-latin">
+              <span className="absolute -top-1 -end-1 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-[var(--brand-accent)] text-[#04201d] text-[9px] font-bold font-latin">
                 {fa(coinAlerts.length)}
               </span>
             )}
@@ -809,13 +883,61 @@ function Sparkline({ prices, accent }: { prices: number[]; accent: string }) {
   const points = prices.map((p, i) => {
     const x = (i / (prices.length - 1)) * width;
     const y = height - ((p - min) / range) * height;
-    return `${x},${y}`;
-  }).join(" ");
+    return { x, y, p };
+  });
+  const linePoints = points.map((p) => `${p.x},${p.y}`).join(" ");
+  // Area fill path: line from left, along the curve, down to bottom-right,
+  // back to bottom-left, close.
+  const areaPath = `M 0,${height} L ${linePoints.split(" ").join(" L ")} L ${width},${height} Z`;
+  // Last point (most recent) for the "live" marker dot.
+  const lastPoint = points[points.length - 1];
+  // Unique gradient id (in case multiple Sparklines render on one page).
+  const gradId = `spark-grad-${Math.abs(hashString(accent)) % 100000}`;
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-20" preserveAspectRatio="none">
-      <polyline points={points} fill="none" stroke={accent} strokeWidth="1.5" />
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      className="w-full h-20"
+      preserveAspectRatio="none"
+    >
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={accent} stopOpacity="0.35" />
+          <stop offset="100%" stopColor={accent} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      {/* Area fill */}
+      <path d={areaPath} fill={`url(#${gradId})`} stroke="none" />
+      {/* Line */}
+      <polyline
+        points={linePoints}
+        fill="none"
+        stroke={accent}
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        vectorEffect="non-scaling-stroke"
+      />
+      {/* "Live" marker at the right edge — shows the most recent data point */}
+      <circle
+        cx={lastPoint.x}
+        cy={lastPoint.y}
+        r="2"
+        fill={accent}
+        stroke="var(--brand-bg)"
+        strokeWidth="1"
+        vectorEffect="non-scaling-stroke"
+      />
     </svg>
   );
+}
+
+/** Simple string hash for gradient id uniqueness. */
+function hashString(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
 }
 
 function StatCard({ label, value, accent }: { label: string; value: string; accent?: string }) {
