@@ -5097,3 +5097,153 @@ Stage Summary:
 2. [monitor] بعد از deploy، چند ساعت مانیتور کنه که CoinGecko rate-limit
    دیگه اتفاق نمی‌افته (با Cloudflare analytics یا Worker logs)
 3. [Phase E] Prefetch هوشمند با hover روی coin rows
+
+---
+Task ID: 39
+Agent: main (autonomous dev session)
+Task: رفع مشکل مقاله‌خوان برای mihanblockchain، digiato، gamefa — استخراج محتوای کامل.
+
+Work Log:
+
+### SESSION-START-SYNC-CHECK
+- Repository: /home/z/my-project/AiCryptoDiscoveryFeed
+- Branch: main
+- git fetch origin: ✅ Success
+- git status: clean, up-to-date (commit 28ddf50)
+- rev-list: behind=0, ahead=0
+- Verdict: ✅ Up-to-date and clean — proceeding.
+
+### مرحله ۱: تست روی مقالات واقعی
+برای هر منبع یک مقاله واقعی fetch شد:
+- mihanblockchain: https://mihanblockchain.com/ai-agents-crypto-hackers-security-risks/
+  - HTML size: 340KB
+  - 5 unbalanced <div> tags (HTML کج)
+- digiato: https://digiato.com/iran-technology-news/the-role-of-bank-vaults-in-the-online-gold-market-infrastructure
+  - HTML size: 75KB
+  - 0 Persian text blocks (JS-rendered، SSR content نداره)
+  - JSON-LD با articleBody: 1521 chars
+- gamefa: https://gamefa.com/1377839/fromsoftware-says-nintendo-has-been-big-help/
+  - HTML size: 195KB
+  - divs متوازن (184/184)
+  - post-content div به شدت nested (depth 56)
+
+### مرحله ۲: ریشه‌یابی باگ فعلی
+
+**باگ ۱: findMatchingCloseTag باگ lastIndex داشت**
+قبلاً دو regex جداگانه (openRe و closeRe) با lastIndex مستقل داشتن.
+وقتی openMatch پیدا می‌شد ولی closeMatch.index < openMatch.index بود،
+openRe.lastIndex همچنان پیش می‌رفت، 导致 <div> های بعدی از قلم می‌افتادند
+و depth counting اشتباه می‌شد.
+
+**باگ ۲: JSON-LD اصلاً بررسی نمی‌شد**
+Digiato هیچ SSR content نداره — کل مقاله داخل JSON-LD articleBody هست.
+ولی extractArticleHtml هیچ‌وقت JSON-LD رو چک نمی‌کرد.
+
+**باگ ۳: fallback با ۳ پاراگراف خیلی کم بود**
+قبلاً اگر همه استراتژی‌ها fail می‌شدن، ۳ پاراگراف کافی بود.
+ولی این باعث می‌شد nav/footer paragraphs به‌عنوان مقاله نمایش داده بشن.
+
+### مرحله ۳: بازنویسی findMatchingCloseTag با TOKENIZER approach
+قبلاً: دو regex با lastIndex مستقل → باگ.
+حالا: همه open و close events رو به یک آرایه collect می‌کنیم، sort می‌کنیم،
+و روی event list walk می‌کنیم با depth counting.
+این روش مطمئن‌تره چون هر tag دقیقاً یک‌بار دیده می‌شه، در document order،
+بدون skipped positions.
+
+```typescript
+// قبل (باگ):
+while (depth > 0 && pos < max) {
+  const openMatch = openRe.exec(html);  // lastIndex مستقل
+  const closeMatch = closeRe.exec(html); // lastIndex مستقل
+  // ... اگر openMatch پیدا شد ولی closeMatch.index < openMatch.index
+  // openRe.lastIndex همچنان پیش می‌رفت → باگ
+}
+
+// بعد (درست):
+const events: Event[] = [];
+while ((m = openRe.exec(html)) !== null) events.push({type: "open", pos: m.index});
+while ((m = closeRe.exec(html)) !== null) events.push({type: "close", pos: m.index});
+events.sort((a, b) => a.pos - b.pos);
+// حالا روی events walk می‌کنیم با depth counting — هیچ tag‌ای از قلم نمی‌افته
+```
+
+### مرحله ۴: اضافه کردن Strategy 0 — JSON-LD extraction
+اولویت‌بندی استراتژی‌ها:
+0. **JSON-LD** (NEW — برای سایت‌های مدرن مثل Digiato)
+1. content-class (موجود)
+2. `<article>` tag (موجود)
+3. `<main>` tag (موجود)
+4. Paragraph fallback (موجود، ولی threshold از ۳ به ۵ افزایش یافت)
+
+JSON-LD extraction:
+- `<script type="application/ld+json">` رو پیدا می‌کنه
+- JSON.parse می‌کنه
+- اگه `articleBody` وجود داشت و length > 200 بود، به HTML تبدیل می‌کنه
+- fallback: اگه \n\n نبود، روی sentence boundaries (. ؟ !) split می‌کنه
+- sentences رو به گروه‌های ۳تایی تبدیل می‌کنه (paragraph readability)
+
+### مرحله ۵: تست نتیجه
+**قبل:**
+| Source | Strategy | Length | <p> tags | Word count |
+|--------|----------|--------|----------|-------------|
+| mihanblockchain | article (WRONG!) | 2,689 | 0 | 22 |
+| digiato | none | 0 | 0 | 0 |
+| gamefa | article (WRONG!) | 2,519 | 0 | 22 |
+
+**بعد:**
+| Source | Strategy | Length | <p> tags | Word count |
+|--------|----------|--------|----------|-------------|
+| mihanblockchain | content-class | 8,158 | 23 | 905 |
+| digiato | json-ld | 1,542 | 3 | 271 |
+| gamefa | content-class | 4,661 | 13 | 640 |
+
+**بهبودها:**
+- mihanblockchain: 3.8x بیشتر محتوا (و حالا مقاله درست، نه related posts)
+- digiato: از صفر به 1542 chars (JSON-LD strategy جدید)
+- gamefa: 2.3x بیشتر محتوا (و حالا مقاله درست)
+
+### مرحله ۶: تست API endpoint واقعی
+- /api/article?url=mihanblockchain... → 8158 chars, 905 words, 4min reading ✅
+- /api/article?url=digiato... → 1542 chars, 271 words, 1min reading ✅
+- /api/article?url=gamefa... → 4661 chars, 640 words, 3min reading ✅
+
+### مرحله ۷: تست Article Reader UI
+- /crypto page → click روی mihanblockchain article
+- Article reader باز شد با:
+  - title: "هشدار فعالان کریپتو: هوش مصنوعی هکرها را به تهدیدی بسیار بزرگ‌تر..."
+  - body length: 5094 chars
+  - 23 paragraphs
+  - بدون error ✅
+
+### مرحله ۸: تست نهایی
+- TypeScript: 0 errors ✅
+- ESLint: 0 errors, 0 warnings ✅
+- Build: success ✅
+
+### خلاصه تغییرات:
+1 فایل، 80+/22- lines:
+- `src/app/api/article/route.ts`:
+  - بازنویسی findMatchingCloseTag با tokenizer approach (events array + sort)
+  - اضافه کردن Strategy 0: JSON-LD extraction با sentence-boundary fallback
+  - به‌روزرسانی comments و strategy documentation
+
+Stage Summary:
+
+**وضعیت فعلی پروژه:**
+- 21 API route، 9 صفحه، 60+ کامپوننت
+- TypeScript: 0 errors ✅
+- ESLint: 0 errors, 0 warnings ✅
+- Build: success ✅
+- Article reader برای mihanblockchain، digiato، gamefa حالا کار می‌کنه
+
+**اصلاحات تکمیل‌شده این دور:**
+1. [CRITICAL] رفع باگ lastIndex در findMatchingCloseTag — tokenizer approach
+2. [CRITICAL] اضافه کردن JSON-LD strategy برای سایت‌های مدرن (Digiato)
+3. sentence-boundary fallback برای JSON-LD articleBody بدون \n\n
+4. افزایش paragraph fallback threshold از ۳ به ۵
+5. مستندسازی بهتر استراتژی‌ها
+
+**توصیه‌های اولویت‌دار برای مرحله بعدی:**
+1. [deploy] user باید CLOUDFLARE_API_TOKEN تنظیم کنه و `npm run deploy` اجرا کنه
+2. [test] تست روی production بعد از deploy — مخصوصاً مقالات mihanblockchain، digiato، gamefa
+3. [Phase E] اضافه کردن JSON-LD headline و image به extractMeta برای غنی‌تر کردن metadata

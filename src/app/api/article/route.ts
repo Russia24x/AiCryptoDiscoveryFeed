@@ -57,18 +57,20 @@ function decodeEntities(s: string): string {
 /**
  * Find the matching closing tag for an opening tag at `startIdx`.
  *
- * This is a simple depth-counting parser — NOT a full HTML parser. It
- * walks forward from the opening tag and counts `<tag ...>` vs `</tag>`
- * occurrences, returning the index AFTER the matching close.
+ * Uses a TOKENIZER approach: collects ALL <tag> and </tag> positions
+ * into a single sorted event list, then walks the list counting depth.
+ * This is more reliable than running two separate regexes with
+ * independent lastIndex pointers — that approach had a subtle bug
+ * where if openMatch was found but closeMatch.index < openMatch.index,
+ * the openRe.lastIndex would advance past the open position, causing
+ * subsequent <div> tags to be missed and depth counting to drift.
  *
- * Why we need this: regex-based extraction like
- *   /<div class="articleContent">([\s\S]*?)<\/div>\s*(?:<div|...)/
- * stops at the FIRST `</div>`, which is wrong when the content div
- * has nested divs inside it. Vigiato.net's articleContent div is
- * 33,765 chars but contains ~30 nested divs, so the regex only
- * captures 3,854 chars — most of the article is lost.
+ * The tokenizer approach ensures every tag is seen exactly once, in
+ * document order, with no skipped positions.
  *
  * `tag` should be lowercase, e.g. "div", "article", "main", "section".
+ *
+ * Returns the index AFTER the matching close tag, or -1 if no match.
  */
 function findMatchingCloseTag(
   html: string,
@@ -77,26 +79,34 @@ function findMatchingCloseTag(
 ): number {
   const openRe = new RegExp(`<${tag}\\b[^>]*>`, "gi");
   const closeRe = new RegExp(`</${tag}>`, "gi");
-  // Both regexes MUST start searching from startIdx — otherwise the close
-  // regex will find an earlier </div> from before our opening tag, making
-  // depth go negative and returning a wrong (too-early) close position.
+  // Collect all open and close tag positions from startIdx onwards
+  type Event = { type: "open" | "close"; pos: number };
+  const events: Event[] = [];
   openRe.lastIndex = startIdx;
   closeRe.lastIndex = startIdx;
+  let m: RegExpExecArray | null;
+  // Cap at 5000 events to prevent pathological cases (e.g. deeply
+  // nested tables with thousands of rows)
+  while ((m = openRe.exec(html)) !== null) {
+    events.push({ type: "open", pos: m.index });
+    if (events.length > 5000) break;
+  }
+  while ((m = closeRe.exec(html)) !== null) {
+    events.push({ type: "close", pos: m.index });
+    if (events.length > 10000) break;
+  }
+  // Sort by position so we walk in document order
+  events.sort((a, b) => a.pos - b.pos);
   let depth = 1;
-  let pos = startIdx;
-  const max = Math.min(html.length, startIdx + 200_000); // hard cap
-  while (depth > 0 && pos < max) {
-    const openMatch = openRe.exec(html);
-    const closeMatch = closeRe.exec(html);
-    if (!closeMatch) break;
-    if (openMatch && openMatch.index < closeMatch.index) {
+  const closeTagLen = `</${tag}>`.length;
+  for (const e of events) {
+    if (e.type === "open") {
       depth++;
-      pos = openMatch.index + openMatch[0].length;
     } else {
       depth--;
-      pos = closeMatch.index + closeMatch[0].length;
       if (depth === 0) {
-        return pos;
+        // Return index AFTER the </tag>
+        return e.pos + closeTagLen;
       }
     }
   }
@@ -117,6 +127,54 @@ function findMatchingCloseTag(
  *   4. Paragraph fallback — collect <p> tags from <body> (used only as last resort).
  */
 function extractArticleHtml(html: string): { html: string; strategy: string } {
+  // Strategy 0: JSON-LD structured data (HIGHEST PRIORITY).
+  // Many modern sites (Digiato, etc.) embed the article body in a
+  // <script type="application/ld+json"> block with schema.org
+  // NewsArticle schema. The articleBody field is plain text — we
+  // convert it to simple HTML paragraphs.
+  // This works even when the page is JS-rendered (no SSR content).
+  const jsonLdMatch = html.match(
+    /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/i
+  );
+  if (jsonLdMatch) {
+    try {
+      const data = JSON.parse(jsonLdMatch[1]);
+      if (data?.articleBody && typeof data.articleBody === "string" && data.articleBody.length > 200) {
+        // Convert plain text to HTML paragraphs.
+        // Some sites (Digiato) use proper double-newline paragraph
+        // breaks; others (also Digiato sometimes) send one big block.
+        // We try \n\n first, and if that yields only 1 paragraph we
+        // fall back to splitting on sentence boundaries ( Persian .
+        // followed by space + capital/Persian letter).
+        let paragraphs = data.articleBody
+          .split(/\n\s*\n/)
+          .map((p: string) => p.trim())
+          .filter((p: string) => p.length > 30);
+        if (paragraphs.length < 2) {
+          // Fallback: split on Persian/English sentence end + space
+          // This creates shorter paragraphs but preserves readability.
+          // We split on '. ' or '؟ ' or '! ' followed by a non-space char.
+          const sentences = data.articleBody
+            .split(/(?<=[.؟!])\s+(?=[^\s])/)
+            .map((s: string) => s.trim())
+            .filter((s: string) => s.length > 30);
+          // Group sentences into paragraphs of ~3 sentences each
+          // to keep paragraphs readable (not too short, not too long).
+          paragraphs = [];
+          for (let i = 0; i < sentences.length; i += 3) {
+            paragraphs.push(sentences.slice(i, i + 3).join(" "));
+          }
+        }
+        if (paragraphs.length >= 2) {
+          const html_content = paragraphs.map((p: string) => `<p>${p}</p>`).join("\n");
+          return { html: html_content, strategy: "json-ld" };
+        }
+      }
+    } catch {
+      // JSON parse failed — fall through to HTML strategies
+    }
+  }
+
   // Strategy 1: nesting-aware div extraction by content class.
   // For each pattern, find the opening tag, then find its matching close
   // using depth counting (handles nested divs correctly).
