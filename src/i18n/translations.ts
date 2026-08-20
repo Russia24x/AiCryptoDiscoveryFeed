@@ -32,6 +32,7 @@ export interface TranslationKeys {
     tech: string;
     gaming: string;
     entertainment: string;
+    social: string;
     search: string;
     searchPlaceholder: string;
     bookmarks: string;
@@ -145,6 +146,30 @@ export interface TranslationKeys {
     removeChannel: string;
   };
 
+  // Social portal (dedicated /social page)
+  social: {
+    title: string;
+    titleAccent: string;
+    description: string;
+    badge: string;
+    allSources: string;
+    allCategories: string;
+    telegramTab: string;
+    twitterTab: string;
+    allTab: string;
+    refreshing: string;
+    noPosts: string;
+    noPostsHint: string;
+    sourceFilter: string;
+    selectChannel: string;
+    selectChannelHint: string;
+    postsCount: string;
+    openOriginal: string;
+    addChannelShort: string;
+    searchChannels: string;
+    lastUpdate: string;
+  };
+
   // Footer
   footer: {
     tagline: string;
@@ -195,6 +220,7 @@ export const translations: Record<Language, TranslationKeys> = {
       tech: "فناوری",
       gaming: "بازی",
       entertainment: "سرگرمی",
+      social: "شبکه‌ها",
       search: "جستجو",
       searchPlaceholder: "جستجو…",
       bookmarks: "نشانک‌ها",
@@ -321,6 +347,29 @@ export const translations: Record<Language, TranslationKeys> = {
       customChannels: "منابع دلخواه شما",
       removeChannel: "حذف",
     },
+    social: {
+      title: "مرکز",
+      titleAccent: "شبکه‌های اجتماعی",
+      description:
+        "بازتاب کامل پست‌های کانال‌های تلگرام و اکانت‌های ایکس منتخب. محتوای زنده، فیلتر دسته‌بندی، و جستجوی کانال — همه در یک صفحه اختصاصی.",
+      badge: "Live · Social",
+      allSources: "همه منابع",
+      allCategories: "همه دسته‌ها",
+      telegramTab: "تلگرام",
+      twitterTab: "ایکس / توییتر",
+      allTab: "همه",
+      refreshing: "در حال به‌روزرسانی…",
+      noPosts: "پستی یافت نشد",
+      noPostsHint: "کانال ممکن است خصوصی باشد یا پیش‌نمایش عمومی نداشته باشد",
+      sourceFilter: "فیلتر منبع",
+      selectChannel: "یک کانال انتخاب کنید",
+      selectChannelHint: "برای دیدن پست‌های کامل، روی یکی از کانال‌های زیر بزنید",
+      postsCount: "پست",
+      openOriginal: "باز کردن در منبع",
+      addChannelShort: "افزودن کانال",
+      searchChannels: "جستجوی کانال…",
+      lastUpdate: "آخرین به‌روزرسانی",
+    },
     footer: {
       tagline: "Future · Data · Intelligence",
       status: "Live · No-DB · Cloudflare-ready",
@@ -365,6 +414,7 @@ export const translations: Record<Language, TranslationKeys> = {
       tech: "Tech",
       gaming: "Gaming",
       entertainment: "Entertainment",
+      social: "Social",
       search: "Search",
       searchPlaceholder: "Search…",
       bookmarks: "Bookmarks",
@@ -490,6 +540,29 @@ export const translations: Record<Language, TranslationKeys> = {
       addChannelCategory: "Category",
       customChannels: "Your custom sources",
       removeChannel: "Remove",
+    },
+    social: {
+      title: "Social",
+      titleAccent: "Hub",
+      description:
+        "Full mirror of posts from selected Telegram channels and X accounts. Live content, category filter, and channel search — all on one dedicated page.",
+      badge: "Live · Social",
+      allSources: "All sources",
+      allCategories: "All categories",
+      telegramTab: "Telegram",
+      twitterTab: "X / Twitter",
+      allTab: "All",
+      refreshing: "Refreshing…",
+      noPosts: "No posts found",
+      noPostsHint: "Channel may be private or have no public web preview",
+      sourceFilter: "Source filter",
+      selectChannel: "Select a channel",
+      selectChannelHint: "Click one of the channels below to see its full posts",
+      postsCount: "posts",
+      openOriginal: "Open in source",
+      addChannelShort: "Add channel",
+      searchChannels: "Search channels…",
+      lastUpdate: "Last update",
     },
     footer: {
       tagline: "Future · Data · Intelligence",

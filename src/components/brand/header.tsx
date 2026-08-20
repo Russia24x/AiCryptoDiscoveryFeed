@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { Search, Menu, X, Settings, Home, Bitcoin, Brain, Cpu, Gamepad2, Film } from "lucide-react";
+import { Search, Menu, X, Settings, Home, Bitcoin, Brain, Cpu, Gamepad2, Film, Send } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { LanguageToggle } from "@/components/brand/language-toggle";
 import { BookmarksButton } from "@/components/feed/bookmarks-drawer";
@@ -41,6 +41,7 @@ const NAV_ICON: Record<string, React.ReactNode> = {
   tech:          <Cpu className="w-3.5 h-3.5" />,
   gaming:        <Gamepad2 className="w-3.5 h-3.5" />,
   entertainment: <Film className="w-3.5 h-3.5" />,
+  social:        <Send className="w-3.5 h-3.5" />,
 };
 
 export function Header({
@@ -78,7 +79,12 @@ export function Header({
     { id: "tech",          label: t.nav.tech },
     { id: "gaming",        label: t.nav.gaming },
     { id: "entertainment", label: t.nav.entertainment },
+    { id: "social",        label: t.nav.social },
   ];
+
+  // Tint override for 'social' (which is a route, not a feed category,
+  // so it's not in CATEGORY_META). Red brand for the social portal.
+  const SOCIAL_TINT = "#ef4444";
 
   return (
     <header
@@ -100,8 +106,9 @@ export function Header({
           <nav className="hidden md:flex items-center gap-1.5">
             {NAV.map((item) => {
               const isActive = activeCategory === item.id;
-              const meta = item.id !== "all" ? CATEGORY_META[item.id as keyof typeof CATEGORY_META] : null;
-              const tint = meta?.tint || "#2dd4bf";
+              // 'social' is a route, not a feed category — use red brand tint
+              const meta = (item.id !== "all" && item.id !== "social") ? CATEGORY_META[item.id as keyof typeof CATEGORY_META] : null;
+              const tint = item.id === "social" ? SOCIAL_TINT : (meta?.tint || "#2dd4bf");
               return (
                 <button
                   key={item.id}
@@ -288,8 +295,8 @@ export function Header({
             <div className="grid grid-cols-2 gap-2">
               {NAV.map((item) => {
                 const isActive = activeCategory === item.id;
-                const meta = item.id !== "all" ? CATEGORY_META[item.id as keyof typeof CATEGORY_META] : null;
-                const tint = meta?.tint || "#2dd4bf";
+                const meta = (item.id !== "all" && item.id !== "social") ? CATEGORY_META[item.id as keyof typeof CATEGORY_META] : null;
+                const tint = item.id === "social" ? SOCIAL_TINT : (meta?.tint || "#2dd4bf");
                 return (
                   <button
                     key={item.id}

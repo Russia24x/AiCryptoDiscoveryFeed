@@ -4764,3 +4764,170 @@ Stage Summary:
 2. [test] تست روی production بعد از deploy — مخصوصاً vigiato article reader
 3. [Phase E] Prefetch هوشمند با hover روی coin rows
 4. [Phase F] IndexedDB برای کش coin detail responses
+
+---
+Task ID: 37
+Agent: main (autonomous dev session)
+Task: ساخت صفحه اختصاصی شبکه‌های اجتماعی (/social) با برندینگ قرمز.
+
+Work Log:
+
+### SESSION-START-SYNC-CHECK
+- Repository: /home/z/my-project/AiCryptoDiscoveryFeed
+- Branch: main
+- git fetch origin: ✅ Success
+- git status: clean, up-to-date (commit b41562b)
+- rev-list: behind=0, ahead=0
+- Verdict: ✅ Up-to-date and clean — proceeding.
+
+### توضیح هشدارهای موجود
+قبل از شروع، توضیح هشدارهای که کاربر پرسید:
+
+**«نمایش داده‌ها از CoinMarketCap (CoinGecko در حالت آماده‌سازی)»**
+در `/crypto/market` وقتی API رایگان CoinGecko rate-limited شده (۳۰ req/min).
+سیستم به‌طور خودکار به CMC fallback می‌کنه ولی داده‌های CMC کامل نیستن
+(high_24h, low_24h, ath, atl ندارن). کد: `market-intelligence.tsx:285`.
+
+**«حالت محدود» در `/crypto/market/[coin]`**
+وقتی API coingecko-coin (description, links, sparkline) fail شده.
+سیستم از CMC listings fallback می‌سازه ولی اطلاعات ناقصه. کد: `coin-detail.tsx:325`.
+
+هر دو پیام = مشکل rate-limiting موقت CoinGecko.
+
+### مرحله ۱: اضافه کردن ترجمه‌ها (i18n)
+فایل: `src/i18n/translations.ts`
+- اضافه شد: `nav.social` (fa: "شبکه‌ها"، en: "Social")
+- اضافه شد: section کامل `social` با ۱۷ کلید ترجمه:
+  - title, titleAccent, description, badge
+  - allSources, allCategories, telegramTab, twitterTab, allTab
+  - refreshing, noPosts, noPostsHint, sourceFilter
+  - selectChannel, selectChannelHint, postsCount
+  - openOriginal, addChannelShort, searchChannels, lastUpdate
+
+### مرحله ۲: ساخت route جدید `/social`
+فایل: `src/app/social/page.tsx`
+```tsx
+import { SocialPortal } from "@/components/social/social-portal";
+export default function SocialPage() {
+  return <SocialPortal />;
+}
+```
+
+### مرحله ۳: ساخت SocialPortal component
+فایل: `src/components/social/social-portal.tsx` (۶۳۵ خط)
+
+**برندینگ:** قرمز `#ef4444` (مشابه: crypto=orange, ai=teal, tech=blue,
+gaming=purple, entertainment=pink, social=red)
+
+**معماری:**
+- Layout split: sidebar (left, 320px) + posts panel (right, flexible)
+- Sidebar شامل:
+  - Source filter tabs (همه / تلگرام / ایکس)
+  - Search input
+  - Category filter (horizontal scroll با همه دسته‌ها)
+  - Channel list (built-in + custom، scrollable)
+- Posts panel شامل:
+  - Channel header (icon + name + handle + category + posts count)
+  - Refresh + Open Original buttons
+  - Last update timestamp
+  - Loading skeleton (۳ placeholder)
+  - Error state با Retry button
+  - Private channel state با Open Original button
+  - Posts list (full content — text + images + meta)
+
+**بهینه‌سازی TanStack Query:**
+- queryKey: `["channel", handle]` — **shared با ChannelsHub**!
+- staleTime: ۵min (مشابه ChannelsHub)
+- gcTime: ۱۰min
+- retry: 1
+- **صفر API call اضافه** — وقتی کاربر از ChannelsHub به /social می‌ره،
+  کش مشترک استفاده می‌شه.
+
+**TelegramPostCard features:**
+- Full post text با whitespace-pre-wrap
+- "Show more" for posts > 600 chars (collapsed by default)
+- First image inline (max-h-96)
+- Image gallery (up to 3 more, square thumbs)
+- Post header: @handle + relative time + view count
+- Link to original post
+- motion.article با fade-in animation
+
+**TwitterAccountCard:**
+- X/Twitter blocks scraping — show link card instead
+- "Open in source" button با brand tint
+
+**ChannelListItem:**
+- Category-tinted icon
+- @handle + category label
+- Custom channel badge "+"
+- Active state با red indicator bar
+
+### مرحله ۴: اضافه کردن Social به Header navigation
+فایل: `src/components/brand/header.tsx`
+- import `Send` icon
+- NAV_ICON["social"] = `<Send />`
+- NAV array: اضافه شدن `{ id: "social", label: t.nav.social }`
+- SOCIAL_TINT = "#ef4444" const
+- Desktop nav: tint = social ? SOCIAL_TINT : meta?.tint
+- Mobile menu: همان logic
+- روی کلیک: onCategoryChange("social") → router.push("/social")
+  (در page.tsx و category-page.tsx که از قبل router.push(`/${c}`) دارن)
+
+### مرحله ۵: اضافه کردن Social tab به Hero CTA
+فایل: `src/components/brand/hero.tsx`
+- HeroTab جدید با href="/social"، icon=Send، accent="#ef4444"
+- قرار گرفته بعد از Entertainment و قبل از Settings
+
+### مرحله ۶: تست محلی
+- dev server روی port 3001
+- `/social`: ✅ h1 "مرکز شبکه‌های اجتماعی"، bodyH=7443
+- ۲۰ channel item نمایش داده شد (۳ Telegram + ۳ Twitter + custom)
+- Click روی "مستر شارک کریپتو": ۱۶ post بارگذاری شد ✅
+- Post content کامل: timestamp، views، text با emoji ✅
+- Telegram filter: ۳ کانال فقط ✅
+- Desktop header: ۷ nav button شامل "شبکه‌ها" ✅
+- Mobile menu: ۱۳ button شامل "شبکه‌ها" ✅
+- Hero CTA: ۱۰ tab شامل "شبکه‌ها" با red accent ✅
+
+### مرحله ۷: تست نهایی
+- TypeScript: 0 errors ✅
+- ESLint: 0 errors, 0 warnings ✅
+- Build: success ✅
+- /social route در build output: `├ ○ /social`
+
+### خلاصه تغییرات:
+- ۳ فایل تغییر کرد + ۲ فایل جدید
+- فایل‌های جدید:
+  - `src/app/social/page.tsx` (۵ خط)
+  - `src/components/social/social-portal.tsx` (۶۳۵ خط)
+- فایل‌های تغییر یافته:
+  - `src/i18n/translations.ts` (+۷۳/-۰)
+  - `src/components/brand/header.tsx` (+۱۷/-۵)
+  - `src/components/brand/hero.tsx` (+۶/-۰)
+
+Stage Summary:
+
+**وضعیت فعلی پروژه:**
+- 21 API route، 9 صفحه، 60+ کامپوننت (صفحه /social اضافه شد)
+- TypeScript: 0 errors ✅
+- ESLint: 0 errors, 0 warnings ✅
+- Build: success ✅
+- 0 API call اضافه — از کش مشترک TanStack Query استفاده می‌شه
+
+**اصلاحات تکمیل‌شده این دور:**
+1. صفحه اختصاصی `/social` با برندینگ قرمز (#ef4444)
+2. SocialPortal component با layout split (sidebar + posts panel)
+3. Channel sidebar با source filter + search + category filter
+4. Posts panel با full post content (text + images + meta)
+5. TelegramPostCard با show-more + image gallery + view count
+6. TwitterAccountCard با link-only fallback (X blocks scraping)
+7. Header navigation: تب Social در desktop + mobile menu
+8. Hero CTA: تب Social با red accent
+9. i18n: ۱۷ کلید ترجمه فارسی + انگلیسی
+10. صفر API call اضافه — queryKey مشترک با ChannelsHub
+
+**توصیه‌های اولویت‌دار برای مرحله بعدی:**
+1. [deploy] user باید CLOUDFLARE_API_TOKEN تنظیم کنه و `npm run deploy` اجرا کنه
+2. [polish] افزودن scroll arrows به category filter bar (مشابه market tag filter)
+3. [feature] prefetch هوشمند با hover روی channel items
+4. [feature] ذخیره آخرین channel انتخاب‌شده در URL hash (#channel=handle)

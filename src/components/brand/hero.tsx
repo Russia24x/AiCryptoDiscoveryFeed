@@ -257,6 +257,12 @@ export function Hero({ totalItems, sourcesOk, sourcesTried, onOpenSettings }: He
                 icon={<Film className="w-3.5 h-3.5" />}
                 accent="#f472b6"
               />
+              <HeroTab
+                href="/social"
+                label={lang === "fa" ? "شبکه‌ها" : "Social"}
+                icon={<Send className="w-3.5 h-3.5" />}
+                accent="#ef4444"
+              />
               {onOpenSettings && (
                 <HeroTab
                   onClick={onOpenSettings}
