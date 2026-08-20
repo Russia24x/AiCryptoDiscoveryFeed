@@ -3677,3 +3677,117 @@ Stage Summary:
 1. اضافه‌کردن prefetch هوشمند برای coin rows
 2. بهبود /api/feed (هنوز کند در cache miss)
 3. فشرده‌سازی worklog.md
+
+---
+Task ID: 27
+Agent: main (autonomous dev session)
+Task: اصلاح nobitex.com→.ir، رفع high/low/ath/atl صفر، لیست کامل امکانات با API های فعلی.
+
+Work Log:
+
+### مرحله 1: اصلاح nobitex.com → nobitex.ir
+- کاربر گفت: "nobitex.ir هست، نه nobitex.com"
+- اصلاح شد در hero.tsx: href="https://nobitex.ir/"
+
+### مرحله 2: رفع high/low 24h و ATH/ATL صفر
+- علت: CMC listings این داده‌ها رو نداره
+- راه‌حل ۱: اضافه‌شدن geckoMarket query (shared cache با market page)
+  - queryKey: ["market", "coingecko-markets", "top100"]
+  - وقتی CoinGecko rate-limited نباشه، از این cache استفاده می‌شه
+- راه‌حل ۲: تقریب ریاضی وقتی geckoMarket هم null باشه
+  - high_24h ≈ price (اگه صعودی) یا price × (1 + |change|/100) (اگه نزولی)
+  - low_24h ≈ price / (1 + change/100) (اگه صعودی) یا price (اگه نزولی)
+  - این فقط تقریبی هست ولی بهتر از $0
+- راه‌حل ۳: ATH/ATL وقتی 0 هست، کل section مخفی می‌شه
+
+### مرحله 3: تست production
+- /crypto/market/bitcoin: ✅
+  - قیمت: $۶۹,۲۷۱.۶۰
+  - بالاترین ۲۴س: $۶۹,۲۷۱.۶۰ (تقریبی)
+  - پایین‌ترین ۲۴س: $۶۴,۴۵۷.۱۹ (تقریبی)
+  - ATH/ATL: مخفی شده (درست)
+  - رتبه: #۱
+  - مارکت کپ: $۱.۳۹T
+  - حجم: $۴۸.۰۴B
+  - عرضه: $۲۰.۰۷M BTC
+  - تغییرات: همه نمایش داده می‌شن
+- TetherWidget: ✅ nobitex.ir link
+
+### مرحله 4: لیست کامل امکانات با API های فعلی
+
+**API های موجود (14 endpoint):**
+1. /api/prices — 10-coin ticker
+2. /api/feed — RSS aggregator
+3. /api/article — Article reader
+4. /api/channel — Telegram preview
+5. /api/og-image — OG image fetcher
+6. /api/weather — Weather
+7. /api/weather/geocode — City search
+8. /api/market/binance-ticker — Real-time BTC
+9. /api/market/fear-greed — Fear & Greed
+10. /api/market/fear-greed-historical — Historical F&G
+11. /api/market/cmc-listings — Top 100 coins (with price)
+12. /api/market/cmc-global — Global metrics
+13. /api/market/cmc-coin — Coin metadata
+14. /api/market/cmc-categories — Categories
+15. /api/market/top-gainers — Top gainers
+16. /api/market/global-stats — Global stats
+17. /api/market/trending — Trending coins
+18. /api/market/coingecko-markets — Top 100 (with high/low/ath/atl)
+19. /api/market/coingecko-coin — Full coin detail
+
+**کارهایی که می‌تونیم بدون درخواست جدید انجام بدیم:**
+
+#### A. با TanStack Query (کش مشترک):
+1. **Prefetch هوشمند**: وقتی کاربر روی coin row hover می‌کنه، query prefetch بشه
+2. **placeholderData**: نمایش stale data هنگام refetch (بدون flash loading)
+3. **select**: تبدیل داده‌ها در query level (مثلاً فیلتر کردن فقط کوین‌های خاص)
+4. **initialData**: استفاده از داده‌های localStorage به عنوان initialData
+5. **enabled**: کنترل شرطی اجرای query (مثلاً فقط وقتی کاربر scroll می‌کنه)
+6. **staleTime متغیر**: staleTime کوتاه‌تر برای صفحاتی که سریع refetch می‌شن
+
+#### B. با Zustand (state سراسری):
+7. **Global notifications store**: مدیریت toast ها و notification ها در کل اپ
+8. **User preferences**: ذخیره تنظیمات کاربر (تم، زبان، نوع نمایش)
+9. **Cross-component coordination**: هماهنگی بین کامپوننت‌ها بدون prop drilling
+10. **Optimistic updates**: بروزرسانی UI قبل از تایید API
+11. **Offline state tracking**: tracking وضعیت آنلاین/آفلاین
+
+#### C. با داده‌های موجود (بدون API جدید):
+12. **Sparkline در table**: استفاده از sparkline_7d از coingecko-markets در جدول
+13. **Price heatmap**: محاسبه گرما-نقشه تغییرات قیمت از داده‌های موجود
+14. **Market cap distribution**: محاسبه سهم هر کوین از کل market cap
+15. **Volume ranking**: رتبه‌بندی بر اساس حجم (بدون درخواست جدید)
+16. **Change acceleration**: محاسبه سرعت تغییر قیمت (change در 1h vs 24h)
+17. **Watchlist alerts**: مقایسه قیمت فعلی با هشدارهای تنظیم‌شده
+18. **Trending vs Top Gainers comparison**: مقایسه دو لیست برای پیدا کردن overlapping
+19. **Fear & Greed trend**: محاسبه روند ۳۰ روزه از fear-greed-historical
+20. **BTC dominance change**: محاسبه تغییر تسلط BTC از داده‌های global-stats
+
+#### D. بهبود UI/UX:
+21. **Virtual scrolling**: برای جدول 100 کوین (کاهش DOM nodes)
+22. **Lazy load images**: loading="lazy" برای همه تصاویر کوین
+23. **Skeleton screens**: بهبود skeleton ها برای تجربه بهتر
+24. **Keyboard navigation**: پشتیبانی از کلیدهای جهت‌نما
+25. **RTL/LTR transitions**: انیمیشن‌های RTL-aware
+
+Stage Summary:
+
+**وضعیت فعلی پروژه:**
+- 19 API route، 8 صفحه، 60+ کامپوننت
+- TypeScript: 0 errors
+- coin-detail: قیمت واقعی + high/low تقریبی + ATH/ATL مخفی وقتی 0
+- nobitex.ir: اصلاح شد
+- 25 کار ممکن با API های فعلی + TanStack Query + Zustand
+
+**اصلاحات تکمیل‌شده این دور:**
+- nobitex.com → nobitex.ir
+- high/low 24h: تقریب ریاضی وقتی CoinGecko unavailable
+- ATH/ATL: مخفی شدن وقتی 0
+- geckoMarket: shared cache query اضافه شد
+
+**توصیه‌های اولویت‌دار برای مرحله بعدی:**
+1. Prefetch هوشمند با hover روی coin rows
+2. Sparkline در جدول بازار
+3. Virtual scrolling برای جدول 100 کوین
+4. placeholderData برای نمایش stale data
