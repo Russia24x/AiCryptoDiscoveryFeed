@@ -472,7 +472,7 @@ function TetherWidget() {
     >
       {data?.unavailable ? (
         <a
-          href="https://www.nobitex.com/"
+          href="https://nobitex.ir/"
           target="_blank"
           rel="noopener noreferrer"
           className="block group"

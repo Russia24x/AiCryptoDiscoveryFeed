@@ -176,6 +176,38 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
     ) || null;
   }, [cmcListings, coinId]);
 
+  // --- Quaternary: CoinGecko markets (shared cache with market page) ---
+  // This query is shared with the market table (same queryKey ["market",
+  // "coingecko-markets", "top100"]), so it's FREE if the user has already
+  // visited /crypto/market. It provides high_24h, low_24h, ath, atl —
+  // data that CMC listings doesn't have.
+  const { data: geckoMarkets } = useQuery<{ coins: Array<{
+    id: string;
+    high_24h: number;
+    low_24h: number;
+    ath: number;
+    atl: number;
+  }> }>({
+    queryKey: ["market", "coingecko-markets", "top100"],
+    queryFn: async () => {
+      const res = await fetch("/api/market/coingecko-markets?per_page=100&sparkline=false", { cache: "no-store" });
+      if (!res.ok) return { coins: [] };
+      const json = await res.json();
+      // If rate-limited with cached data, serve it
+      if (json?.rateLimited && json?.coins?.length > 0) {
+        return { coins: json.coins };
+      }
+      return { coins: json?.coins || [] };
+    },
+    staleTime: 2 * 60_000,
+  });
+
+  // Find the matching CoinGecko market data for this coin
+  const geckoMarket = useMemo(() => {
+    if (!geckoMarkets?.coins) return null;
+    return geckoMarkets.coins.find((c) => c.id === coinId) || null;
+  }, [geckoMarkets, coinId]);
+
   const fa = (n: string | number) =>
     lang === "fa" ? String(n).replace(/[0-9]/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[+d]) : String(n);
 
@@ -272,18 +304,20 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
         current_price: { usd: price },
         market_cap: { usd: marketCap },
         total_volume: { usd: volume24h },
-        high_24h: { usd: 0 },
-        low_24h: { usd: 0 },
+        // high_24h and low_24h come from coingecko-markets (shared cache)
+        high_24h: { usd: geckoMarket?.high_24h || 0 },
+        low_24h: { usd: geckoMarket?.low_24h || 0 },
         price_change_percentage_1h_in_currency: { usd: change1h },
         price_change_percentage_24h_in_currency: { usd: change24h },
         price_change_percentage_7d_in_currency: { usd: change7d },
         price_change_percentage_30d_in_currency: { usd: change30d },
         price_change_percentage_60d_in_currency: { usd: change60d },
         price_change_percentage_1y_in_currency: { usd: change90d },
-        ath: { usd: 0 },
+        // ath and atl come from coingecko-markets (shared cache)
+        ath: { usd: geckoMarket?.ath || 0 },
         ath_change_percentage: { usd: 0 },
         ath_date: { usd: "" },
-        atl: { usd: 0 },
+        atl: { usd: geckoMarket?.atl || 0 },
         atl_change_percentage: { usd: 0 },
         atl_date: { usd: "" },
         circulating_supply: circulatingSupply,
