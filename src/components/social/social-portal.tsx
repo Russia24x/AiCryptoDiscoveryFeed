@@ -541,7 +541,10 @@ function TelegramChannelView({
   t: any;
 }) {
   // SHARED query key with ChannelsHub so the cache is reused.
-  // 5min staleTime — same as ChannelsHub.
+  // staleTime 2min — Telegram posts can appear every few minutes, so
+  // we want fresh content when the user returns to the tab.
+  // refetchOnWindowFocus is enabled globally (default in query-client.ts).
+  // No refetchInterval — relies on focus refetch + manual refresh button.
   const { data, isLoading, error, refetch, isFetching, dataUpdatedAt } = useQuery<ChannelData>({
     queryKey: ["channel", channel.handle],
     queryFn: async () => {
@@ -552,7 +555,7 @@ function TelegramChannelView({
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as ChannelData;
     },
-    staleTime: 5 * 60_000,
+    staleTime: 2 * 60_000,
     gcTime: 10 * 60_000,
     retry: 1,
   });

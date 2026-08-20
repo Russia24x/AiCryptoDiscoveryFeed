@@ -20,10 +20,16 @@ import { QueryClient, isServer } from "@tanstack/react-query";
  *     unsubscribes, so back-navigation feels instant.
  *   - retry: 1 — for transient failures, one retry is enough.
  *   - retryDelay: exponential backoff (default TanStack behavior).
- *   - refetchOnWindowFocus: false — disabled by default to avoid hammering
- *     rate-limited APIs (CoinGecko free tier is 30 calls/min). Individual
- *     queries that need live data (like ticker prices) can opt in with
- *     `refetchOnWindowFocus: true`.
+ *   - refetchOnWindowFocus: 'always' — REFRESHES stale queries when the user
+ *     returns to the tab. This is the main lever for "fresh content" without
+ *     polling. Combined with staleTime, this means:
+ *       - If data is fresh (< staleTime): no refetch on focus.
+ *       - If data is stale (> staleTime): refetch on focus (silent, in
+ *         background, no loading spinner — TanStack shows stale data
+ *         while refetching).
+ *     This is MUCH cheaper than refetchInterval (which polls every N
+ *     seconds even when the user is not looking) and gives users fresh
+ *     content the moment they switch back to the tab.
  *   - refetchOnReconnect: true — when network comes back after offline.
  *
  * Per-query staleTime overrides (in components):
@@ -31,6 +37,21 @@ import { QueryClient, isServer } from "@tanstack/react-query";
  *   - Market data: 60s (medium)
  *   - Fear/Greed, Altcoin Season: 5min (slow)
  *   - Static metadata: 30min (very slow)
+ *
+ * Refetch frequency calculation (worst case for CoinGecko free tier
+ * 30 calls/min):
+ *   - User opens /crypto/market: 6 queries (markets, cmc-listings,
+ *     global-stats, trending, fear-greed-historical, top-gainers) = 6 calls
+ *   - User switches to another tab and comes back after 2min:
+ *     queries with staleTime <= 2min refetch (markets, global-stats) = 2 calls
+ *   - User stays on page for 10min without switching tabs: 0 refetches
+ *     (no polling, only focus-based refetch)
+ *   - User navigates to /crypto/market/bitcoin: 2 new queries, both cached
+ *     (shared key for geckoMarkets) = 1-2 calls
+ *
+ * Total per minute of active browsing: ~6-10 calls (well within 30/min).
+ * The previous setup with refetchInterval on every widget could hit
+ * 30 calls/min within 3-4 minutes of staying on a page.
  */
 export function makeQueryClient() {
   return new QueryClient({
@@ -39,8 +60,10 @@ export function makeQueryClient() {
         staleTime: 60 * 1000,
         gcTime: 10 * 60 * 1000,
         retry: 1,
-        refetchOnWindowFocus: false,
+        retryDelay: (attemptIndex: number) => Math.min(1000 * 2 ** attemptIndex, 30_000),
+        refetchOnWindowFocus: true,
         refetchOnReconnect: true,
+        refetchOnMount: true,
       },
     },
   });

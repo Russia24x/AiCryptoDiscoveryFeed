@@ -367,6 +367,11 @@ export async function GET(request: Request) {
 
     const posts = extractPosts(html, handle);
 
+    // Telegram's web preview returns posts in chronological order (oldest
+    // first). Users expect newest-first (like every social media app).
+    // Reverse the array before returning to the client.
+    posts.reverse();
+
     return NextResponse.json(
       {
         handle,
@@ -377,7 +382,13 @@ export async function GET(request: Request) {
       },
       {
         headers: {
-          "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+          // Reduced from 300s (5min) to 60s — Telegram posts can appear
+          // every few minutes, so a 5min edge cache was too aggressive
+          // (users saw stale content for up to 10min with SWR).
+          // 60s edge cache + 120s SWR gives fresh content within ~2min
+          // of a new post, while still protecting upstream t.me from
+          // being hit on every page load.
+          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=120",
         },
       }
     );

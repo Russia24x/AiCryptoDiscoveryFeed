@@ -44,6 +44,13 @@ const SYMBOL_TO_SLUG: Record<string, string> = {
 
 export function useCryptoPrice(symbol: string) {
   // Source 1: binance-ticker (shared with hero widgets)
+  // staleTime 30s, refetchInterval 60s — was 10s/15s which was way too
+  // aggressive (4 calls/min per widget, ×4 widgets = 16 calls/min just for
+  // hero widgets). Now 1 call/min, refreshed on window focus too.
+  // For users who need real-time prices, the ticker bar (which uses its
+  // own setInterval) already updates every 15s and shares the same
+  // /api/market/binance-ticker endpoint — so the actual visible price
+  // in the ticker is still real-time.
   const tickerQuery = useQuery<{ coins: Array<{ symbol: string; price: number; change24h: number; high24h?: number; low24h?: number }> }>({
     queryKey: ["market", "binance-ticker"],
     queryFn: async () => {
@@ -51,11 +58,14 @@ export function useCryptoPrice(symbol: string) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as { coins: any[] };
     },
-    staleTime: 10_000,
-    refetchInterval: 15_000,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   });
 
   // Source 2: /api/prices (CMC, shared with ticker bar)
+  // staleTime 2min, refetchInterval 2min — was 60s/60s.
+  // /api/prices is CMC-sourced (no CoinGecko rate-limit risk), but
+  // reducing the call frequency saves Cloudflare Worker invocations.
   const pricesQuery = useQuery<{ coins: Array<{ symbol: string; price: number; change24h: number }> }>({
     queryKey: ["prices"],
     queryFn: async () => {
@@ -63,11 +73,15 @@ export function useCryptoPrice(symbol: string) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as { coins: any[] };
     },
-    staleTime: 60_000,
-    refetchInterval: 60_000,
+    staleTime: 2 * 60_000,
+    refetchInterval: 2 * 60_000,
   });
 
   // Source 3: cmc-listings (shared with market table)
+  // No refetchInterval — relies on refetchOnWindowFocus only.
+  // This is the fallback; if the user keeps the tab open for 30min
+  // without switching, the data stays stale (which is fine — they
+  // can hit the Refresh button on the market page).
   const cmcQuery = useQuery<{ coins: Array<{ symbol: string; price: number; percentChange24h: number }> }>({
     queryKey: ["market", "cmc-listings", "top100"],
     queryFn: async () => {

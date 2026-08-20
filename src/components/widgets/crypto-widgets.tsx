@@ -110,8 +110,12 @@ function TopGainersWidget() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as { coins: CoinListing[] };
     },
-    refetchInterval: 5 * 60_000,
-    staleTime: 2 * 60_000,
+    // No refetchInterval — relies on refetchOnWindowFocus (default).
+    // Top gainers change every few minutes; 5min staleTime + focus
+    // refetch gives fresh data when the user comes back to the tab
+    // without polling the API every 5min while the tab is in the
+    // background.
+    staleTime: 5 * 60_000,
   });
 
   return (
@@ -191,8 +195,10 @@ function DominanceWidget() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return (await res.json()) as GlobalMetrics;
     },
-    refetchInterval: 5 * 60_000,
-    staleTime: 2 * 60_000,
+    // No refetchInterval — relies on refetchOnWindowFocus (default).
+    // Dominance shifts slowly (a few % per hour at most). 5min
+    // staleTime + focus refetch is plenty.
+    staleTime: 5 * 60_000,
   });
 
   const btcDom = data?.btcDominance ?? 0;

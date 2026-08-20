@@ -523,7 +523,8 @@ function FearGreedWidget() {
   const { lang } = useLanguage();
 
   // Crypto Fear & Greed Index from alternative.me. Updates hourly upstream,
-  // so we refresh every 5 min — plenty fresh.
+  // so we refresh via refetchOnWindowFocus (default) only.
+  // staleTime 10min matches the upstream update frequency.
   const { data, isLoading } = useQuery<FngData>({
     queryKey: ["market", "fear-greed"],
     queryFn: async () => {
@@ -535,8 +536,10 @@ function FearGreedWidget() {
       }
       return json as FngData;
     },
-    refetchInterval: 5 * 60_000,
-    staleTime: 2 * 60_000,
+    // No refetchInterval — relies on refetchOnWindowFocus (default).
+    // F&G updates hourly upstream; 10min staleTime + focus refetch
+    // is plenty fresh.
+    staleTime: 10 * 60_000,
   });
 
   return (
@@ -646,8 +649,9 @@ function WeatherWidget({ onOpenSettings }: { onOpenSettings?: () => void }) {
       return json as WeatherData;
     },
     enabled: hydrated, // Don't fetch until we've hydrated city from localStorage
-    refetchInterval: 10 * 60_000,
-    staleTime: 5 * 60_000,
+    // No refetchInterval — relies on refetchOnWindowFocus (default).
+    // Weather changes slowly; 10min staleTime + focus refetch is plenty.
+    staleTime: 10 * 60_000,
   });
 
   return (

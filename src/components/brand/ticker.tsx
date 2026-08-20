@@ -63,9 +63,15 @@ export function Ticker() {
       }
     };
 
-    // Kick off immediately, then every 15s
+    // Kick off immediately, then every 30s.
+    // Was 15s — too aggressive for the CoinGecko free tier (30 req/min).
+    // 30s gives ~2 calls/min, well within limits, while still feeling
+    // "live" to users. The visible price flash animation still works.
+    // The /api/prices endpoint has its own 60s edge cache, so even if
+    // multiple components call /api/prices within 60s, only 1 upstream
+    // call hits CoinGecko per minute per region.
     load();
-    intervalId = setInterval(load, 15_000);
+    intervalId = setInterval(load, 30_000);
 
     // Pause when tab hidden, resume + immediate refresh when visible again
     const onVis = () => {
