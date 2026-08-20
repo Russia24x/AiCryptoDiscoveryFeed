@@ -64,19 +64,24 @@ export function Logo({
     ? SOCIAL_TINT
     : meta?.tint || null;
 
-  // Category display name
+  // Category display name — ALWAYS English in the logo (not translated).
+  // The user specifically requested this: only the logo area should
+  // show the English category name, even when the site is in Persian.
   let categoryName: string | null = null;
   if (activeCategory && activeCategory !== "all") {
     if (isSocial) {
-      categoryName = lang === "fa" ? "شبکه‌ها" : "Social";
+      categoryName = "Social";
     } else if (meta) {
-      categoryName = lang === "fa" ? meta.label : meta.labelEn;
+      categoryName = meta.labelEn;
     }
   }
 
   return (
-    <div className={cn("flex flex-col items-start leading-none", className)}>
-      {/* Brand: Ai24Discovery */}
+    <div
+      className={cn("flex flex-col items-start leading-none", className)}
+      dir="ltr"
+    >
+      {/* Brand: Ai24Discovery — always LTR regardless of page direction */}
       <div className="flex items-baseline gap-0.5 font-extrabold tracking-tight font-display">
         <span className={cn(s.brand)} style={{ color: "#00ffff" }}>
           Ai

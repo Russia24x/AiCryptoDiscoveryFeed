@@ -14,6 +14,7 @@ import {
   Telescope,
   Activity,
   Send,
+  Rocket,
   TrendingUp,
   TrendingDown,
   Thermometer,
@@ -256,6 +257,12 @@ export function Hero({ totalItems, sourcesOk, sourcesTried, onOpenSettings }: He
                 label={lang === "fa" ? "سرگرمی" : "Entertainment"}
                 icon={<Film className="w-3.5 h-3.5" />}
                 accent="#f472b6"
+              />
+              <HeroTab
+                href="/space"
+                label={lang === "fa" ? "فضا" : "Space"}
+                icon={<Rocket className="w-3.5 h-3.5" />}
+                accent="#e8e6e1"
               />
               <HeroTab
                 href="/social"
