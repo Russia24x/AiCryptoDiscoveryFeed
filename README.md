@@ -1,363 +1,248 @@
-# Ai Crypto Discovery
+# Ai24Discovery
 
-A modern, bilingual (Persian/English) content discovery + market intelligence platform aggregating live news, crypto prices, weather, and curated social media channels across five verticals: Crypto, AI, Tech, Gaming, and Entertainment.
+A modern, bilingual (Persian/English) content discovery + market intelligence platform aggregating live news, crypto prices, weather, curated social media channels, and space exploration news across **7 verticals**: Crypto, AI Lab, Tech, Gaming, Entertainment, Space, and Social.
 
-Built with Next.js 16, TypeScript, Tailwind CSS 4, TanStack Query v5, and shadcn/ui. Deployed on Cloudflare Workers via @opennextjs/cloudflare (free tier) — no database, no credit card required, fully stateless, all user preferences stored in browser localStorage.
+Built with Next.js 16, TypeScript, Tailwind CSS 4, TanStack Query v5, Zustand, and Framer Motion. Deployed on Cloudflare Workers via @opennextjs/cloudflare (free tier) — no database, no credit card required, fully stateless, all user preferences stored in browser localStorage.
 
 ---
 
 ## ✨ Features
 
 ### Content Discovery (Home + Category Pages)
-- **5 dedicated category pages**: /crypto, /ai, /tech, /gaming, /entertainment
+- **7 dedicated category pages**: /crypto, /ai, /tech, /gaming, /entertainment, /space, /social
 - **Home = Hub**: Mixed content from all categories with global widgets
-- **27 RSS sources** across 5 categories in Persian and English
+- **31 RSS sources** across 7 categories in Persian and English
+- **pathFilter technology**: Sources like Zoomit (whose category-specific RSS broke after Next.js migration) use the main feed with client-side URL path filtering
 - **Telegram channel previews** with rich HTML rendering
 - **X/Twitter curated accounts** across categories
-- **In-app article reader** with 4-strategy HTML extraction
+- **In-app article reader** with 5-strategy HTML extraction:
+  1. JSON-LD `articleBody` (for JS-rendered sites like Digiato)
+  2. Content-class div extraction (nesting-aware tokenizer parser)
+  3. `<article>` tag extraction (nesting-aware)
+  4. `<main>` tag extraction (nesting-aware)
+  5. Paragraph fallback (≥5 paragraphs, Persian nav/footer keyword filter)
 - **Bookmarks + Read-Later queue** (7-day TTL) with tab switcher
 - **Search history** with debounced suggestions
 - **Bilingual FA/EN** with RTL/LTR support, Persian digit localization
 - **Dark/Light/System theme** toggle with CSS logical properties
 
+### Social Portal (/social)
+- **Dedicated full-page social media viewer** with red brand identity (#ef4444)
+- **Channel sidebar** with source filter (All/Telegram/X), search, category filter
+- **Full post content** — text, images, view counts, timestamps
+- **Show more/less** for long posts
+- **Shared TanStack Query cache** with ChannelsHub sidebar (zero duplicate API calls)
+- **Twitter account cards** (X blocks scraping — shows link card)
+
 ### Market Intelligence Portal (/crypto/market)
-- **Sortable table** of top 100 cryptocurrencies (CoinGecko API)
-- **Coin detail page** (/crypto/market/[coin]) with 3-source data merge:
+- **Sortable table** of top 100 cryptocurrencies
+  - Columns: #, Name, Price, 24h%, 7d%, 30d%, Volume, Market Cap, Dominance
+  - Sortable by clicking headers, direction toggle
+  - Mobile: cards with MiniTrend, category badge, directional border colors
+- **Coin detail page** (/crypto/market/[coin]) with multi-source data merge:
   1. **CoinGecko**: price, market cap, supply, ATH/ATL, sparkline, description, links
   2. **CoinMarketCap (keyless)**: metadata, tags, logo, description, URLs
-  3. **DefiLlama**: TVL, fees/revenue, methodology, 90-day TVL chart
-- **Watchlist** (localStorage, max 50 coins, star toggle)
+  3. **Shared cache**: geckoMarkets for high/low/ATH/ATL data
+- **MarketPulse** — unified market overview (replaces duplicate Stats Bar + MarketOverview):
+  - 3 hero stats (Sentiment | Total M.Cap | 24h Volume)
+  - Dominance donut chart (pure SVG, BTC/ETH/Others segments)
+  - 6 breakdown stats (Altcoins, DeFi, Stablecoins, Derivatives, Activity, Top 10%)
+- **Watchlist** (localStorage, max 50 coins, star toggle, pinned to top)
 - **Price alerts** with browser notifications (Notification API)
-- **Category filter** (CMC tags extracted from cached listings)
-- **Trending coins** sidebar (CoinGecko trending)
-- **Altcoin Season gauge** (computed from CMC listings)
+- **Category filter bar** with scroll arrows + count badges (TagFilterBar)
+- **Trending coins** sidebar, **Top Gainers** sidebar, **Hot Coins** (trending ∩ gainers)
 - **Fear & Greed historical chart** (30 days)
-- **Global stats bar** (total market cap, BTC/ETH dominance, DeFi)
-- **Framer-motion animations** (staggered rows, layout transitions)
+- **24h Range Bar** — visual gradient showing current price position
+- **ATH/ATL cycle bar** — log-scale positioning between all-time extremes
+- **PriceChange magnitude bars** — bidirectional bars for 6 timeframes
+- **Supply section** with dual-mode progress (mined/circulation)
 
 ### Brand Design
-- **Home brand**: "Ai Discovery" (no category-specific word)
-- **Crypto brand**: "Ai Crypto Discovery" (full brand)
-- **Estedad** display font for headings (modern Persian geometric)
-- **Vazirmatn** for body text, **Inter** for Latin/numbers
-- **Teal accent** (#2dd4bf), dark charcoal bg (#0d0f12)
-- **Glass-morphism** effects, card hover glows
+- **Brand name**: **Ai24Discovery**
+  - **Ai** → Cyan (#00ffff)
+  - **24** → White (#ffffff)
+  - **Discovery** → Bright Teal (#2dd4bf)
+- **Category name below logo** — always English, with category tint color:
+  - Crypto → #f7931a (orange)
+  - AI Lab → #2dd4bf (teal)
+  - Tech → #38bdf8 (blue)
+  - Gaming → #a78bfa (purple)
+  - Entertainment → #f472b6 (pink)
+  - Space → #e8e6e1 (milky white)
+  - Social → #ef4444 (red)
+- **Logo is LTR-isolated** (`dir="ltr"`) — never mirrors in RTL mode
+- **Estedad** display font for headings, **Vazirmatn** for body, **Inter** for Latin/numbers
+- **Dark charcoal bg** (#0d0f12), **cream text** (#f4f1ea)
 
 ---
 
 ## 🛠 Tech Stack
 
 | Layer | Technology |
-|---|---|
-| **Framework** | Next.js 16 (App Router, Turbopack) |
-| **Language** | TypeScript 5 (strict mode, noImplicitAny) |
-| **Styling** | Tailwind CSS 4 + shadcn/ui (New York) |
-| **Server State** | TanStack Query v5 (QueryClient) |
-| **Client State** | localStorage hooks + Zustand (UI store) |
-| **Animations** | Framer Motion (AnimatePresence, layout) |
-| **Icons** | lucide-react |
-| **Fonts** | Vazirmatn (Persian), Inter (Latin), Estedad (display), JetBrains Mono (code) |
-| **Hosting** | Cloudflare Workers (free tier, via @opennextjs/cloudflare) |
-| **Package manager** | npm |
+|-------|-----------|
+| Framework | Next.js 16 (Turbopack) |
+| Language | TypeScript 5 |
+| Styling | Tailwind CSS 4 + CSS custom properties |
+| Data fetching | TanStack Query v5 (shared cache, refetchOnWindowFocus) |
+| State | Zustand (UI store) + localStorage (useSyncExternalStore) |
+| Animation | Framer Motion (layout transitions, staggered rows) |
+| UI components | shadcn/ui (Sheet, Button, Select, Toast, etc.) |
+| Icons | lucide-react |
+| Deployment | Cloudflare Workers (@opennextjs/cloudflare) |
+| Database | None (stateless, browser-only) |
+
+---
+
+## 📊 Project Stats
+
+| Metric | Count |
+|--------|-------|
+| TypeScript/TSX files | 121 |
+| Lines of code | ~22,000 |
+| API routes | 21 |
+| Pages | 10 |
+| Components | 62 |
+| Custom hooks | 20 |
+| RSS sources | 31 (Persian + English) |
+| Telegram channels | 3 |
+| X/Twitter accounts | 8 |
+| Categories | 7 (Crypto, AI, Tech, Gaming, Entertainment, Space, Social) |
+| Languages | 2 (Persian RTL, English LTR) |
+| TypeScript errors | 0 |
+| ESLint errors | 0 |
+
+---
+
+## 📰 Sources
+
+### Persian RSS (14 sources)
+**Crypto**: ArzDigital Breaking, MihanBlockchain News, MihanBlockchain Learn, Digiato Crypto
+**AI**: Digiato AI, Zoomit AI (pathFilter: /ai-articles/)
+**Tech**: Digiato Tech, SakhtAfzarMag, ShahrSakhtAfzar
+**Gaming**: Vigiato Game Reviews, GameFa Game News
+**Entertainment**: GameFa Cinema, Vigiato Cinema & TV, Vigiato Entertainment
+**Space**: Zoomit Space (pathFilter: /space/)
+
+### English RSS (17 sources)
+**Crypto**: CoinDesk, Cointelegraph, Decrypt, Bitcoin.com News, BeInCrypto
+**AI**: TechCrunch AI, VentureBeat AI, The Verge AI
+**Tech**: Ars Technica, Engadget, TechCrunch
+**Gaming**: IGN, Polygon
+**Entertainment**: Variety, The Hollywood Reporter
+**Space**: Space.com, NASA News
+
+### Telegram Channels (3)
+MasterSharkCrypto (crypto/fa), SmartAINews (ai/fa), Crypto (crypto/en)
+
+### X/Twitter Accounts (8)
+Vitalik Buterin, CZ, Balaji, Sam Altman, Andrej Karpathy, Yann LeCun, IGN, Variety
+
+---
+
+## 🚀 Getting Started
+
+```bash
+# Install dependencies
+npm install
+
+# Run dev server
+npm run dev
+
+# Build for production
+npm run build
+
+# Build for Cloudflare Workers
+npm run build:worker
+
+# Deploy to Cloudflare
+CLOUDFLARE_API_TOKEN=your-token npm run deploy
+```
 
 ---
 
 ## 📁 Project Structure
 
 ```
-ai-crypto-discovery/
-├── src/
-│   ├── app/
-│   │   ├── page.tsx                    # Home hub page
-│   │   ├── crypto/page.tsx             # Crypto category page
-│   │   ├── crypto/market/page.tsx     # Market Intelligence portal
-│   │   ├── crypto/market/[coin]/page.tsx  # Coin detail page
-│   │   ├── ai/page.tsx                 # AI category page
-│   │   ├── tech/page.tsx               # Tech category page
-│   │   ├── gaming/page.tsx             # Gaming category page
-│   │   ├── entertainment/page.tsx      # Entertainment category page
-│   │   ├── providers.tsx               # TanStack Query provider
-│   │   ├── layout.tsx                  # Root layout (fonts, providers)
-│   │   ├── globals.css                 # Brand theme + typography
-│   │   └── api/                        # 27 API routes (see below)
-│   ├── components/
-│   │   ├── brand/                      # Header, Hero, Ticker, Footer, etc.
-│   │   ├── feed/                       # FeedCard, FeedGrid, ArticleReader, etc.
-│   │   ├── market/                     # MarketIntelligence, CoinDetail
-│   │   ├── widgets/                    # CryptoWidgets, WidgetPrimitives
-│   │   ├── pages/                      # CategoryPage (shared component)
-│   │   └── ui/                         # shadcn/ui components (32 files)
-│   ├── hooks/                          # 14 custom hooks (see below)
-│   ├── lib/
-│   │   ├── query-client.ts             # TanStack Query client singleton
-│   │   ├── sources/index.ts            # RSS + Telegram + Twitter sources
-│   │   └── utils.ts                    # cn() utility
-│   ├── i18n/translations.ts            # FA + EN dictionaries
-│   └── types/feed.ts                   # TypeScript types
-├── public/                             # Static assets + sw.js (service worker)
-├── scripts/                            # Dev watcher, audit scripts
-├── prisma/                             # (Unused — no database)
-├── next.config.ts                      # Next.js config
-├── tsconfig.json                       # TypeScript strict config
-├── package.json
-└── README.md                           # ← You are here
+src/
+├── app/                        # Next.js App Router
+│   ├── page.tsx                # Home (hub)
+│   ├── ai/page.tsx             # AI category
+│   ├── crypto/                 # Crypto category + market
+│   │   ├── page.tsx
+│   │   └── market/
+│   │       ├── page.tsx        # Market Intelligence portal
+│   │       └── [coin]/page.tsx # Coin detail
+│   ├── tech/page.tsx           # Tech category
+│   ├── gaming/page.tsx         # Gaming category
+│   ├── entertainment/page.tsx  # Entertainment category
+│   ├── space/page.tsx          # Space category (NEW)
+│   ├── social/page.tsx         # Social portal (NEW)
+│   ├── api/                    # 21 API routes
+│   │   ├── feed/              # RSS aggregation
+│   │   ├── article/           # Article extraction
+│   │   ├── channel/           # Telegram preview
+│   │   ├── prices/            # CMC price ticker
+│   │   ├── market/            # 12 market API routes
+│   │   ├── weather/           # Open-Meteo weather
+│   │   ├── tether/            # Nobitex Tether price
+│   │   └── og-image/          # OG image proxy
+│   ├── globals.css            # Theme + brand tokens
+│   ├── layout.tsx             # Root layout
+│   └── providers.tsx          # QueryClient + theme
+├── components/
+│   ├── brand/                  # Header, Footer, Hero, Logo, Ticker
+│   ├── feed/                   # FeedGrid, FeedCard, ArticleReader, Channels
+│   ├── market/                 # MarketIntelligence, CoinDetail, UI primitives
+│   ├── social/                 # SocialPortal (dedicated /social page)
+│   ├── widgets/                # Crypto widgets (ETH, SOL, TopGainers, Dominance)
+│   ├── pages/                  # CategoryPage (shared layout)
+│   └── ui/                     # shadcn/ui components (30+)
+├── hooks/                      # 20 custom hooks
+├── lib/
+│   ├── sources/index.ts        # Source definitions (RSS + Telegram + Twitter)
+│   ├── query-client.ts         # TanStack Query config
+│   ├── markdown.ts             # Safe Markdown→HTML renderer
+│   └── utils.ts                # cn() helper
+└── i18n/
+    └── translations.ts         # FA + EN translations
 ```
 
 ---
 
-## 🔌 API Routes (21 routes)
-
-### Content APIs
-| Endpoint | Source | Cache (edge) | Purpose |
-|---|---|---|---|
-| `/api/feed` | RSS feeds (27 sources) | 300s | Aggregate RSS/Atom feeds |
-| `/api/article` | Source website | 600s | Extract full article HTML |
-| `/api/channel` | t.me/s/<handle> | 300s | Scrape Telegram channel posts |
-| `/api/og-image` | Source website | 3600s | Fetch og:image for cards |
-| `/api/prices` | **CMC (primary)** → CoinGecko (fallback) | 60s | 10-coin price ticker |
-
-### Market Data APIs
-| Endpoint | Source | Cache (edge) | Fallback | Purpose |
-|---|---|---|---|---|
-| `/api/market/binance-ticker` | Binance → Coinbase → CoinGecko | 10s | In-memory | 14-coin real-time ticker |
-| `/api/market/fear-greed` | alternative.me | 900s | In-memory | Crypto Fear & Greed Index |
-| `/api/market/fear-greed-historical` | alternative.me | 900s | — | Historical F&G (7-365 days) |
-| `/api/market/cmc-listings` | CoinMarketCap (keyless) | 60s | In-memory | Top 100 coins with tags |
-| `/api/market/cmc-global` | CoinMarketCap (keyless) | 60s | In-memory | Global market metrics |
-| `/api/market/cmc-coin` | CoinMarketCap (keyless) | 300s | — | Coin metadata (tags, logo, URLs) |
-| `/api/market/cmc-categories` | CoinMarketCap (keyless) | 300s | — | Categories list |
-| `/api/market/top-gainers` | Our cmc-listings | 60s | — | Top gainers (24h change >5%) |
-| `/api/market/global-stats` | Our cmc-global | 60s | — | Global stats wrapper |
-| `/api/market/trending` | CoinGecko | 300s | — | Trending coins (search) |
-| `/api/market/coingecko-markets` | CoinGecko | 60s | In-memory + retry | Top 100 markets table |
-| `/api/market/coingecko-coin` | CoinGecko | 120s | In-memory + retry | Full coin detail |
-| `/api/weather` | Open-Meteo | 600s | — | Weather by lat/lon |
-| `/api/weather/geocode` | Open-Meteo Geocoding | 3600s | — | City search worldwide |
-
-> **Note (Phase 21)**: The following API routes were removed to reduce
-> resource consumption and Worker exceeded errors:
-> - `/api/market/iran-tether` (Wallex/Nobitex geoblocked from Cloudflare Workers)
-> - `/api/market/sp500` (Yahoo Finance rate-limits/times out)
-> - `/api/market/altcoin-season` (non-essential)
-> - `/api/market/defillama`, `/api/market/defillama-protocol`,
->   `/api/market/defillama-summary` (the last one took 11.8s and caused
->   Cloudflare Worker resource limit errors)
-> - `/api/market/coingecko-categories` (dead code — was never called from UI)
->
-> The TetherWidget and Sp500Widget now show static informational widgets
-> with links to nobitex.com and finance.yahoo.com respectively, instead
-> of fetching live data that was always failing.
-
-### API Architecture
-
-All API routes use:
-- Node.js runtime (default, via OpenNext) — `runtime = "edge"` removed in Phase 21
-- `dynamic = "force-dynamic"` — always fresh
-- `revalidate = 0` — no ISR
-- `Cache-Control: public, s-maxage=X, stale-while-revalidate=Y` — edge caching
-- In-memory cache (`let cached = ...`) — fallback when upstream fails
-- Fallback chains (`const sources = [tryA, tryB, tryC]`) — multi-source resilience
-- Rate-limit detection (HTTP 429) — graceful degradation
-- Exponential backoff retry (1 retry, 1s delay) — on CoinGecko routes
-
----
-
-## 🎣 State Management
-
-### Server State: TanStack Query v5
-
-**QueryClient** (`src/lib/query-client.ts`):
-- Singleton instance (one per browser tab, one per edge request)
-- `staleTime: 30s` — data considered fresh for 30s
-- `gcTime: 5min` — cache kept 5min after last observer unsubscribes
-- `retry: 1` — one retry on failure
-- `refetchOnWindowFocus: true` — refresh when tab becomes visible
-- `refetchOnReconnect: true` — refresh when network reconnects
-
-**Usage pattern** (in components):
-```tsx
-const { data, isLoading, error } = useQuery({
-  queryKey: ["market", "coingecko-markets", "top100"],
-  queryFn: async () => { /* fetch */ },
-  staleTime: 60_000,
-  refetchInterval: 5 * 60_000,
-});
-```
-
-**Query key hierarchy**: `["namespace", "sub-namespace", "id"]`
-- `["market", "binance-ticker", "BTC"]` — BTC from Binance
-- `["market", "coingecko-coin", "bitcoin"]` — Bitcoin detail
-- `["feed", category, lang, sourceFilter, search]` — RSS feed
-- `["weather", lat, lon]` — Weather data
-
-**Shared cache**: When two components use the same `queryKey`, TanStack Query deduplicates the request — only one fetch is made, both receive the same data. Example: `EthWidget` and `SolWidget` both fetch from `/api/market/binance-ticker` — one request, two consumers.
-
-### Client State: localStorage Hooks
-
-| Hook | localStorage Key | Max Items | TTL | Cross-tab |
-|---|---|---|---|---|
-| `useLanguage` | `acd:lang` | — | — | ✅ |
-| `useTheme` | `acd:theme` | — | — | ✅ |
-| `useBookmarks` | `acd:bookmarks` | 200 | — | ✅ |
-| `useReadLater` | `acd:read-later` | 100 | 7 days | ✅ |
-| `useSearchHistory` | `acd:search-history` | 12 | — | ✅ |
-| `useWatchlist` | `acd:watchlist` | 50 | — | ✅ |
-| `usePriceAlerts` | `acd:price-alerts` | 20 | — | ✅ |
-| Weather city | `acd:weather-city` | — | — | ✅ |
-| Custom channels | `acd:custom-channels` | — | — | ✅ |
-| Feed cache | `acd:feed-cache:*` | — | 5 min | ✅ |
-
-All hooks use:
-- Module-level cache variable (for singleton state like language/theme)
-- `window.dispatchEvent(new CustomEvent(...))` for same-tab sync
-- `storage` event for cross-tab sync
-- `useState` + `useEffect` for React integration
-
-### Why not Zustand?
-
-Zustand is listed in `package.json` but **not used**. The project's state management needs are met by:
-1. **TanStack Query** for all server state (API data)
-2. **localStorage hooks** for all client state (user preferences)
-3. **Module-level cache** for singleton state (language, theme)
-
-Zustand would add an abstraction layer without benefit. If future needs require a global client store (e.g., user accounts, multi-tab state synchronization), Zustand can be introduced.
-
----
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Node.js 18+ or Bun
-- npm
-
-### Local Development
-
-```bash
-git clone https://github.com/Russia24x/AiCryptoDiscoveryFeed.git
-cd AiCryptoDiscoveryFeed
-npm install --legacy-peer-deps
-npm run dev
-# Open http://localhost:3000
-```
-
-### Production Build (Local)
-
-```bash
-npm run build
-npm start
-```
-
-### Cloudflare Workers Build
-
-```bash
-npm run build          # next build (creates .next/)
-npm run build:worker   # opennextjs-cloudflare build (creates .open-next/)
-# Output: .open-next/worker.js + .open-next/assets/
-```
-
----
-
-## ☁️ Deployment to Cloudflare Workers
-
-See [`DEPLOYMENT.md`](./DEPLOYMENT.md) for the complete guide.
-
-**Free tier limits (sufficient for this project):**
-- 100,000 Worker requests per day
-- 10 ms CPU time per request (free) / 50 ms (paid)
-- 1.36 MiB gzipped Worker (well under 3 MiB free limit)
-- No credit card required (Workers + Static Assets only, no R2)
-
-**Key notes:**
-- All API routes run on Node.js runtime (via OpenNext) — `runtime = "edge"` removed
-- `@opennextjs/cloudflare` adapter converts Next.js to Cloudflare Workers format
-- `wrangler.jsonc` with `nodejs_compat` + `global_fetch_strictly_public` flags
-- No R2 binding (project is local-first, all data fetching client-side)
-- Worker name: `aidiscovery` (matches Cloudflare Dashboard)
-
----
-
-## 🌐 Data Sources
-
-### Content (RSS + Social)
-- **Persian**: ArzDigital, MihanBlockchain, Digiato, Zoomit, Vigiato, GameFa
-- **English**: CoinDesk, Cointelegraph, Decrypt, Bitcoin.com, BeInCrypto, TechCrunch, Ars Technica, Engadget, IGN, Polygon, Variety, Hollywood Reporter
-- **Telegram**: @Mastersharkcrypto, @smartainewss
-- **X/Twitter**: 8 accounts across categories
-
-### Market Data (All Free, No API Key)
-- **CoinMarketCap** (keyless public API): listings, global metrics, coin metadata, categories
-- **CoinGecko** (free tier, 30 calls/min): markets, coin detail, trending, categories
-- **Binance** (public ticker): real-time prices (with Coinbase + CoinGecko fallback)
-- **DefiLlama** (no rate limit): TVL, protocols, fees/revenue, methodology
-- **alternative.me**: Fear & Greed Index (current + historical)
-- **Yahoo Finance**: S&P 500 index
-- **Wallex/Nobitex**: Iranian Tether/Toman price (real market rate)
-- **Open-Meteo**: Weather + geocoding (no API key, 10K calls/day)
-- **open.er-api.com**: USD→IRR fallback (removed — was showing official rate, not market rate)
-
----
-
-## ⚙️ Configuration
+## 🔧 Configuration
 
 ### Environment Variables
-The project requires **no environment variables** for basic operation. All configuration is in the source code.
+- `NEXTJS_ENV` — development/production (in .dev.vars)
+- `CLOUDFLARE_API_TOKEN` — for deployment (set in shell, NOT in files)
 
-### TypeScript Configuration
-- `strict: true` — all strict checks enabled
-- `noImplicitAny: true` — no implicit any
-- `noImplicitReturns: true` — all code paths must return
-- `ignoreBuildErrors: false` — build fails on TS errors
+### Cloudflare Workers
+- Worker name: `aidiscovery`
+- Compatibility date: 2026-08-18
+- Flags: `nodejs_compat`, `global_fetch_strictly_public`
+- No R2 buckets (stateless, no DB)
+- Worker gzip size: ~1.36 MiB (free tier limit: 3 MiB)
 
-### Next.js Configuration
-- `reactStrictMode: true` — React strict mode
-- `typescript.ignoreBuildErrors: false` — fail build on TS errors
-- `images.unoptimized: true` — CF Pages doesn't support default loader
-- `experimental.optimizePackageImports: ["lucide-react", "framer-motion"]`
-
----
-
-## 📜 Scripts
-
-| Script | Purpose |
-|---|---|
-| `npm run dev` | Start dev server (port 3000, Turbopack) |
-| `npm run build` | Production build (Next.js → .next/) |
-| `npm run build:worker` | OpenNext Cloudflare build (→ .open-next/) |
-| `npm run preview` | Build + preview in workerd (local Cloudflare runtime) |
-| `npm run deploy` | Build + deploy to Cloudflare Workers |
-| `npm run cf-typegen` | Generate TypeScript types for Cloudflare bindings |
-| `npm run lint` | ESLint check |
+### Caching Strategy
+- **TanStack Query**: `refetchOnWindowFocus: true` (global default), per-query `staleTime` (10s–30min depending on data volatility)
+- **Edge cache (s-maxage)**: 10s–600s per API route
+- **In-memory cache**: Feed (5min), CMC listings (60s), CoinGecko (5min)
+- **Browser localStorage**: User preferences, bookmarks, watchlist, custom channels
 
 ---
 
-## 🔒 Privacy & Data
-
-**No backend storage.** The platform is fully stateless:
-- **Server-side**: In-memory cache only (cleared on deploy)
-- **Client-side**: All user data in browser localStorage
-- **No tracking, no cookies, no analytics.** Privacy-first by design.
-
----
-
-## 🗺 Development Roadmap
-
-### Completed (Phases 1-17)
-- ✅ Phases 1-10: Content discovery, bilingual, reader UX, channels, performance
-- ✅ Phase 11: &rlm; bug fix, faster ticker, hero widgets, settings, theme toggle, toasts
-- ✅ Phase 12: Read-later queue, pull-to-refresh, offline mode, search history
-- ✅ Phase 13: Source filter scroll fix, valid Tether price, Binance BTC, Persian font fix
-- ✅ Phase 14: Production bug fixes, SP500 widget, weather geocoding, dedicated category pages
-- ✅ Phase 15: TypeScript strict + TanStack Query v5 migration + RTL fixes
-- ✅ Phase 16: Crypto category widgets + CMC keyless API + Hero tab bar
-- ✅ Phase 17: Market Intelligence portal + coin detail (3-source merge) + watchlist + price alerts + categories filter + framer-motion animations + DefiLlama TVL/fees charts
-
-### Planned
-- 🔲 Wire up price alerts `checkAlerts()` to BTC ticker polling
-- 🔲 WebSocket streaming for live price updates (replace polling)
-- 🔲 Article print mode
-- 🔲 Saved searches
-- 🔲 Per-category widgets for AI, Tech, Gaming, Entertainment pages
+## 📝 Documentation
+- [RULES.md](RULES.md) — Git rules (no force-push, session sync check, token hygiene)
+- [ARCHITECTURE.md](ARCHITECTURE.md) — System architecture and data flow
+- [AUDIT.md](AUDIT.md) — Security audit and known issues
+- [DEPLOYMENT.md](DEPLOYMENT.md) — Cloudflare deployment guide
+- [CONTRIBUTING.md](CONTRIBUTING.md) — Development guidelines
+- [worklog.md](worklog.md) — Multi-agent work log (40+ tasks)
 
 ---
 
-_Built with ❤️ for the decentralized web._
+## 📄 License
+Private project. All rights reserved.
+
+---
+
+_Built for the decentralized web. Hosted on Cloudflare · Next.js · No database._

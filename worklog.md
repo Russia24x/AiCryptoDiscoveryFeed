@@ -5416,3 +5416,156 @@ Stage Summary:
 1. [deploy] user باید CLOUDFLARE_API_TOKEN تنظیم کنه و `npm run deploy` اجرا کنه
 2. [test] بعد از deploy، تغییر شهر در settings panel رو تست کنه
 3. [Phase E] اضافه کردن fallback برای geocode API (که در محیط test fetch fail داشت)
+
+---
+Task ID: 42
+Agent: main (autonomous dev session)
+Task: ممیزی کامل کدبیس + به‌روزرسانی مستندات + پیشنهاد گام‌های بعدی.
+
+Work Log:
+
+### SESSION-START-SYNC-CHECK
+- Repository: /home/z/my-project/AiCryptoDiscoveryFeed
+- Branch: main
+- git fetch origin: ✅ Success
+- git status: clean, up-to-date (commit 85d856c)
+- rev-list: behind=0, ahead=0
+- Verdict: ✅ Up-to-date and clean — proceeding.
+
+### مرحله ۱: ممیزی کامل کدبیس
+
+**آمار کلی:**
+- ۱۲۱ فایل TypeScript/TSX
+- ~۲۲,۰۰۰ خط کد
+- ۲۱ API route
+- ۱۰ صفحه
+- ۶۲ کامپوننت
+- ۲۰ custom hook
+- ۴ فایل lib
+- ۳۱ منبع RSS (۱۴ فارسی + ۱۷ انگلیسی)
+- ۳ کانال تلگرام
+- ۸ اکانت ایکس/توییتر
+- ۷ دسته‌بندی (Crypto, AI, Tech, Gaming, Entertainment, Space, Social)
+
+**صفحات:**
+1. / (Home — hub)
+2. /crypto
+3. /crypto/market (Market Intelligence)
+4. /crypto/market/[coin] (Coin Detail)
+5. /ai (AI Lab)
+6. /tech
+7. /gaming
+8. /entertainment
+9. /space (جدید)
+10. /social (جدید)
+
+**API Routes (21):**
+- /api (index)
+- /api/feed (RSS aggregation)
+- /api/article (article extraction with JSON-LD + tokenizer parser)
+- /api/channel (Telegram preview)
+- /api/og-image (OG image proxy)
+- /api/prices (CMC price ticker)
+- /api/tether (Nobitex Tether/Toman)
+- /api/weather + /api/weather/geocode
+- /api/market/* (12 market routes)
+
+**بررسی کیفیت:**
+- TypeScript: 0 errors ✅
+- ESLint: 0 errors, 0 warnings ✅
+- Build: success ✅
+- Worker gzip: ~1.36 MiB (free tier 3 MiB)
+
+### مرحله ۲: به‌روزرسانی مستندات
+
+**README.md:**
+- نام از "Ai Crypto Discovery" به "Ai24Discovery" تغییر یافت
+- توضیحات برند جدید: Ai (cyan) + 24 (white) + Discovery (bright teal)
+- ۷ دسته‌بندی (اضافه شدن Space و Social)
+- ۳۱ منبع RSS (به‌روزرسانی با منابع جدید)
+- pathFilter technology توضیح داده شد
+- Article reader 5-strategy extraction
+- MarketPulse با donut chart
+- Social portal با red brand
+- Project stats به‌روزرسانی
+- Project structure به‌روزرسانی
+
+**AUDIT.md:**
+- Executive Summary به‌روزرسانی
+- Architecture Overview با ASCII diagram
+- تمام resolved issues لیست شد (Task 33-42)
+- Remaining issues: 2 MEDIUM (CSP, SSRF), 2 LOW (unused components, no tests)
+- Performance metrics
+- Security checklist
+- Data sources summary (9 سرویس، همگی رایگان)
+
+### مرحله ۳: پیشنهاد گام‌های بعدی توسعه
+
+**Phase 1 — Deploy & Verify (فوری):**
+1. [deploy] CLOUDFLARE_API_TOKEN تنظیم و deploy
+2. [verify] تست production روی تمام صفحات
+3. [verify] مخصوصاً Social portal، Space page، article reader
+
+**Phase 2 — Security & Performance:**
+1. [security] CSP + HSTS headers در next.config.ts
+2. [security] SSRF protection برای /api/article
+3. [perf] Service Worker precache برای offline-first
+4. [perf] Image optimization (lazy load + blur placeholder)
+5. [perf] Bundle analysis (حذف unused shadcn/ui components)
+
+**Phase 3 — Features:**
+1. [feature] Prefetch هوشمند با hover روی coin rows و feed cards
+2. [feature] IndexedDB برای کش بزرگ‌تر (coin detail, article content)
+3. [feature] Virtual scrolling برای جدول ۱۰۰ کوین
+4. [feature] Watchlist P&L (سود/زیان محاسبه از قیمت خرید)
+5. [feature] Push notifications برای price alerts
+6. [feature] RSS feed customizer (کاربر منابع دلخواه اضافه کنه)
+
+**Phase 4 — Content & Localization:**
+1. [content] افزودن کانال‌های تلگرام فارسی برای Tech, Gaming, Entertainment, Space
+2. [content] افزودن اکانت‌های ایکس فارسی
+3. [i18n] بهبود ترجمه‌های فارسی
+4. [i18n] پشتیبانی از عربی (rtl سوم)
+5. [content] ربات تلگرام برای ارسال مقالات منتخب
+
+**Phase 5 — Quality & Testing:**
+1. [test] Playwright E2E tests
+2. [test] Unit tests برای article extractor و markdown renderer
+3. [test] Visual regression tests
+4. [test] Lighthouse CI برای performance monitoring
+5. [test] Error boundary برای crash recovery
+
+**Phase 6 — Advanced:**
+1. [ai] خلاصه‌سازی خودکار مقالات با LLM
+2. [ai] ترجمه خودکار مقالات انگلیسی به فارسی
+3. [ai] تشخیص موضوع مقاله و تگ‌گذاری خودکار
+4. [ai] پیشنهاد منبع بر اساس علاقه‌مندی کاربر
+5. [social] کامنت و واکنش به پست‌های تلگرام
+6. [market] نمودار شمعی (candlestick) برای coin detail
+7. [market] مقایسه دو کوین side-by-side
+
+### خلاصه تغییرات این دور:
+3 فایل به‌روزرسانی شد:
+- README.md: بازنویسی کامل با برند Ai24Discovery
+- AUDIT.md: بازنویسی کامل با resolved issues + remaining issues
+- worklog.md: این entry
+
+Stage Summary:
+
+**وضعیت فعلی پروژه:**
+- 121 فایل، ~22,000 خط کد
+- 21 API route، 10 صفحه، 62 کامپوننت
+- 7 دسته‌بندی، 31 منبع RSS، 3 کانال تلگرام، 8 اکانت ایکس
+- TypeScript: 0 errors، ESLint: 0 errors، Build: success
+- مستندات کامل و به‌روز
+
+**اصلاحات تکمیل‌شده این دور:**
+1. ممیزی کامل کدبیس
+2. به‌روزرسانی README.md با برند جدید
+3. به‌روزرسانی AUDIT.md با وضعیت فعلی
+4. پیشنهاد ۶ فاز توسعه آینده
+
+**توصیه‌های اولویت‌دار:**
+1. [فوری] Deploy به production و تست
+2. [Phase 2] CSP/HSTS headers
+3. [Phase 3] Prefetch هوشمند + IndexedDB
