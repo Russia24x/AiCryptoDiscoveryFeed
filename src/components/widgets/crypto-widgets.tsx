@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { TrendingUp, TrendingDown } from "lucide-react";
 import { useLanguage } from "@/hooks/use-language";
+import { useCryptoPrice } from "@/hooks/use-crypto-price";
 import {
   WidgetCard,
   SkeletonRow,
@@ -17,82 +18,57 @@ import { cn } from "@/lib/utils";
 /**
  * Crypto category-specific widgets — shown on /crypto page.
  *
- * Architecture (local-first):
- *   - ETH/SOL price widget fetches from /api/market/binance-ticker (already
- *     edge-cached 10s on the server, then TanStack Query caches 5s on
- *     the client). No extra upstream calls.
- *   - Top Gainers widget fetches from /api/market/top-gainers which is
- *     edge-cached 60s. Single call shared across all users.
- *   - Market Dominance widget fetches from /api/market/cmc-global which
- *     is edge-cached 60s.
+ * Uses useCryptoPrice hook with multi-source fallback:
+ *   1. binance-ticker (real-time, Binance → Coinbase → CoinGecko)
+ *   2. /api/prices (CMC, shared with ticker bar)
+ *   3. cmc-listings (CMC, shared with market table)
  *
- * Total upstream API calls per page view (after cache hit):
- *   - 0 (all served from edge cache)
- *
- * Total upstream API calls per page view (cache miss):
- *   - 1 to Binance (for binance-ticker, shared with hero BTC widget)
- *   - 1 to CMC (for top-gainers, 60s cache)
- *   - 1 to CMC (for cmc-global, 60s cache)
- *   = 3 calls, all cached at the edge for subsequent users.
+ * Zero additional API calls — all from shared TanStack Query cache.
  */
 
-/* ============= ETH widget ============= */
-interface CoinTicker {
-  symbol: string;
-  price: number;
-  change24h: number;
-  high24h?: number;
-  low24h?: number;
+/* ============= Shared price display ============= */
+function PriceDisplay({
+  data,
+  isLoading,
+  lang,
+}: {
+  data: { price: number; change24h: number; high24h?: number; low24h?: number; source: string } | null;
+  isLoading: boolean;
+  lang: "fa" | "en";
+}) {
+  if (isLoading) return <SkeletonRow />;
+  if (!data) return <FallbackMsg />;
+
+  const up = data.change24h >= 0;
+  return (
+    <>
+      <div className={cn("text-2xl md:text-3xl font-extrabold tabular-nums text-[var(--brand-text)]", numFontClass(lang))}>
+        ${formatUsd(data.price, lang)}
+      </div>
+      <div className={cn("flex items-center gap-1 text-[11px] font-semibold mt-1", numFontClass(lang))}
+           style={{ color: changeColor(data.change24h) }}>
+        {up ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+        {formatFa(Math.abs(data.change24h).toFixed(2), lang)}%
+        <span className="opacity-60">24h</span>
+        <span className="opacity-40 font-latin text-[9px]">· {data.source}</span>
+      </div>
+      {data.high24h !== undefined && data.low24h !== undefined && (
+        <div className={cn("flex items-center justify-between text-[9px] text-[var(--brand-muted)]/80 mt-1.5 pt-1.5 border-t border-[var(--brand-border)]/50", numFontClass(lang))}>
+          <span>H: <span className="text-[var(--brand-accent)]/80">${formatUsd(data.high24h, lang)}</span></span>
+          <span>L: <span className="text-red-400/80">${formatUsd(data.low24h, lang)}</span></span>
+        </div>
+      )}
+    </>
+  );
 }
 
+/* ============= ETH widget ============= */
 function EthWidget() {
   const { lang } = useLanguage();
-  const { data, isLoading } = useQuery<CoinTicker>({
-    queryKey: ["market", "binance-ticker", "ETH"],
-    queryFn: async () => {
-      const res = await fetch("/api/market/binance-ticker", { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      const coin = json?.coins?.find((c: { symbol: string }) => c.symbol === "ETH");
-      if (!coin || typeof coin.price !== "number") {
-        throw new Error("ETH not found in ticker response");
-      }
-      return coin as CoinTicker;
-    },
-    refetchInterval: 15_000,
-    staleTime: 10_000,
-  });
-
-  const up = (data?.change24h ?? 0) >= 0;
-
+  const { data, isLoading } = useCryptoPrice("ETH");
   return (
-    <WidgetCard
-      title="Ethereum"
-      icon={<span className="text-[10px] font-bold font-latin">Ξ</span>}
-      accent="#627eea"
-    >
-      {isLoading ? (
-        <SkeletonRow />
-      ) : data ? (
-        <>
-          <div className={cn("text-2xl md:text-3xl font-extrabold tabular-nums text-[var(--brand-text)]", numFontClass(lang))}>
-            ${formatUsd(data.price, lang)}
-          </div>
-          <div className={cn("flex items-center gap-1 text-[11px] font-semibold mt-1", numFontClass(lang))}
-               style={{ color: changeColor(data.change24h) }}>
-            {up ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-            {formatFa(Math.abs(data.change24h).toFixed(2), lang)}% <span className="opacity-60">24h</span>
-          </div>
-          {data.high24h !== undefined && data.low24h !== undefined && (
-            <div className={cn("flex items-center justify-between text-[9px] text-[var(--brand-muted)]/80 mt-1.5 pt-1.5 border-t border-[var(--brand-border)]/50", numFontClass(lang))}>
-              <span>H: <span className="text-[var(--brand-accent)]/80">${formatUsd(data.high24h, lang)}</span></span>
-              <span>L: <span className="text-red-400/80">${formatUsd(data.low24h, lang)}</span></span>
-            </div>
-          )}
-        </>
-      ) : (
-        <FallbackMsg />
-      )}
+    <WidgetCard title="Ethereum" icon={<span className="text-[10px] font-bold font-latin">Ξ</span>} accent="#627eea">
+      <PriceDisplay data={data} isLoading={isLoading} lang={lang} />
     </WidgetCard>
   );
 }
@@ -100,55 +76,14 @@ function EthWidget() {
 /* ============= SOL widget ============= */
 function SolWidget() {
   const { lang } = useLanguage();
-  const { data, isLoading } = useQuery<CoinTicker>({
-    queryKey: ["market", "binance-ticker", "SOL"],
-    queryFn: async () => {
-      const res = await fetch("/api/market/binance-ticker", { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      const coin = json?.coins?.find((c: { symbol: string }) => c.symbol === "SOL");
-      if (!coin || typeof coin.price !== "number") {
-        throw new Error("SOL not found in ticker response");
-      }
-      return coin as CoinTicker;
-    },
-    refetchInterval: 15_000,
-    staleTime: 10_000,
-  });
-
-  const up = (data?.change24h ?? 0) >= 0;
-
+  const { data, isLoading } = useCryptoPrice("SOL");
   return (
-    <WidgetCard
-      title="Solana"
-      icon={<span className="text-[10px] font-bold font-latin">◎</span>}
-      accent="#9945ff"
-    >
-      {isLoading ? (
-        <SkeletonRow />
-      ) : data ? (
-        <>
-          <div className={cn("text-2xl md:text-3xl font-extrabold tabular-nums text-[var(--brand-text)]", numFontClass(lang))}>
-            ${formatUsd(data.price, lang)}
-          </div>
-          <div className={cn("flex items-center gap-1 text-[11px] font-semibold mt-1", numFontClass(lang))}
-               style={{ color: changeColor(data.change24h) }}>
-            {up ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-            {formatFa(Math.abs(data.change24h).toFixed(2), lang)}% <span className="opacity-60">24h</span>
-          </div>
-          {data.high24h !== undefined && data.low24h !== undefined && (
-            <div className={cn("flex items-center justify-between text-[9px] text-[var(--brand-muted)]/80 mt-1.5 pt-1.5 border-t border-[var(--brand-border)]/50", numFontClass(lang))}>
-              <span>H: <span className="text-[var(--brand-accent)]/80">${formatUsd(data.high24h, lang)}</span></span>
-              <span>L: <span className="text-red-400/80">${formatUsd(data.low24h, lang)}</span></span>
-            </div>
-          )}
-        </>
-      ) : (
-        <FallbackMsg />
-      )}
+    <WidgetCard title="Solana" icon={<span className="text-[10px] font-bold font-latin">◎</span>} accent="#9945ff">
+      <PriceDisplay data={data} isLoading={isLoading} lang={lang} />
     </WidgetCard>
   );
 }
+
 
 /* ============= Top Gainers widget ============= */
 interface CoinListing {

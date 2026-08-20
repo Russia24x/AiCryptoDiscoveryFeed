@@ -30,6 +30,7 @@ import { motion } from "framer-motion";
 import { useLanguage } from "@/hooks/use-language";
 import { useMounted } from "@/hooks/use-mounted";
 import { useLocalStorage } from "@/hooks/use-local-storage";
+import { useCryptoPrice } from "@/hooks/use-crypto-price";
 import { useTetherPrice } from "@/hooks/use-tether-price";
 import { formatNumber } from "@/hooks/use-feed-state";
 import { cn } from "@/lib/utils";
@@ -359,62 +360,22 @@ function HeroTab({
 /* ============= BTC widget ============= */
 function BtcWidget() {
   const { lang } = useLanguage();
-  const prevRef = useRef<number | undefined>(undefined);
+  const { data: priceData, isLoading } = useCryptoPrice("BTC");
 
-  // Real-time BTC price from Binance (with Coinbase + CoinGecko fallbacks
-  // configured in the API route). Refreshes every 10s via TanStack Query's
-  // refetchInterval — automatically paused when the tab is hidden and
-  // resumed when visible (refetchOnWindowFocus is set globally).
-  const { data, isLoading } = useQuery({
-    queryKey: ["market", "binance-ticker", "BTC"],
-    queryFn: async () => {
-      const res = await fetch("/api/market/binance-ticker", { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      const btc = json?.coins?.find((c: { symbol: string }) => c.symbol === "BTC");
-      if (!btc || typeof btc.price !== "number") {
-        throw new Error("BTC not found in ticker response");
-      }
-      return {
-        price: btc.price as number,
-        change24h: btc.change24h as number,
-        high24h: btc.high24h as number | undefined,
-        low24h: btc.low24h as number | undefined,
-      };
-    },
-    refetchInterval: 10_000,
-    staleTime: 5_000,
-    select: (data) => {
-      // Track previous price for the flash animation
-      const prev = prevRef.current;
-      prevRef.current = data.price;
-      return { ...data, prev };
-    },
-  });
-
-  const up = (data?.change24h ?? 0) >= 0;
-  const flash =
-    data?.prev !== undefined && data?.price !== undefined
-      ? data.price > data.prev
-        ? "ticker-flash-up"
-        : data.price < data.prev
-        ? "ticker-flash-down"
-        : ""
-      : "";
+  const up = (priceData?.change24h ?? 0) >= 0;
 
   return (
     <WidgetCard
       title={lang === "fa" ? "بیت‌کوین" : "Bitcoin"}
       icon={<Bitcoin className="w-3.5 h-3.5" />}
       accent="#f7931a"
-      className={flash}
     >
       {isLoading ? (
         <SkeletonRow />
-      ) : data ? (
+      ) : priceData ? (
         <>
           <div className={cn("text-2xl md:text-3xl font-extrabold tabular-nums text-[var(--brand-text)]", numFontClass(lang))}>
-            ${formatUsd(data.price, lang)}
+            ${formatUsd(priceData.price, lang)}
           </div>
           <div
             className={cn(
@@ -424,18 +385,19 @@ function BtcWidget() {
             )}
           >
             {up ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-            {formatFa(Math.abs(data.change24h).toFixed(2), lang)}% <span className="opacity-60">24h</span>
+            {formatFa(Math.abs(priceData.change24h).toFixed(2), lang)}%
+            <span className="opacity-60">24h</span>
+            <span className="opacity-40 font-latin text-[9px]">· {priceData.source}</span>
           </div>
-          {/* 24h high/low row — only show if both are available */}
-          {data.high24h !== undefined && data.low24h !== undefined && (
+          {priceData.high24h !== undefined && priceData.low24h !== undefined && (
             <div className={cn("flex items-center justify-between text-[9px] text-[var(--brand-muted)]/80 mt-1.5 pt-1.5 border-t border-[var(--brand-border)]/50", numFontClass(lang))}>
               <span className="flex items-center gap-1">
                 <span className="opacity-60">{lang === "fa" ? "بالا:" : "H:"}</span>
-                <span className="text-[var(--brand-accent)]/80">${formatUsd(data.high24h, lang)}</span>
+                <span className="text-[var(--brand-accent)]/80">${formatUsd(priceData.high24h, lang)}</span>
               </span>
               <span className="flex items-center gap-1">
                 <span className="opacity-60">{lang === "fa" ? "پایین:" : "L:"}</span>
-                <span className="text-red-400/80">${formatUsd(data.low24h, lang)}</span>
+                <span className="text-red-400/80">${formatUsd(priceData.low24h, lang)}</span>
               </span>
             </div>
           )}
