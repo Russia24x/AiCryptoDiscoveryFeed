@@ -3849,3 +3849,92 @@ Stage Summary:
 2. [اولویت بالا] Sparkline در جدول بازار (کد #۱۲)
 3. [اولویت متوسط] Virtual scrolling (کد #۲۰)
 4. [اولویت متوسط] Watchlist P&L (کد #۱۶)
+
+---
+Task ID: 29
+Agent: main (autonomous dev session)
+Task: پیاده‌سازی MiniTrend، Hot Coins، بررسی localStorage + IndexedDB، ممیزی کامل.
+
+Work Log:
+
+### مرحله ۱: بررسی کامل کدبیس
+**State Management:**
+- TanStack Query v5: 28 useQuery در 6 فایل
+- Zustand: 1 store (use-ui-store.ts) با persist به localStorage
+- useState/useSyncExternalStore: در همه hooks
+
+**localStorage keys (8 کلید):**
+- acd:bookmarks — نشانک‌ها
+- acd:feed-cache: — کش فید
+- acd:lang — زبان
+- acd:price-alerts — هشدار قیمت
+- acd:read-later — صف خواندن
+- acd:search-history — تاریخچه جستجو
+- acd:theme — تم
+- acd:watchlist — واچ‌لیست
+
+**Service Worker caches (4 cache):**
+- acd-static-v2.0.0-opennext (static assets)
+- acd-pages-v2.0.0-opennext (page HTML)
+- acd-api-v2.0.0-opennext (API responses, max 50)
+- acd-images-v2.0.0-opennext (images, max 100)
+
+**IndexedDB:**
+- فعلاً استفاده نمی‌شه
+- می‌تونه برای کش بزرگ‌تر (مثلاً feed cache یا coin detail cache) استفاده بشه
+- مزیت: محدودیت ۵MB localStorage رو نداره (معمولاً ۵۰MB+)
+- معایب: API پیچیده‌تر، async
+
+### مرحله ۲: پیاده‌سازی MiniTrend در جدول بازار
+- ستون 7d جدید در جدول (visible در lg+ screens)
+- SVG کوچک 48×20px با ۳ نقطه داده (1h, 24h, 7d change)
+- رنگ: سبز اگه 24h مثبت، قرمز اگه منفی
+- نقطه پایان (dot) وضعیت فعلی رو نشون می‌ده
+- **مصرف API: صفر** — داده‌ها از response موجود
+
+### مرحله ۳: پیاده‌سازی Hot Coins در sidebar
+- مقایسه trending coins با top gainers
+- نمایش کوین‌هایی که در هر دو لیست هستن (احتمالاً در حال انفجار)
+- Set intersection برای performance O(n)
+- نمایش تا ۵ کوین با 🔥 emoji
+- نمایش درصد صعود 24h
+- **مصرف API: صفر** — از query های موجود
+
+### مرحله ۴: بررسی sort بر اساس حجم
+- قبلاً پیاده شده بود (total_volume در SortField)
+- ستون Volume header قابل کلیک برای sort
+- **مصرف API: صفر**
+
+### مرحله ۵: بررسی IndexedDB
+- فعلاً استفاده نمی‌شه
+- توصیه: می‌تونه برای کش بزرگ‌تر استفاده بشه
+- بهترین کاربرد: کش coin detail responses (هرواحد ~50KB)
+- localStorage محدودیت 5MB داره، IndexedDB معمولاً 50MB+
+- پیاده‌سازی آینده: `idb-keyval` (ساده‌ترین راه)
+
+### مرحله ۶: تست production
+- /crypto/market: ✅
+  - MiniTrend: SVG polylines موجود
+  - Hot Coins: نمایش داده می‌شه
+  - Volume sort: کار می‌کنه
+  - بازار صعودی: +۷.۹۰% 24h
+  - مارکت کپ کل: $۲.۳۷T
+
+Stage Summary:
+
+**وضعیت فعلی پروژه:**
+- 19 API route، 8 صفحه، 60+ کامپوننت
+- TypeScript: 0 errors
+- 3 feature جدید بدون درخواست API اضافه
+
+**اصلاحات تکمیل‌شده این دور:**
+- MiniTrend: نمودار کوچک در جدول (از داده‌های موجود)
+- Hot Coins: کوین‌های در حال انفجار (تداخل ترندینگ + صعودی)
+- بررسی IndexedDB: توصیه برای کش بزرگ‌تر در آینده
+- ممیزی کامل: 8 localStorage key، 4 SW cache، 28 useQuery
+
+**توصیه‌های اولویت‌دار برای مرحله بعدی:**
+1. IndexedDB برای کش coin detail (با idb-keyval)
+2. بهبود skeleton screens
+3. Prefetch هوشمند با hover
+4. Virtual scrolling برای جدول ۱۰۰ کوین
