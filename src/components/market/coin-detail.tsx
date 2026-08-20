@@ -285,13 +285,12 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
     const maxSupply = cmcListing?.maxSupply || null;
     const rank = cmcListing?.cmcRank || 0;
 
-    // Approximate high_24h and low_24h from price and 24h change
-    // Formula: if change = +7.53%, then:
-    //   low_24h ≈ price / (1 + change/100)
-    //   high_24h ≈ price (if up) or price * (1 + |change|/100) (if down)
-    // This is only an approximation but better than showing $0
-    const high24h = geckoMarket?.high_24h || (change24h >= 0 ? price : price * (1 + Math.abs(change24h) / 100));
-    const low24h = geckoMarket?.low_24h || (change24h >= 0 ? price / (1 + change24h / 100) : price);
+    // high_24h and low_24h: only use real data from geckoMarket (shared cache)
+    // Do NOT approximate — showing fake data is worse than showing nothing.
+    // If geckoMarket is null (CoinGecko rate-limited), these will be 0 and
+    // the corresponding UI sections will be hidden.
+    const high24h = geckoMarket?.high_24h || 0;
+    const low24h = geckoMarket?.low_24h || 0;
 
     displayCoin = {
       id: coinId,
@@ -473,12 +472,16 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
         <ExtLink href={`https://coinmarketcap.com/currencies/${cmcSlug || displayCoin.id}/`} icon={<ExternalLink className="w-3.5 h-3.5" />} label="CMC" />
       </div>
 
-      {/* Stats grid */}
+      {/* Stats grid — hide high/low when 0 (no real data available) */}
       <section className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 mb-6">
         <StatCard label={lang === "fa" ? "مارکت کپ" : "Market Cap"} value={fa(fmtCompact(md.market_cap?.usd || 0))} />
         <StatCard label={lang === "fa" ? "حجم ۲۴س" : "24h Volume"} value={fa(fmtCompact(md.total_volume?.usd || 0))} />
-        <StatCard label={lang === "fa" ? "بالاترین ۲۴س" : "24h High"} value={fa(fmtPrice(md.high_24h?.usd || 0))} accent="#2dd4bf" />
-        <StatCard label={lang === "fa" ? "پایین‌ترین ۲۴س" : "24h Low"} value={fa(fmtPrice(md.low_24h?.usd || 0))} accent="#f87171" />
+        {(md.high_24h?.usd || 0) > 0 && (
+          <StatCard label={lang === "fa" ? "بالاترین ۲۴س" : "24h High"} value={fa(fmtPrice(md.high_24h.usd))} accent="#2dd4bf" />
+        )}
+        {(md.low_24h?.usd || 0) > 0 && (
+          <StatCard label={lang === "fa" ? "پایین‌ترین ۲۴س" : "24h Low"} value={fa(fmtPrice(md.low_24h.usd))} accent="#f87171" />
+        )}
         {md.fully_diluted_valuation?.usd && (
           <StatCard label={lang === "fa" ? "ارزش کامل" : "FDV"} value={fa(fmtCompact(md.fully_diluted_valuation.usd))} />
         )}
