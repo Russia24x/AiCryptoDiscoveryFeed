@@ -23,7 +23,7 @@ import {
 import { useLanguage } from "@/hooks/use-language";
 import { useWatchlist } from "@/hooks/use-watchlist";
 import { useUIStore } from "@/hooks/use-ui-store";
-import { GlassCard, StatCard, Sparkline, ProgressBar, Badge } from "./ui-primitives";
+import { GlassCard, Badge } from "./ui-primitives";
 import { cn } from "@/lib/utils";
 
 /* ============= Types ============= */
@@ -455,63 +455,16 @@ export function MarketIntelligence() {
         )}
       </div>
 
-      {/* Global Stats Bar — minimal cards */}
-      {globalStats && globalStats.totalMarketCap > 0 && (
-        <div className="border-b border-[var(--brand-border)] bg-[var(--brand-surface)]/40">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4">
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 md:gap-3">
-              <StatCard
-                label={lang === "fa" ? "مارکت کپ کل" : "Total M.Cap"}
-                value={fa(fmtCompact(globalStats.totalMarketCap), lang)}
-                change={globalStats.totalMarketCapYesterdayPctChange}
-                accent="#2dd4bf"
-              />
-              <StatCard
-                label={lang === "fa" ? "حجم ۲۴س" : "24h Volume"}
-                value={fa(fmtCompact(globalStats.totalVolume24h), lang)}
-                accent="#38bdf8"
-              />
-              <StatCard
-                label="BTC.D"
-                value={`${fa(globalStats.btcDominance.toFixed(1), lang)}%`}
-                accent="#f7931a"
-              />
-              <StatCard
-                label="ETH.D"
-                value={`${fa(globalStats.ethDominance.toFixed(1), lang)}%`}
-                accent="#627eea"
-              />
-              <StatCard
-                label={lang === "fa" ? "ارزها" : "Coins"}
-                value={fa(globalStats.activeCryptoCurrencies.toLocaleString(), lang)}
-                accent="#a78bfa"
-              />
-              <StatCard
-                label={lang === "fa" ? "دیفای" : "DeFi"}
-                value={fa(fmtCompact(globalStats.defiMarketCap), lang)}
-                accent="#f472b6"
-              />
-            </div>
-            {usingFallback && (
-              <div className="mt-3 flex items-center gap-2 text-[10px] text-[var(--brand-muted)] bg-amber-500/5 border border-amber-500/20 rounded-md px-2.5 py-1.5">
-                <AlertCircle className="w-3 h-3 text-amber-400 shrink-0" />
-                <span>
-                  {lang === "fa"
-                    ? "نمایش داده‌ها از CoinMarketCap (CoinGecko در حالت آماده‌سازی)"
-                    : "Showing CoinMarketCap data (CoinGecko is warming up)"}
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Market Overview — sentiment + market breakdown stats */}
-      <MarketOverview
+      {/* Market Pulse — single unified market overview section.
+          Consolidates: sentiment, market cap, 24h volume, dominance,
+          and market breakdown into ONE place. No duplication with the
+          top stats bar above (which was removed in favour of this). */}
+      <MarketPulse
         globalStats={globalStats}
         lang={lang}
         fa={fa}
         fmtCompact={fmtCompact}
+        usingFallback={usingFallback}
       />
 
       {/* Main grid: coin table (left) + sidebar (right) */}
@@ -1012,29 +965,37 @@ function FngChart({ data, lang }: { data: Array<{ value: number; classification:
   );
 }
 
-/* ============= Market Overview (Phase 22) ============= */
+/* ============= Market Pulse (Phase 29 — unified overview) ============= */
 /**
- * Minimal market overview section — sits between the stats bar and the
- * coin table. Shows a brief market summary with:
- *  - Market sentiment (bullish/bearish/neutral) based on 24h change
- *  - Top gainer highlight (single coin)
- *  - Trending coin highlight (single coin)
- *  - BTC dominance progress bar
+ * Single unified market overview — replaces the old Stats Bar + MarketOverview
+ * pair that showed 6 duplicate data points between them.
  *
- * Design: minimal, no blur, no gradients. Solid surfaces with accent colors.
+ * Layout:
+ *   ┌───────────────┬───────────────┬───────────────┐
+ *   │  Sentiment    │  Market Cap   │  24h Volume   │  (3 hero stats — no dup)
+ *   │  (with icon   │  (with %      │               │
+ *   │   + label)    │   change)     │               │
+ *   ├───────────────┴───────────────┴───────────────┤
+ *   │  Dominance donut  │  Breakdown grid (6 mini)  │  (donut uses BTC/ETH/Alt)
+ *   │  (SVG, zero deps) │  (Alt, DeFi, Stable, etc) │
+ *   └────────────────────┴──────────────────────────┘
+ *
+ * Zero API cost — uses data already fetched by the parent component.
  */
-function MarketOverview({
+function MarketPulse({
   globalStats,
   lang,
   fa,
   fmtCompact,
+  usingFallback,
 }: {
   globalStats: GlobalStats | undefined;
   lang: "fa" | "en";
   fa: (n: string | number, lang: "fa" | "en") => string;
   fmtCompact: (n: number) => string;
+  usingFallback: boolean;
 }) {
-  if (!globalStats) return null;
+  if (!globalStats || globalStats.totalMarketCap <= 0) return null;
 
   const change = globalStats.totalMarketCapYesterdayPctChange || 0;
   const isBullish = change > 1;
@@ -1045,11 +1006,22 @@ function MarketOverview({
     ? { label: lang === "fa" ? "نزولی" : "Bearish", color: "#f87171", icon: "▼" }
     : { label: lang === "fa" ? "خنثی" : "Neutral", color: "#a78bfa", icon: "●" };
 
+  // Donut chart math — BTC, ETH, Others segments.
+  // Uses absolute dominance %, not the buggy `* 5` scaling factor.
+  const btcDom = globalStats.btcDominance || 0;
+  const ethDom = globalStats.ethDominance || 0;
+  const othersDom = Math.max(0, 100 - btcDom - ethDom);
+  const radius = 32;
+  const circumference = 2 * Math.PI * radius;
+  const btcArc = (btcDom / 100) * circumference;
+  const ethArc = (ethDom / 100) * circumference;
+  const othersArc = (othersDom / 100) * circumference;
+
   return (
     <div className="border-b border-[var(--brand-border)] bg-[var(--brand-surface)]/40">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4">
-        {/* Sentiment + key stats row */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+        {/* Row 1 — three hero stats (no duplication with the row below) */}
+        <div className="grid grid-cols-3 gap-3 mb-4">
           {/* Sentiment */}
           <div className="p-3 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
             <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-1.5">
@@ -1062,89 +1034,199 @@ function MarketOverview({
               <span className="text-sm font-bold" style={{ color: sentiment.color }}>
                 {sentiment.label}
               </span>
-              <span className="text-[10px] text-[var(--brand-muted)] font-latin">
-                {change >= 0 ? "+" : ""}{fa(change.toFixed(1), lang)}%
-              </span>
+            </div>
+            <div className="text-[10px] text-[var(--brand-muted)] font-latin tabular-nums mt-0.5">
+              {change >= 0 ? "+" : ""}{fa(change.toFixed(2), lang)}% {lang === "fa" ? "۲۴س" : "24h"}
             </div>
           </div>
           {/* Total Market Cap */}
           <div className="p-3 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
             <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-1.5">
-              {lang === "fa" ? "مارکت کپ کل" : "Total M.Cap"}
+              {lang === "fa" ? "مارکت کپ کل" : "Total Market Cap"}
             </div>
-            <div className="text-sm font-bold text-[var(--brand-text)] font-latin tabular-nums">
+            <div className="text-sm md:text-base font-bold text-[var(--brand-text)] font-latin tabular-nums">
               {fa(fmtCompact(globalStats.totalMarketCap), lang)}
             </div>
+            {change !== 0 && (
+              <div className={cn(
+                "text-[10px] font-latin tabular-nums font-bold mt-0.5",
+                change >= 0 ? "text-[var(--brand-accent)]" : "text-red-400"
+              )}>
+                {change >= 0 ? "▲" : "▼"} {fa(Math.abs(change).toFixed(2), lang)}%
+              </div>
+            )}
           </div>
           {/* 24h Volume */}
           <div className="p-3 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
             <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-1.5">
               {lang === "fa" ? "حجم ۲۴س" : "24h Volume"}
             </div>
-            <div className="text-sm font-bold text-[var(--brand-text)] font-latin tabular-nums">
+            <div className="text-sm md:text-base font-bold text-[var(--brand-text)] font-latin tabular-nums">
               {fa(fmtCompact(globalStats.totalVolume24h), lang)}
             </div>
-          </div>
-          {/* Active Coins */}
-          <div className="p-3 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
-            <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-1.5">
-              {lang === "fa" ? "ارزهای فعال" : "Active Coins"}
-            </div>
-            <div className="text-sm font-bold text-[var(--brand-text)] font-latin tabular-nums">
-              {fa(globalStats.activeCryptoCurrencies.toLocaleString(), lang)}
+            <div className="text-[10px] text-[var(--brand-muted)] font-latin mt-0.5">
+              {fa((globalStats.activeCryptoCurrencies || 0).toLocaleString(), lang)} {lang === "fa" ? "ارز" : "coins"}
             </div>
           </div>
         </div>
 
-        {/* BTC + ETH dominance bars */}
-        {globalStats.btcDominance > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-            <div className="flex items-center gap-3 text-[10px]">
-              <span className="text-[var(--brand-muted)] font-latin uppercase tracking-wider shrink-0 w-12">BTC</span>
-              <div className="flex-1 h-1.5 rounded-full bg-[var(--brand-surface-2)] overflow-hidden">
-                <div className="h-full rounded-full bg-[#f7931a]" style={{ width: `${globalStats.btcDominance}%` }} />
+        {/* Row 2 — dominance donut + market breakdown grid */}
+        <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-4">
+          {/* Dominance donut chart — proper SVG, no external deps */}
+          <div className="flex items-center gap-3 p-3 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
+            <div className="relative shrink-0">
+              <svg width="80" height="80" viewBox="0 0 80 80" className="-rotate-90">
+                {/* Track */}
+                <circle cx="40" cy="40" r={radius} fill="none" stroke="var(--brand-surface-2)" strokeWidth="7" />
+                {/* BTC segment (orange) */}
+                {btcArc > 0 && (
+                  <circle
+                    cx="40" cy="40" r={radius}
+                    fill="none" stroke="#f7931a" strokeWidth="7"
+                    strokeDasharray={`${btcArc} ${circumference - btcArc}`}
+                    strokeDashoffset="0"
+                  />
+                )}
+                {/* ETH segment (blue) */}
+                {ethArc > 0 && (
+                  <circle
+                    cx="40" cy="40" r={radius}
+                    fill="none" stroke="#627eea" strokeWidth="7"
+                    strokeDasharray={`${ethArc} ${circumference - ethArc}`}
+                    strokeDashoffset={-btcArc}
+                  />
+                )}
+                {/* Others segment (muted) */}
+                {othersArc > 0 && (
+                  <circle
+                    cx="40" cy="40" r={radius}
+                    fill="none" stroke="var(--brand-muted)" strokeWidth="7"
+                    strokeDasharray={`${othersArc} ${circumference - othersArc}`}
+                    strokeDashoffset={-(btcArc + ethArc)}
+                  />
+                )}
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span className="text-[9px] text-[var(--brand-muted)] font-latin uppercase tracking-wider">
+                  {lang === "fa" ? "تسلط" : "Dominance"}
+                </span>
+                <span className="text-xs font-bold text-[var(--brand-text)] font-latin tabular-nums">
+                  {fa(btcDom.toFixed(0), lang)}%
+                </span>
               </div>
-              <span className="font-latin font-bold text-[#f7931a] tabular-nums shrink-0">{fa(globalStats.btcDominance.toFixed(1), lang)}%</span>
             </div>
-            {globalStats.ethDominance > 0 && (
-              <div className="flex items-center gap-3 text-[10px]">
-                <span className="text-[var(--brand-muted)] font-latin uppercase tracking-wider shrink-0 w-12">ETH</span>
-                <div className="flex-1 h-1.5 rounded-full bg-[var(--brand-surface-2)] overflow-hidden">
-                  <div className="h-full rounded-full bg-[#627eea]" style={{ width: `${globalStats.ethDominance * 5}%` }} />
-                </div>
-                <span className="font-latin font-bold text-[#627eea] tabular-nums shrink-0">{fa(globalStats.ethDominance.toFixed(1), lang)}%</span>
+            {/* Legend */}
+            <div className="flex-1 min-w-0 space-y-1.5">
+              <div className="flex items-center justify-between gap-2 text-[11px]">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-[#f7931a] shrink-0" />
+                  <span className="font-bold text-[var(--brand-text)]">BTC</span>
+                </span>
+                <span className="font-latin tabular-nums font-bold text-[#f7931a]">
+                  {fa(btcDom.toFixed(2), lang)}%
+                </span>
               </div>
-            )}
+              <div className="flex items-center justify-between gap-2 text-[11px]">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-[#627eea] shrink-0" />
+                  <span className="font-bold text-[var(--brand-text)]">ETH</span>
+                </span>
+                <span className="font-latin tabular-nums font-bold text-[#627eea]">
+                  {fa(ethDom.toFixed(2), lang)}%
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2 text-[11px]">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-[var(--brand-muted)] shrink-0" />
+                  <span className="font-bold text-[var(--brand-text)]">{lang === "fa" ? "سایر" : "Others"}</span>
+                </span>
+                <span className="font-latin tabular-nums text-[var(--brand-muted)]">
+                  {fa(othersDom.toFixed(2), lang)}%
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Market breakdown — 6 compact mini-stats.
+              Each shows a market segment's market cap or volume. */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+            <BreakdownStat
+              label={lang === "fa" ? "آلت‌کوین" : "Altcoins"}
+              value={fa(fmtCompact(globalStats.altcoinMarketCap || 0), lang)}
+              accent="#a78bfa"
+            />
+            <BreakdownStat
+              label={lang === "fa" ? "دیفای" : "DeFi"}
+              value={fa(fmtCompact(globalStats.defiMarketCap), lang)}
+              accent="#f472b6"
+            />
+            <BreakdownStat
+              label={lang === "fa" ? "استیبل‌کوین" : "Stablecoins"}
+              value={fa(fmtCompact(globalStats.stablecoinMarketCap), lang)}
+              accent="#38bdf8"
+            />
+            <BreakdownStat
+              label={lang === "fa" ? "مشتقات" : "Derivatives"}
+              value={fa(fmtCompact(globalStats.derivativesVolume24h || 0), lang)}
+              accent="#fbbf24"
+            />
+            <BreakdownStat
+              label={lang === "fa" ? "صرافی‌ها" : "Exchanges"}
+              value={fa((globalStats.activeExchanges || 0).toLocaleString(), lang)}
+              accent="#34d399"
+              isCount
+            />
+            <BreakdownStat
+              label={lang === "fa" ? "جفت‌های فعال" : "Pairs"}
+              value={fa((globalStats.activeMarketPairs || 0).toLocaleString(), lang)}
+              accent="#fb923c"
+              isCount
+            />
+          </div>
+        </div>
+
+        {/* Fallback notice — only shown when CoinGecko is rate-limited
+            and we're showing CMC data instead. */}
+        {usingFallback && (
+          <div className="mt-3 flex items-center gap-2 text-[10px] text-[var(--brand-muted)] bg-amber-500/5 border border-amber-500/20 rounded-md px-2.5 py-1.5">
+            <AlertCircle className="w-3 h-3 text-amber-400 shrink-0" />
+            <span>
+              {lang === "fa"
+                ? "نمایش داده‌ها از CoinMarketCap (CoinGecko در حالت آماده‌سازی)"
+                : "Showing CoinMarketCap data (CoinGecko is warming up)"}
+            </span>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
 
-        {/* Market breakdown mini-stats */}
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-[10px]">
-          <div className="p-1.5 rounded-lg bg-[var(--brand-surface-2)]/50">
-            <div className="text-[var(--brand-muted)] uppercase tracking-wider">{lang === "fa" ? "آلت‌کوین" : "Altcoins"}</div>
-            <div className="font-latin font-bold text-[var(--brand-text)] tabular-nums">{fa(fmtCompact(globalStats.altcoinMarketCap || 0), lang)}</div>
-          </div>
-          <div className="p-1.5 rounded-lg bg-[var(--brand-surface-2)]/50">
-            <div className="text-[var(--brand-muted)] uppercase tracking-wider">{lang === "fa" ? "دیفای" : "DeFi"}</div>
-            <div className="font-latin font-bold text-[var(--brand-text)] tabular-nums">{fa(fmtCompact(globalStats.defiMarketCap), lang)}</div>
-          </div>
-          <div className="p-1.5 rounded-lg bg-[var(--brand-surface-2)]/50">
-            <div className="text-[var(--brand-muted)] uppercase tracking-wider">{lang === "fa" ? "استیبل" : "Stable"}</div>
-            <div className="font-latin font-bold text-[var(--brand-text)] tabular-nums">{fa(fmtCompact(globalStats.stablecoinMarketCap), lang)}</div>
-          </div>
-          <div className="p-1.5 rounded-lg bg-[var(--brand-surface-2)]/50">
-            <div className="text-[var(--brand-muted)] uppercase tracking-wider">{lang === "fa" ? "مشتقات" : "Derivatives"}</div>
-            <div className="font-latin font-bold text-[var(--brand-text)] tabular-nums">{fa(fmtCompact(globalStats.derivativesVolume24h || 0), lang)}</div>
-          </div>
-          <div className="p-1.5 rounded-lg bg-[var(--brand-surface-2)]/50">
-            <div className="text-[var(--brand-muted)] uppercase tracking-wider">{lang === "fa" ? "صرافی‌ها" : "Exchanges"}</div>
-            <div className="font-latin font-bold text-[var(--brand-text)] tabular-nums">{fa(globalStats.activeExchanges.toLocaleString(), lang)}</div>
-          </div>
-          <div className="p-1.5 rounded-lg bg-[var(--brand-surface-2)]/50">
-            <div className="text-[var(--brand-muted)] uppercase tracking-wider">{lang === "fa" ? "جفت‌ها" : "Pairs"}</div>
-            <div className="font-latin font-bold text-[var(--brand-text)] tabular-nums">{fa((globalStats.activeMarketPairs || 0).toLocaleString(), lang)}</div>
-          </div>
-        </div>
+/** Compact breakdown stat — used in the Market Pulse grid. */
+function BreakdownStat({
+  label,
+  value,
+  accent,
+  isCount,
+}: {
+  label: string;
+  value: string;
+  accent: string;
+  isCount?: boolean;
+}) {
+  return (
+    <div className="p-2 rounded-lg bg-[var(--brand-surface-2)]/40 border border-[var(--brand-border)]/30">
+      <div className="flex items-center gap-1 mb-0.5">
+        <span className="w-1 h-1 rounded-full shrink-0" style={{ backgroundColor: accent }} />
+        <span className="text-[9px] font-latin uppercase tracking-wider text-[var(--brand-muted)] truncate">
+          {label}
+        </span>
+      </div>
+      <div className={cn(
+        "text-xs font-bold font-latin tabular-nums text-[var(--brand-text)]",
+        isCount && "text-[11px]"
+      )}>
+        {value}
       </div>
     </div>
   );

@@ -4305,3 +4305,156 @@ Stage Summary:
 3. [Phase F] IndexedDB برای کش coin detail responses (با idb-keyval)
 4. [Phase G] Virtual scrolling برای جدول ۱۰۰ کوین
 5. [Phase H] Skeleton screens بهتر
+
+---
+Task ID: 34
+Agent: main (autonomous dev session)
+Task: رفع تکراری‌های Market Intelligence، بهبود کارت‌ها و چارت‌ها در ۳ صفحه crypto.
+
+Work Log:
+
+### SESSION-START-SYNC-CHECK
+- Repository: /home/z/my-project/AiCryptoDiscoveryFeed
+- Branch: main
+- git fetch origin: ✅ Success
+- git status: clean, up-to-date (commit aa4e22c)
+- rev-list: behind=0, ahead=0
+- Verdict: ✅ Up-to-date and clean — proceeding.
+
+### مرحله ۱: تست QA پروداکشن با agent-browser
+- /crypto/market: bodyH=6350, 100 ردیف جدول، 3 sidebar card
+- ساختار صفحه بررسی شد و **مشکل تکراری** پیدا شد:
+  - **Stats Bar (بالای صفحه)**: Total M.Cap, 24h Volume, BTC.D, ETH.D, Coins, DeFi (۶ آمار)
+  - **MarketOverview (زیر آن)**: Sentiment, Total M.Cap (تکرار!), 24h Volume (تکرار!),
+    Active Coins (تکرار!), BTC+ETH dominance bars (تکرار!), 6 mini-stats شامل DeFi (تکرار!)
+  - یعنی ۶ مقدار در دو section تکرار می‌شد
+- /crypto/market/bitcoin: Market Cap = FDV تکرار (چون Bitcoin تمام ماین شده)
+- coin-detail PriceChange: فقط عدد، بدون visual indicator magnitude
+
+### مرحله ۲: رفع تکراری‌ها در Market Intelligence — طراحی MarketPulse جدید
+
+**قبل:**
+```
+┌──────────────────────────────────────────────────────────┐
+│ Stats Bar (6 stats): M.Cap | Volume | BTC.D | ETH.D | Coins | DeFi │  ← Section 1
+├──────────────────────────────────────────────────────────┤
+│ MarketOverview (4 cards + 2 bars + 6 mini):                       │  ← Section 2
+│   Sentiment | M.Cap (DUP) | Volume (DUP) | Active Coins (DUP)     │
+│   BTC.D bar (DUP) | ETH.D bar (DUP)                               │
+│   Alt | DeFi (DUP) | Stable | Derivatives | Exchanges | Pairs     │
+└──────────────────────────────────────────────────────────┘
+```
+
+**بعد (MarketPulse واحد):**
+```
+┌───────────────────────────────────────────────────────┐
+│ Row 1: 3 hero stats (هیچ تکراری نیست)                  │
+│   Sentiment (با icon + درصد تغییر) | Total M.Cap | 24h Volume │
+├───────────────────────────────────────────────────────┤
+│ Row 2: Dominance Donut (SVG) | 6 breakdown stats grid │
+│   ┌─────────────┐   ┌─────────────────────────────┐  │
+│   │  Donut chart │   │ Altcoins | DeFi | Stablecoins │  │
+│   │  BTC (orange)│   │ Derivatives | Exchanges | Pairs │  │
+│   │  ETH (blue)  │   └─────────────────────────────┘  │
+│   │  Others (gray)│                                    │
+│   │  Center: BTC% │                                    │
+│   └─────────────┘   Legend: BTC/ETH/Others percentages  │
+└───────────────────────────────────────────────────────┘
+```
+
+ویژگی‌ها:
+- **Dominance Donut**: SVG خالص، 3 segment (BTC orange, ETH blue, Others gray)
+  - محاسبه درست با absolute dominance %، نه hack `* 5` قبلی
+  - Center: درصد BTC dominance به‌عنوان "main number"
+  - Legend کناری با درصد دقیق BTC/ETH/Others
+- **BreakdownStat**: 6 آمار فشرده با accent dot رنگی، بدون تکرار
+- حذف importهای بلااستفاده: `StatCard`, `Sparkline`, `ProgressBar` (Tree-shaking)
+- مصرف API: صفر — از globalStats موجود استفاده می‌کنه
+
+### مرحله ۳: بهبود coin-detail (تکراری + بصری)
+
+**۱. حذف تکرار FDV:**
+- قبلاً: برای Bitcoin، Market Cap = $1.43T و FDV = $1.43T همزمان نمایش داده می‌شد
+- حالا: FDV فقط وقتی نشان داده می‌شه که از Market Cap بیش از 0.5% اختلاف داشته باشه
+- اگه circulating_supply ≈ max_supply (مثل Bitcoin)، FDV حذف می‌شه
+
+**۲. ATH/ATL با چارت چرخه‌ای:**
+- قبلاً: ۲ کارت جدا (ATH + ATL) با عدد و درصد
+- حالا: یک section واحد با:
+  - ATL (سمت چپ) + ATH (سمت راست) + Bar زیر
+  - **Cycle Bar**: نوار گرادیانی با مارکر قیمت فعلی
+  - استفاده از **log-scale** (نه linear) چون ATH می‌تونه ۱۰۰۰× ATL باشه
+  - مثلاً Bitcoin: ATL=$67, ATH=$73k → linear همه مارکرها رو سمت چپ می‌ذاشت
+  - log-scale موقعیت نسبی درست رو نشون می‌ده
+
+**۳. PriceChange با Magnitude Bar:**
+- قبلاً: فقط عدد (مثلاً "+8.22%")
+- حالا: عدد + bar بصری magnitude
+  - Bar از center شروع می‌شه
+  - سبز به راست برای مثبت، قرمز به چپ برای منفی
+  - width نرمال‌شده: 50% تغییر = full half-bar
+  - 6 timeframe همگی bar دارن (1h, 24h, 7d, 30d, 60d, 1y)
+
+**۴. Supply section بهبود یافته:**
+- قبلاً: متن ساده "در گردش: X BTC، کل: Y BTC، حداکثر: Z BTC" + mining bar ساده
+- حالا: ۳ ستون استات با label + value + unit
+- Mining bar گرادیانی با اطلاعات بیشتر:
+  - اگه max_supply وجود داره: "% mined" + "Remaining: X BTC"
+  - اگه max_supply نیست ولی total > circulating: "% in circulation" + "Locked: X ETH"
+  - اگه neither: bar حذف می‌شه
+
+### مرحله ۴: تست محلی
+- dev server روی پورت 3001 اجرا شد
+- /crypto/market: 100 rows، 3 donut circles، sentiment + dominance + breakdown کار می‌کنن
+- /crypto/market/bitcoin:
+  - RangeBar ✅
+  - 6 PriceChange bars ✅
+  - ATH/ATL cycle bar با log-scale ✅
+  - Supply با "باقی‌مانده: X BTC" ✅
+  - FDV حذف شده (چون MC ≈ FDV) ✅
+- /crypto/market/ethereum:
+  - FDV: حذف شده (چون ETH max_supply نامحدوده)
+  - ATH/ATL: $0.43 ↔ $2,275 ↔ $4,946 ✅
+  - Supply: 120.68M = total, "نامحدود" برای max ✅
+
+### مرحله ۵: تست نهایی
+- TypeScript: 0 errors ✅
+- ESLint: 0 errors, 0 warnings ✅
+- Build: success ✅
+- Screenshots:
+  - /home/z/my-project/download/qa-local-market-pulse.png
+  - /home/z/my-project/download/qa-local-bitcoin-enhanced.png
+
+### خلاصه تغییرات:
+2 فایل، 375+/179- lines:
+- `market-intelligence.tsx` (+326/-179): حذف Stats Bar + MarketOverview تکراری،
+  اضافه کردن MarketPulse با Dominance Donut و BreakdownStat
+- `coin-detail.tsx` (+228/-?): FDV dedup, ATH/ATL cycle bar, PriceChange magnitude bars,
+  Supply section با dual-mode (mined/circulation) progress bar
+
+Stage Summary:
+
+**وضعیت فعلی پروژه:**
+- 21 API route، 8 صفحه، 60+ کامپوننت
+- TypeScript: 0 errors ✅
+- ESLint: 0 errors, 0 warnings ✅
+- Build: success ✅
+- Market Intelligence: تکراری‌ها حذف شدند، Market Pulse واحد با donut chart
+- coin-detail: 4 بهبود بصری با zero API cost
+
+**اصلاحات تکمیل‌شده این دور:**
+1. حذف ۶ داده تکراری در Market Intelligence (Stats Bar + MarketOverview → MarketPulse)
+2. Dominance Donut SVG خالص (با absolute %، نه hack `*5` قبلی)
+3. حذف FDV تکراری برای fully-mined coins
+4. ATH/ATL cycle bar با log-scale (مهم برای طیف‌های وسیع)
+5. PriceChange magnitude bar (visual cue برای ۶ timeframe)
+6. Supply section با dual-mode (mined یا circulation)
+7. حذف importهای بلااستفاده (StatCard, Sparkline, ProgressBar)
+8. BreakdownStat با accent dots رنگی
+
+**توصیه‌های اولویت‌دار برای مرحله بعدی:**
+1. [deploy] user باید `CLOUDFLARE_API_TOKEN` تنظیم کنه و `npm run deploy` اجرا کنه
+2. [Phase E] Prefetch هوشمند با hover روی coin rows (TanStack Query prefetch)
+3. [Phase F] IndexedDB برای کش coin detail responses
+4. [Phase G] Virtual scrolling برای جدول ۱۰۰ کوین
+5. [Phase H] بهبود skeleton screens با shimmer effect

@@ -473,7 +473,11 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
         <ExtLink href={`https://coinmarketcap.com/currencies/${cmcSlug || displayCoin.id}/`} icon={<ExternalLink className="w-3.5 h-3.5" />} label="CMC" />
       </div>
 
-      {/* Stats grid — hide high/low when 0 (no real data available) */}
+      {/* Stats grid — hide high/low when 0 (no real data available).
+          FDV is only shown when it differs meaningfully from Market Cap
+          (within 0.5%). For fully-mined coins like Bitcoin, FDV == Market
+          Cap because circulating_supply == max_supply, so showing both is
+          redundant noise. */}
       <section className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 mb-6">
         <StatCard label={lang === "fa" ? "مارکت کپ" : "Market Cap"} value={fa(fmtCompact(md.market_cap?.usd || 0))} />
         <StatCard label={lang === "fa" ? "حجم ۲۴س" : "24h Volume"} value={fa(fmtCompact(md.total_volume?.usd || 0))} />
@@ -483,7 +487,12 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
         {(md.low_24h?.usd || 0) > 0 && (
           <StatCard label={lang === "fa" ? "پایین‌ترین ۲۴س" : "24h Low"} value={fa(fmtPrice(md.low_24h.usd))} accent="#f87171" />
         )}
-        {md.fully_diluted_valuation?.usd && (
+        {md.fully_diluted_valuation?.usd &&
+         md.fully_diluted_valuation.usd > 0 &&
+         md.market_cap?.usd &&
+         /* Only show FDV when it differs from Market Cap by more than 0.5%.
+            When they're equal (fully-mined coins), FDV is redundant. */
+         Math.abs(md.fully_diluted_valuation.usd - md.market_cap.usd) / md.market_cap.usd > 0.005 && (
           <StatCard label={lang === "fa" ? "ارزش کامل" : "FDV"} value={fa(fmtCompact(md.fully_diluted_valuation.usd))} />
         )}
       </section>
@@ -529,84 +538,169 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
         </div>
       </section>
 
-      {/* ATH / ATL — only show if we have real data (not 0) */}
+      {/* ATH / ATL — only show if we have real data (not 0).
+          Includes a visual cycle bar showing where the current price
+          sits between ATL (left) and ATH (right). */}
       {(md.ath?.usd || 0) > 0 && (md.atl?.usd || 0) > 0 && (
-      <section className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
-        <div className="p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
-          <div className="flex items-center gap-1.5 mb-1">
-            <TrendingUp className="w-3 h-3 text-amber-400" />
-            <h3 className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)]">
-              {lang === "fa" ? "بالاترین تاریخی" : "All-Time High"}
-            </h3>
+      <section className="mb-6 p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
+        <h2 className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-3">
+          {lang === "fa" ? "بالاترین و پایین‌ترین تاریخی" : "All-Time High / Low"}
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+          {/* ATL */}
+          <div>
+            <div className="flex items-center gap-1.5 mb-1">
+              <TrendingDown className="w-3 h-3 text-[var(--brand-accent)]" />
+              <span className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)]">
+                {lang === "fa" ? "پایین‌ترین" : "Low"}
+              </span>
+            </div>
+            <div className="font-latin tabular-nums text-base font-bold text-[var(--brand-text)]">
+              {fa(fmtPrice(md.atl?.usd || 0))}
+            </div>
+            <div className="text-[10px] text-[var(--brand-muted)] mt-0.5">
+              {md.atl_date?.usd ? fa(fmtDate(md.atl_date.usd)) : "—"}
+            </div>
           </div>
-          <div className="font-latin tabular-nums text-lg font-bold text-[var(--brand-text)]">
-            {fa(fmtPrice(md.ath?.usd || 0))}
-          </div>
-          <div className="text-[10px] text-[var(--brand-muted)] mt-1">
-            {md.ath_date?.usd ? fa(fmtDate(md.ath_date.usd)) : ""} ·{" "}
-            <span className="text-red-400 font-bold">
-              {fa((md.ath_change_percentage?.usd || 0).toFixed(2))}%
-            </span>
+          {/* ATH */}
+          <div className="text-end">
+            <div className="flex items-center justify-end gap-1.5 mb-1">
+              <span className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)]">
+                {lang === "fa" ? "بالاترین" : "High"}
+              </span>
+              <TrendingUp className="w-3 h-3 text-amber-400" />
+            </div>
+            <div className="font-latin tabular-nums text-base font-bold text-[var(--brand-text)]">
+              {fa(fmtPrice(md.ath?.usd || 0))}
+            </div>
+            <div className="text-[10px] text-[var(--brand-muted)] mt-0.5">
+              {md.ath_date?.usd ? fa(fmtDate(md.ath_date.usd)) : "—"}
+            </div>
           </div>
         </div>
-        <div className="p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
-          <div className="flex items-center gap-1.5 mb-1">
-            <TrendingDown className="w-3 h-3 text-[var(--brand-accent)]" />
-            <h3 className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)]">
-              {lang === "fa" ? "پایین‌ترین تاریخی" : "All-Time Low"}
-            </h3>
-          </div>
-          <div className="font-latin tabular-nums text-lg font-bold text-[var(--brand-text)]">
-            {fa(fmtPrice(md.atl?.usd || 0))}
-          </div>
-          <div className="text-[10px] text-[var(--brand-muted)] mt-1">
-            {md.atl_date?.usd ? fa(fmtDate(md.atl_date.usd)) : ""} ·{" "}
-            <span className="text-[var(--brand-accent)] font-bold">
-              {fa((md.atl_change_percentage?.usd || 0).toFixed(2))}%
-            </span>
-          </div>
-        </div>
+        {/* Cycle bar: ATL ────●──── ATH with current price as marker.
+            Uses log-scale because ATH can be 1000× ATL (e.g. BTC:
+            ATL=$67, ATH=$73k). Linear scale would put almost every
+            coin's marker at the far left, hiding the relative
+            position. log scale gives a more informative visual. */}
+        {(() => {
+          const atl = md.atl?.usd || 1;
+          const ath = md.ath?.usd || 1;
+          const current = md.current_price?.usd || 0;
+          if (ath <= atl || current <= 0) return null;
+          const logRange = Math.log(ath) - Math.log(atl);
+          const logCurrent = Math.log(current);
+          // Clamp to [0, 100]
+          const pct = Math.max(0, Math.min(100, ((logCurrent - Math.log(atl)) / logRange) * 100));
+          return (
+            <div>
+              <div className="relative h-2 rounded-full overflow-hidden bg-gradient-to-r from-[var(--brand-accent)]/30 via-amber-400/30 to-amber-400/40">
+                <div
+                  className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 border-[var(--brand-bg)] bg-[var(--brand-text)] shadow-md"
+                  style={{ insetInlineStart: `calc(${pct}% - 6px)` }}
+                />
+              </div>
+              <div className="flex items-center justify-between mt-1.5 text-[9px] text-[var(--brand-muted)]">
+                <span className="font-latin">{fa(fmtPrice(atl))}</span>
+                <span className="text-[var(--brand-text)] font-bold font-latin tabular-nums">
+                  {fa(fmtPrice(current))}
+                </span>
+                <span className="font-latin">{fa(fmtPrice(ath))}</span>
+              </div>
+            </div>
+          );
+        })()}
       </section>
       )}
 
-      {/* Supply */}
+      {/* Supply — shows circulating, total, max with a unified progress
+          bar that visualizes the relationship between them. When a coin
+          has no max_supply (e.g. ETH), only Circulating vs Total is shown. */}
       <section className="mb-6 p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
         <h2 className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-3">
           {lang === "fa" ? "عرضه" : "Supply"}
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+        {/* Stats row — three values, with units */}
+        <div className="grid grid-cols-3 gap-3 mb-3">
           <div>
-            <span className="text-[var(--brand-muted)]">{lang === "fa" ? "در گردش: " : "Circulating: "}</span>
-            <span className="font-latin tabular-nums text-[var(--brand-text)]">
-              {fa(fmtCompact(md.circulating_supply || 0))} {displayCoin.symbol.toUpperCase()}
-            </span>
+            <div className="text-[9px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-0.5">
+              {lang === "fa" ? "در گردش" : "Circulating"}
+            </div>
+            <div className="text-xs font-latin tabular-nums font-bold text-[var(--brand-text)]">
+              {fa(fmtCompact(md.circulating_supply || 0))}
+            </div>
+            <div className="text-[9px] text-[var(--brand-muted)] font-latin uppercase">
+              {displayCoin.symbol.toUpperCase()}
+            </div>
           </div>
           <div>
-            <span className="text-[var(--brand-muted)]">{lang === "fa" ? "کل: " : "Total: "}</span>
-            <span className="font-latin tabular-nums text-[var(--brand-text)]">
-              {md.total_supply ? `${fa(fmtCompact(md.total_supply))} ${displayCoin.symbol.toUpperCase()}` : "—"}
-            </span>
+            <div className="text-[9px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-0.5">
+              {lang === "fa" ? "کل" : "Total"}
+            </div>
+            <div className="text-xs font-latin tabular-nums font-bold text-[var(--brand-text)]">
+              {md.total_supply ? fa(fmtCompact(md.total_supply)) : "—"}
+            </div>
+            <div className="text-[9px] text-[var(--brand-muted)] font-latin uppercase">
+              {md.total_supply ? displayCoin.symbol.toUpperCase() : ""}
+            </div>
           </div>
           <div>
-            <span className="text-[var(--brand-muted)]">{lang === "fa" ? "حداکثر: " : "Max: "}</span>
-            <span className="font-latin tabular-nums text-[var(--brand-text)]">
-              {md.max_supply ? `${fa(fmtCompact(md.max_supply))} ${displayCoin.symbol.toUpperCase()}` : "∞"}
-            </span>
+            <div className="text-[9px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-0.5">
+              {lang === "fa" ? "حداکثر" : "Max"}
+            </div>
+            <div className="text-xs font-latin tabular-nums font-bold text-[var(--brand-text)]">
+              {md.max_supply ? fa(fmtCompact(md.max_supply)) : "∞"}
+            </div>
+            <div className="text-[9px] text-[var(--brand-muted)] font-latin uppercase">
+              {md.max_supply ? displayCoin.symbol.toUpperCase() : lang === "fa" ? "نامحدود" : "unlimited"}
+            </div>
           </div>
         </div>
-        {md.max_supply && md.circulating_supply && (
-          <div className="mt-3">
-            <div className="h-1.5 w-full rounded-full bg-[var(--brand-surface-2)] overflow-hidden">
+        {/* Mining/inflation progress bar.
+            - If max_supply exists: shows circulating/max as % mined
+            - Else if total_supply exists: shows circulating/total as % in circulation
+            - Else: no bar (insufficient data) */}
+        {md.max_supply && md.circulating_supply && md.circulating_supply > 0 ? (
+          <div>
+            <div className="relative h-2 w-full rounded-full bg-[var(--brand-surface-2)] overflow-hidden">
               <div
-                className="h-full rounded-full bg-[var(--brand-accent)]"
+                className="absolute inset-y-0 start-0 rounded-full bg-gradient-to-r from-[var(--brand-accent)] to-[var(--brand-accent)]/80"
                 style={{ width: `${Math.min(100, (md.circulating_supply / md.max_supply) * 100)}%` }}
               />
             </div>
-            <div className="text-[10px] text-[var(--brand-muted)] mt-1 font-latin">
-              {fa(((md.circulating_supply / md.max_supply) * 100).toFixed(1))}% {lang === "fa" ? "ماین شده" : "mined"}
+            <div className="flex items-center justify-between mt-1.5 text-[10px] font-latin">
+              <span className="text-[var(--brand-muted)]">
+                {fa(((md.circulating_supply / md.max_supply) * 100).toFixed(1))}% {lang === "fa" ? "ماین شده" : "mined"}
+              </span>
+              <span className="text-[var(--brand-muted)]">
+                {lang === "fa" ? "باقی‌مانده: " : "Remaining: "}
+                <span className="font-bold text-[var(--brand-text)] tabular-nums">
+                  {fa(fmtCompact(md.max_supply - md.circulating_supply))} {displayCoin.symbol.toUpperCase()}
+                </span>
+              </span>
             </div>
           </div>
-        )}
+        ) : md.total_supply && md.circulating_supply && md.circulating_supply > 0 && md.total_supply > md.circulating_supply ? (
+          <div>
+            <div className="relative h-2 w-full rounded-full bg-[var(--brand-surface-2)] overflow-hidden">
+              <div
+                className="absolute inset-y-0 start-0 rounded-full bg-gradient-to-r from-[var(--brand-accent)] to-[var(--brand-accent)]/80"
+                style={{ width: `${Math.min(100, (md.circulating_supply / md.total_supply) * 100)}%` }}
+              />
+            </div>
+            <div className="flex items-center justify-between mt-1.5 text-[10px] font-latin">
+              <span className="text-[var(--brand-muted)]">
+                {fa(((md.circulating_supply / md.total_supply) * 100).toFixed(1))}% {lang === "fa" ? "در گردش" : "in circulation"}
+              </span>
+              <span className="text-[var(--brand-muted)]">
+                {lang === "fa" ? "قفل/ممهور: " : "Locked/Sealed: "}
+                <span className="font-bold text-[var(--brand-text)] tabular-nums">
+                  {fa(fmtCompact(md.total_supply - md.circulating_supply))} {displayCoin.symbol.toUpperCase()}
+                </span>
+              </span>
+            </div>
+          </div>
+        ) : null}
       </section>
 
       {/* Categories & Tags — show only from cmcCoin.tags to avoid duplicates */}
@@ -750,11 +844,31 @@ function PriceChange({ label, value, fa }: { label: string; value?: number; fa: 
     );
   }
   const up = value >= 0;
+  // Visual magnitude bar: cap visual width at |50%| change so even extreme
+  // moves don't overflow the cell. Most coins move <10% in any timeframe.
+  const magnitude = Math.min(100, Math.abs(value) * 2); // 50% change → full bar
   return (
     <div className="text-center">
       <div className="text-[10px] text-[var(--brand-muted)] mb-1">{label}</div>
-      <div className={cn("font-latin tabular-nums text-sm font-bold", up ? "text-[var(--brand-accent)]" : "text-red-400")}>
+      <div className={cn("font-latin tabular-nums text-sm font-bold mb-1", up ? "text-[var(--brand-accent)]" : "text-red-400")}>
         {up ? "+" : ""}{fa(value.toFixed(2))}%
+      </div>
+      {/* Magnitude bar — grows from center, green to the right for up,
+          red to the left for down. Visual cue for magnitude at a glance. */}
+      <div className="relative h-1 w-full rounded-full bg-[var(--brand-surface-2)] overflow-hidden">
+        <div
+          className={cn(
+            "absolute top-0 h-full rounded-full",
+            up ? "bg-[var(--brand-accent)]" : "bg-red-400"
+          )}
+          style={
+            up
+              ? { insetInlineStart: "50%", width: `${magnitude / 2}%` }
+              : { insetInlineEnd: "50%", width: `${magnitude / 2}%` }
+          }
+        />
+        {/* Center divider */}
+        <div className="absolute top-0 bottom-0 inset-inline-start-1/2 w-px bg-[var(--brand-border)]" />
       </div>
     </div>
   );
