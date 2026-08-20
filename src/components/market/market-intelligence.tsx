@@ -38,7 +38,9 @@ interface Coin {
   total_volume: number;
   high_24h: number;
   low_24h: number;
+  price_change_percentage_1h_in_currency?: number;
   price_change_percentage_24h: number;
+  price_change_percentage_7d_in_currency?: number;
   circulating_supply: number;
   total_supply: number | null;
   max_supply: number | null;
@@ -575,6 +577,7 @@ export function MarketIntelligence() {
                         <th className="px-3 py-2 text-start font-bold text-[var(--brand-muted)] uppercase tracking-wider">{lang === "fa" ? "نام" : "Name"}</th>
                         <SortHeader label={lang === "fa" ? "قیمت" : "Price"} field="current_price" sortField={sortField} sortDir={sortDir} onSort={onSort} align="end" />
                         <SortHeader label="24h %" field="price_change_percentage_24h" sortField={sortField} sortDir={sortDir} onSort={onSort} align="end" />
+                        <th className="px-3 py-2 text-end font-bold text-[var(--brand-muted)] uppercase tracking-wider hidden lg:table-cell">7d</th>
                         <SortHeader label={lang === "fa" ? "حجم" : "Volume"} field="total_volume" sortField={sortField} sortDir={sortDir} onSort={onSort} align="end" />
                         <SortHeader label={lang === "fa" ? "مارکت کپ" : "M.Cap"} field="market_cap" sortField={sortField} sortDir={sortDir} onSort={onSort} align="end" />
                         <th className="px-3 py-2"></th>
@@ -625,6 +628,13 @@ export function MarketIntelligence() {
                             <td className="px-3 py-2.5 text-end font-latin tabular-nums text-[var(--brand-text)]">{fa(fmtPrice(coin.current_price), lang)}</td>
                             <td className={cn("px-3 py-2.5 text-end font-latin tabular-nums font-bold", up ? "text-[var(--brand-accent)]" : "text-red-400")}>
                               {up ? "+" : ""}{fa(change.toFixed(2), lang)}%
+                            </td>
+                            <td className="px-3 py-2.5 text-end hidden lg:table-cell">
+                              <MiniTrend
+                                change1h={coin.price_change_percentage_1h_in_currency}
+                                change24h={change}
+                                change7d={coin.price_change_percentage_7d_in_currency}
+                              />
                             </td>
                             <td className="px-3 py-2.5 text-end font-latin tabular-nums text-[var(--brand-muted)]">{fa(fmtCompact(coin.total_volume), lang)}</td>
                             <td className="px-3 py-2.5 text-end font-latin tabular-nums text-[var(--brand-muted)]">{fa(fmtCompact(coin.market_cap), lang)}</td>
@@ -780,6 +790,66 @@ export function MarketIntelligence() {
                 </div>
               </SidebarCard>
             )}
+
+            {/* Hot Coins — trending coins that are also top gainers */}
+            {trendingData?.coins && topGainersData?.coins && (() => {
+              const gainerSlugs = new Set(topGainersData.coins.map(c => c.slug || c.symbol.toLowerCase()));
+              const hotCoins = trendingData.coins.filter(c => {
+                const slug = c.id || c.symbol.toLowerCase();
+                return gainerSlugs.has(slug) || gainerSlugs.has(c.symbol.toLowerCase());
+              }).slice(0, 5);
+              if (hotCoins.length === 0) return null;
+              return (
+                <SidebarCard
+                  title={lang === "fa" ? "کوین‌های داغ 🔥" : "Hot Coins 🔥"}
+                  icon={<Flame className="w-3.5 h-3.5" />}
+                  accent="#ef4444"
+                >
+                  <div className="space-y-1">
+                    {hotCoins.map((coin, i) => {
+                      const gainer = topGainersData.coins.find(
+                        g => (g.slug || g.symbol.toLowerCase()) === (coin.id || coin.symbol.toLowerCase())
+                          || g.symbol.toLowerCase() === coin.symbol.toLowerCase()
+                      );
+                      return (
+                        <button
+                          key={coin.id}
+                          onClick={() => router.push(`/crypto/market/${coin.id}`)}
+                          className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-[var(--brand-surface-2)] transition-all text-start group border border-transparent hover:border-red-500/20"
+                        >
+                          <span className="text-[10px] font-latin font-bold w-5 h-5 flex items-center justify-center rounded-md shrink-0 bg-red-500/10 text-red-400">
+                            🔥
+                          </span>
+                          {coin.thumb && (
+                            <img
+                              src={coin.thumb}
+                              alt={coin.name}
+                              className="w-5 h-5 rounded-full shrink-0 ring-1 ring-[var(--brand-border)]"
+                              loading="lazy"
+                            />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-bold text-[var(--brand-text)] group-hover:text-red-400 transition-colors truncate">
+                              {coin.name}
+                            </div>
+                            <div className="text-[9px] font-latin text-[var(--brand-muted)] uppercase tracking-wide">
+                              {coin.symbol}
+                            </div>
+                          </div>
+                          {gainer && (
+                            <div className="text-end shrink-0">
+                              <div className="text-[10px] font-latin font-bold text-emerald-400">
+                                +{fa(gainer.percentChange24h.toFixed(1), lang)}%
+                              </div>
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </SidebarCard>
+              );
+            })()}
           </aside>
         </div>
       </div>
@@ -1015,5 +1085,52 @@ function MarketOverview({
         )}
       </div>
     </div>
+  );
+}
+
+/* ============= MiniTrend — 3-point trend indicator ============= */
+/**
+ * Shows a tiny inline SVG trend line from 1h, 24h, 7d change percentages.
+ * No API calls — uses data already fetched in the market table.
+ * The line goes from left (1h ago) to right (7d ago), showing the
+ * direction of price movement over the past week.
+ */
+function MiniTrend({
+  change1h,
+  change24h,
+  change7d,
+}: {
+  change1h?: number;
+  change24h: number;
+  change7d?: number;
+}) {
+  // Build 3 data points: 7d → 24h → 1h (chronological order)
+  // If a value is missing, use 0 (flat)
+  const points = [
+    change7d ?? 0,
+    change24h ?? 0,
+    change1h ?? 0,
+  ];
+  const width = 48;
+  const height = 20;
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const range = max - min || 1;
+  const stepX = width / (points.length - 1);
+  const coords = points.map((v, i) => {
+    const x = i * stepX;
+    const y = height - ((v - min) / range) * height;
+    return `${x},${y}`;
+  }).join(" ");
+
+  // Color: green if 24h change is positive, red if negative
+  const color = change24h >= 0 ? "#2dd4bf" : "#f87171";
+
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="inline-block align-middle" preserveAspectRatio="none">
+      <polyline points={coords} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+      {/* Dot at the end (current state) */}
+      <circle cx={width} cy={height - ((points[points.length - 1] - min) / range) * height} r="1.5" fill={color} />
+    </svg>
   );
 }
