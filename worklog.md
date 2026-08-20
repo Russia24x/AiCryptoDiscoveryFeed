@@ -4005,3 +4005,67 @@ Stage Summary:
 1. نظارت بر rate-limit: اگه CMC هم محدود بشه، fallback به in-memory cache کار می‌کنه
 2. می‌تونیم trending رو هم از CMC بگیریم (به‌جای CoinGecko)
 3. می‌تونیم coingecko-markets رو هم با CMC جایگزین کنیم (وقتی CoinGecko rate-limited می‌شه، CMC data نشون بدیم)
+
+---
+Task ID: 31
+Agent: main (autonomous dev session)
+Task: ممیزی کامل کدبیس، ایجاد گزارش حرفه‌ای، به‌روزرسانی مستندات.
+
+Work Log:
+
+### مرحله ۱: خواندن خط به خط کل کدبیس
+- ۱۱۵ فایل source، ~۱۹,۵۶۶ خط کد
+- ۲۱ API route، ۳۱ کامپوننت، ۱۹ hook
+- ممیزی کامل توسط sub-agent (Explore) با خواندن هر فایل
+
+### مرحله ۲: ممیزی کامل
+**۵۴ مشکل شناسایی شد:**
+- 🔴 ۱ مورد CRITICAL (XSS در dangerouslySetInnerHTML)
+- 🟠 ۷ مورد HIGH (SSRF، باگ‌ها، duplicate fetch)
+- 🟡 ۲۱ مورد MEDIUM (performance، side effects)
+- 🟢 ۲۵ مورد LOW (dead code، unused imports)
+
+### مرحله ۳: ایجاد AUDIT.md
+- گزارش حرفه‌ای ۳۲۴ خطی با:
+  - Executive Summary
+  - Architecture Overview (نمودار ASCII)
+  - تمام مشکلات با severity و fix
+  - Feature Audit (تمام فیچرها با وضعیت و چالش)
+  - Next Development Roadmap (Phase 28-32)
+
+### مرحله ۴: به‌روزرسانی مستندات
+- README.md: API routes از 27 به 21 به‌روزرسانی شد
+- `/api/route.ts`: API index از 5 به 21 endpoint به‌روزرسانی شد
+- AUDIT.md: فایل جدید با گزارش کامل ممیزی
+
+### مرحله ۵: نکات کلیدی ممیزی
+
+**نقاط قوت:**
+1. useSyncExternalStore برای SSR safety
+2. Fallback chains قوی برای upstream APIs
+3. Service Worker v2 با LRU eviction
+4. bilingual support با RTL
+5. global_fetch_strictly_public برای جلوگیری از SSRF
+
+**نقاط ضعف:**
+1. XSS در ۳ نقطه (coin-detail, article-reader, telegram-preview)
+2. SSRF در /api/article و /api/og-image
+3. Missing CSP/HSTS headers
+4. Multiple dead code instances
+5. Duplicate API calls (FeedGrid, ticker widgets)
+6. Side effects during render (useTetherPrice, useTheme)
+
+Stage Summary:
+
+**وضعیت فعلی:**
+- 115 فایل، ~19,566 خط
+- 0 TypeScript errors، 0 ESLint errors
+- 54 مشکل شناسایی شد (1 critical، 7 high، 21 medium، 25 low)
+- گزارش کامل در AUDIT.md
+
+**توصیه‌های اولویت‌دار:**
+1. [Critical] نصب isomorphic-dompurify برای رفع XSS
+2. [High] افزودن CSP/HSTS headers
+3. [High] رفع باگ useReadLater و useFeed cache key
+4. [High] حذف duplicate useFeed calls در FeedGrid
+5. [Medium] رفع side effects در useTetherPrice و useTheme

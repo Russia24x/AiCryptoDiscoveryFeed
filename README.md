@@ -105,16 +105,16 @@ ai-crypto-discovery/
 
 ---
 
-## 🔌 API Routes (27 routes)
+## 🔌 API Routes (21 routes)
 
 ### Content APIs
 | Endpoint | Source | Cache (edge) | Purpose |
 |---|---|---|---|
-| `/api/feed` | RSS feeds (27 sources) | 600s | Aggregate RSS/Atom feeds |
+| `/api/feed` | RSS feeds (27 sources) | 300s | Aggregate RSS/Atom feeds |
 | `/api/article` | Source website | 600s | Extract full article HTML |
 | `/api/channel` | t.me/s/<handle> | 300s | Scrape Telegram channel posts |
 | `/api/og-image` | Source website | 3600s | Fetch og:image for cards |
-| `/api/prices` | CoinGecko | 60s | 10-coin price ticker (ticker bar) |
+| `/api/prices` | **CMC (primary)** → CoinGecko (fallback) | 60s | 10-coin price ticker |
 
 ### Market Data APIs
 | Endpoint | Source | Cache (edge) | Fallback | Purpose |
