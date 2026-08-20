@@ -553,11 +553,11 @@ function FearGreedWidget() {
             <span className="text-2xl">{fngEmoji(data.value)}</span>
           </div>
           {/* Gauge bar 0-100 */}
-          <div className="mt-2 h-1.5 w-full rounded-full overflow-hidden bg-gradient-to-r from-red-500 via-yellow-400 to-green-500 opacity-30">
+          <div className="mt-2 h-1.5 w-full rounded-full overflow-hidden bg-gradient-to-r from-red-500 via-yellow-400 to-green-500 opacity-30 relative">
             <div
-              className="h-full w-1 rounded-full bg-white shadow-lg"
+              className="absolute top-1/2 -translate-y-1/2 w-1 h-3 rounded-full bg-white shadow-lg"
               style={{
-                marginLeft: `calc(${data.value}% - 4px)`,
+                insetInlineStart: `calc(${data.value}% - 2px)`,
                 boxShadow: "0 0 8px rgba(255,255,255,0.6)",
               }}
             />

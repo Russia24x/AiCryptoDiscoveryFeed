@@ -38,7 +38,7 @@ export function TrendingTags({ items, onTagClick }: TrendingTagsProps) {
           <span className="text-[var(--brand-text)]">{t.trending.title} </span>
           <span className="text-[var(--brand-accent)]">{t.trending.titleAccent}</span>
         </h3>
-        <span className="text-[10px] font-latin text-[var(--brand-muted)] uppercase tracking-wider mr-1">
+        <span className="text-[10px] font-latin text-[var(--brand-muted)] uppercase tracking-wider me-1">
           · {formatNumber(tags.length, lang)} {t.trending.count}
         </span>
       </div>
@@ -51,7 +51,7 @@ export function TrendingTags({ items, onTagClick }: TrendingTagsProps) {
           >
             <Hash className="w-3 h-3 text-[var(--brand-accent)]/60 group-hover:text-[var(--brand-accent)]" />
             <span className="truncate max-w-[180px]">{tag}</span>
-            <span className="text-[10px] text-[var(--brand-muted)]/60 ml-1" suppressHydrationWarning>
+            <span className="text-[10px] text-[var(--brand-muted)]/60 ms-1" suppressHydrationWarning>
               {formatNumber(count, lang)}
             </span>
           </button>

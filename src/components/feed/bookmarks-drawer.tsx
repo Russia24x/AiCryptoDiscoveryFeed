@@ -104,12 +104,12 @@ export function BookmarksDrawer({ open, onOpenChange }: BookmarksDrawerProps) {
               >
                 {confirmingClear ? (
                   <>
-                    <Trash2 className="w-3 h-3 ml-1" />
+                    <Trash2 className="w-3 h-3 ms-1" />
                     {t.bookmarksDrawer.confirmClear}
                   </>
                 ) : (
                   <>
-                    <Trash2 className="w-3 h-3 ml-1" />
+                    <Trash2 className="w-3 h-3 ms-1" />
                     {t.bookmarksDrawer.clearAll}
                   </>
                 )}
@@ -354,7 +354,7 @@ export function BookmarksButton({
     >
       <Bookmark className={cn("w-4 h-4", active && "fill-[var(--brand-accent)]")} />
       {count > 0 && (
-        <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-[var(--brand-accent)] text-[#04201d] text-[10px] font-bold font-latin">
+        <span className="absolute -top-0.5 -end-0.5 min-w-[16px] h-4 px-1 flex items-center justify-center rounded-full bg-[var(--brand-accent)] text-[#04201d] text-[10px] font-bold font-latin">
           {count > 99 ? "99+" : count.toLocaleString("fa-IR")}
         </span>
       )}

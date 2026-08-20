@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Header } from "@/components/brand/header";
 import { Ticker } from "@/components/brand/ticker";
 import { Footer } from "@/components/brand/footer";
@@ -15,6 +15,7 @@ import { CoinDetail } from "@/components/market/coin-detail";
 export default function CoinDetailPage() {
   const params = useParams<{ coin: string }>();
   const coinId = params.coin;
+  const router = useRouter();
   const [bookmarksOpen, setBookmarksOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -24,8 +25,8 @@ export default function CoinDetailPage() {
       <Header
         activeCategory="crypto"
         onCategoryChange={(c) => {
-          if (c === "all") window.location.href = "/";
-          else window.location.href = `/${c}`;
+          const target = c === "all" ? "/" : `/${c}`;
+          router.push(target);
         }}
         search={search}
         onSearchChange={setSearch}

@@ -296,7 +296,7 @@ export function SettingsPanel({ open, onOpenChange }: SettingsPanelProps) {
                         <div className="text-[9px] text-[var(--brand-muted)] font-latin">
                           {city.lat.toFixed(2)}, {city.lon.toFixed(2)}
                           {city.population > 0 && (
-                            <span className="ml-1 opacity-60">
+                            <span className="ms-1 opacity-60">
                               · pop {(city.population / 1000).toFixed(0)}k
                             </span>
                           )}

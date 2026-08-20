@@ -459,7 +459,7 @@ export function ArticleReader({
                 {article.readingTimeMinutes.toLocaleString(lang === "fa" ? "fa-IR" : "en-US")}{" "}
                 {t.feed.minutesShort}
                 {article.wordCount > 0 && (
-                  <span className="opacity-50 ml-1">
+                  <span className="opacity-50 ms-1">
                     · {article.wordCount.toLocaleString(lang === "fa" ? "fa-IR" : "en-US")} words
                   </span>
                 )}

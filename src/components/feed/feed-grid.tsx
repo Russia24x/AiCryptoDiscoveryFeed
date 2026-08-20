@@ -114,7 +114,7 @@ export function FeedGrid({
 
         <div className="flex items-center gap-1">
           {/* View toggle */}
-          <div className="hidden sm:flex items-center bg-[var(--brand-surface)] border border-[var(--brand-border)] rounded-md p-0.5 mr-1">
+          <div className="hidden sm:flex items-center bg-[var(--brand-surface)] border border-[var(--brand-border)] rounded-md p-0.5 me-1">
             <button
               onClick={() => setView("grid")}
               className={cn(

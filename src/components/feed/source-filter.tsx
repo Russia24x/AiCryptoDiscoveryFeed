@@ -207,13 +207,13 @@ export function SourceFilter({
         <span className="text-[11px] font-latin uppercase tracking-wider text-[var(--brand-muted)]">
           {t.feed.sourceFilter}
         </span>
-        <span className="text-[10px] font-latin text-[var(--brand-muted)]/60 ml-auto" suppressHydrationWarning>
+        <span className="text-[10px] font-latin text-[var(--brand-muted)]/60 ms-auto" suppressHydrationWarning>
           {sources.length} {lang === "fa" ? "منبع" : "sources"}
         </span>
         {activeSourceId && (
           <button
             onClick={() => onSourceChange(null)}
-            className="text-[11px] text-[var(--brand-accent)] hover:underline flex items-center gap-1 ml-2 px-2 py-0.5 rounded-full bg-[var(--brand-accent-soft)] border border-[var(--brand-accent)]/30"
+            className="text-[11px] text-[var(--brand-accent)] hover:underline flex items-center gap-1 ms-2 px-2 py-0.5 rounded-full bg-[var(--brand-accent-soft)] border border-[var(--brand-accent)]/30"
           >
             <X className="w-3 h-3" />
             {t.feed.clearFilter}
@@ -323,7 +323,7 @@ export function SourceFilter({
                 key={src.id}
                 onClick={() => onSourceChange(active ? null : src.id)}
                 className={cn(
-                  "shrink-0 flex items-center gap-2 pl-2.5 pr-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap group",
+                  "shrink-0 flex items-center gap-2 ps-2.5 pe-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap group",
                   active
                     ? "text-[#04201d] font-bold shadow-md"
                     : "bg-[var(--brand-surface)] border border-[var(--brand-border)] text-[var(--brand-muted)] hover:text-[var(--brand-text)] hover:border-[var(--brand-accent)]/40 hover:bg-[var(--brand-surface-2)]"

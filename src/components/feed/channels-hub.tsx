@@ -197,7 +197,7 @@ export function ChannelsHub({ lang, onOpenBookmarks }: ChannelsHubProps) {
             {/* Animated pulse on the Send icon to indicate "live" */}
             <div className="relative">
               <Send className="w-4 h-4 text-[var(--brand-accent)]" />
-              <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-[var(--brand-accent)] animate-pulse" />
+              <span className="absolute -top-0.5 -end-0.5 w-1.5 h-1.5 rounded-full bg-[var(--brand-accent)] animate-pulse" />
             </div>
             <h2 className="text-sm font-bold font-display">
               <span className="text-[var(--brand-text)]">{t.channels.title} </span>
@@ -243,7 +243,7 @@ export function ChannelsHub({ lang, onOpenBookmarks }: ChannelsHubProps) {
                 key={cat}
                 onClick={() => setActiveCat(cat)}
                 className={cn(
-                  "shrink-0 flex items-center gap-2 pl-2 pr-2.5 py-1 rounded-full text-[11px] font-medium transition-all whitespace-nowrap group",
+                  "shrink-0 flex items-center gap-2 ps-2 pe-2.5 py-1 rounded-full text-[11px] font-medium transition-all whitespace-nowrap group",
                   isActive
                     ? "text-[#04201d] font-bold shadow-sm"
                     : "bg-[var(--brand-surface-2)] border border-[var(--brand-border)] text-[var(--brand-muted)] hover:text-[var(--brand-text)] hover:border-[var(--brand-accent)]/30"

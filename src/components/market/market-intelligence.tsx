@@ -401,12 +401,12 @@ export function MarketIntelligence() {
             </button>
             {/* Search */}
             <div className="relative flex items-center group">
-              <Search className="absolute left-3 w-3.5 h-3.5 text-[var(--brand-muted)] pointer-events-none group-focus-within:text-[var(--brand-accent)] transition-colors" />
+              <Search className="absolute start-3 w-3.5 h-3.5 text-[var(--brand-muted)] pointer-events-none group-focus-within:text-[var(--brand-accent)] transition-colors" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={lang === "fa" ? "جستجوی ارز..." : "Search..."}
-                className="bg-[var(--brand-surface)] border border-[var(--brand-border)] rounded-full pl-9 pr-3 py-1.5 text-xs text-[var(--brand-text)] placeholder:text-[var(--brand-muted)] focus:outline-none focus:border-[var(--brand-accent)] focus:ring-2 focus:ring-[var(--brand-accent)]/20 w-32 sm:w-48 transition-all"
+                className="bg-[var(--brand-surface)] border border-[var(--brand-border)] rounded-full ps-9 pe-3 py-1.5 text-xs text-[var(--brand-text)] placeholder:text-[var(--brand-muted)] focus:outline-none focus:border-[var(--brand-accent)] focus:ring-2 focus:ring-[var(--brand-accent)]/20 w-32 sm:w-48 transition-all"
               />
             </div>
             <button

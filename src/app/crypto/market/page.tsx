@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Header } from "@/components/brand/header";
 import { Ticker } from "@/components/brand/ticker";
 import { Footer } from "@/components/brand/footer";
@@ -14,6 +15,7 @@ import { useLanguage } from "@/hooks/use-language";
 
 export default function MarketPage() {
   const { lang } = useLanguage();
+  const router = useRouter();
   const [bookmarksOpen, setBookmarksOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -23,8 +25,8 @@ export default function MarketPage() {
       <Header
         activeCategory="crypto"
         onCategoryChange={(c) => {
-          if (c === "all") window.location.href = "/";
-          else window.location.href = `/${c}`;
+          const target = c === "all" ? "/" : `/${c}`;
+          router.push(target);
         }}
         search={search}
         onSearchChange={setSearch}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore, useCallback } from "react";
+import { useSyncExternalStore, useCallback, useEffect } from "react";
 
 /**
  * useTetherPrice — fetches USDT/Toman price from our /api/tether route.
@@ -117,13 +117,20 @@ async function fetchTetherPrice(): Promise<TetherPrice> {
 
 // === Public hook ===
 export function useTetherPrice() {
-  // Lazy-load from localStorage on first client render
-  if (!cachedPrice && typeof window !== "undefined") {
-    cachedPrice = loadFromStorage();
-    if (cachedPrice) {
-      lastFetchAt = new Date(cachedPrice.fetchedAt).getTime();
+  // Lazy-load from localStorage on mount (NOT during render — that's a
+  // side effect and React 19's eslint flags it). We do this in a
+  // useEffect that runs once on the client. The notify() call triggers
+  // a re-render via useSyncExternalStore so consumers see the loaded
+  // value immediately.
+  useEffect(() => {
+    if (cachedPrice) return; // already loaded
+    const stored = loadFromStorage();
+    if (stored) {
+      cachedPrice = stored;
+      lastFetchAt = new Date(stored.fetchedAt).getTime();
+      notify();
     }
-  }
+  }, []);
 
   const getSnapshot = () => cachedPrice;
   const getServerSnapshot = () => null;
