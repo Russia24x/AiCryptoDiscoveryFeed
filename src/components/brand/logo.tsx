@@ -67,10 +67,13 @@ export function Logo({
   // Category display name — ALWAYS English in the logo (not translated).
   // The user specifically requested this: only the logo area should
   // show the English category name, even when the site is in Persian.
+  // Special case: AI category shows "AI Lab" instead of just "AI".
   let categoryName: string | null = null;
   if (activeCategory && activeCategory !== "all") {
     if (isSocial) {
       categoryName = "Social";
+    } else if (activeCategory === "ai") {
+      categoryName = "AI Lab";
     } else if (meta) {
       categoryName = meta.labelEn;
     }
