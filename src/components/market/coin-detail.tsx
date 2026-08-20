@@ -582,19 +582,14 @@ export function CoinDetail({ coinId }: CoinDetailProps) {
         )}
       </section>
 
-      {/* Categories & Tags */}
-      {((displayCoin.categories && displayCoin.categories.length > 0) || (cmcCoin?.tags && cmcCoin.tags.length > 0)) && (
+      {/* Categories & Tags — show only from cmcCoin.tags to avoid duplicates */}
+      {cmcCoin?.tags && cmcCoin.tags.length > 0 && (
         <section className="mb-6 p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
           <h2 className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-2">
             {lang === "fa" ? "دسته‌ها و برچسب‌ها" : "Categories & Tags"}
           </h2>
           <div className="flex flex-wrap gap-1.5">
-            {displayCoin.categories?.filter(c => c && c.length > 0).slice(0, 10).map((cat) => (
-              <span key={cat} className="text-[10px] px-2 py-1 rounded-full bg-[var(--brand-surface-2)] text-[var(--brand-muted)] border border-[var(--brand-border)]">
-                {cat}
-              </span>
-            ))}
-            {cmcCoin?.tags?.filter(t => t.name).slice(0, 10).map((tag) => (
+            {cmcCoin.tags.filter(t => t.name).slice(0, 10).map((tag) => (
               <span key={tag.slug} className="text-[10px] px-2 py-1 rounded-full bg-[var(--brand-accent-soft)] text-[var(--brand-accent)] border border-[var(--brand-accent)]/20">
                 {tag.name}
               </span>

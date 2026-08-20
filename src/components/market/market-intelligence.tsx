@@ -506,11 +506,9 @@ export function MarketIntelligence() {
         </div>
       )}
 
-      {/* Market Overview — minimal hero section with key insights */}
+      {/* Market Overview — sentiment + market breakdown stats */}
       <MarketOverview
         globalStats={globalStats}
-        topGainers={topGainersData?.coins}
-        trending={trendingData?.coins}
         lang={lang}
         fa={fa}
         fmtCompact={fmtCompact}
@@ -1006,15 +1004,11 @@ function FngChart({ data, lang }: { data: Array<{ value: number; classification:
  */
 function MarketOverview({
   globalStats,
-  topGainers,
-  trending,
   lang,
   fa,
   fmtCompact,
 }: {
   globalStats: GlobalStats | undefined;
-  topGainers: TopGainer[] | undefined;
-  trending: TrendingCoin[] | undefined;
   lang: "fa" | "en";
   fa: (n: string | number, lang: "fa" | "en") => string;
   fmtCompact: (n: number) => string;
@@ -1030,158 +1024,104 @@ function MarketOverview({
     ? { label: lang === "fa" ? "نزولی" : "Bearish", color: "#f87171", icon: "▼" }
     : { label: lang === "fa" ? "خنثی" : "Neutral", color: "#a78bfa", icon: "●" };
 
-  const topGainer = topGainers?.[0];
-  const trendingCoin = trending?.[0];
-
   return (
     <div className="border-b border-[var(--brand-border)] bg-[var(--brand-surface)]/40">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {/* Sentiment card */}
-          <div className="p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
-            <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-2">
-              {lang === "fa" ? "احساس بازار" : "Market Sentiment"}
+        {/* Sentiment + key stats row */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+          {/* Sentiment */}
+          <div className="p-3 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
+            <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-1.5">
+              {lang === "fa" ? "احساس بازار" : "Sentiment"}
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold" style={{ color: sentiment.color }}>
+            <div className="flex items-center gap-1.5">
+              <span className="text-lg font-bold" style={{ color: sentiment.color }}>
                 {sentiment.icon}
               </span>
-              <div>
-                <div className="text-sm font-bold" style={{ color: sentiment.color }}>
-                  {sentiment.label}
-                </div>
-                <div className="text-[10px] text-[var(--brand-muted)] font-latin">
-                  {change >= 0 ? "+" : ""}{fa(change.toFixed(2), lang)}% 24h
-                </div>
-              </div>
+              <span className="text-sm font-bold" style={{ color: sentiment.color }}>
+                {sentiment.label}
+              </span>
+              <span className="text-[10px] text-[var(--brand-muted)] font-latin">
+                {change >= 0 ? "+" : ""}{fa(change.toFixed(1), lang)}%
+              </span>
             </div>
           </div>
-
-          {/* Top gainer highlight */}
-          {topGainer && (
-            <div className="p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
-              <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-2">
-                {lang === "fa" ? "بزرگترین صعودی" : "Top Gainer"}
-              </div>
-              <div className="flex items-center gap-2">
-                <img
-                  src={`https://s2.coinmarketcap.com/static/img/coins/64x64/${topGainer.id}.png`}
-                  alt={topGainer.name}
-                  className="w-6 h-6 rounded-full shrink-0"
-                  loading="lazy"
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-bold text-[var(--brand-text)] truncate">
-                    {topGainer.name}
-                  </div>
-                  <div className="text-[10px] text-[var(--brand-muted)] font-latin uppercase">
-                    {topGainer.symbol}
-                  </div>
-                </div>
-                <div className="text-end">
-                  <div className="text-sm font-bold text-emerald-400 font-latin tabular-nums">
-                    +{fa(topGainer.percentChange24h.toFixed(2), lang)}%
-                  </div>
-                </div>
-              </div>
+          {/* Total Market Cap */}
+          <div className="p-3 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
+            <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-1.5">
+              {lang === "fa" ? "مارکت کپ کل" : "Total M.Cap"}
             </div>
-          )}
-
-          {/* Trending highlight */}
-          {trendingCoin && (
-            <div className="p-4 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
-              <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-2">
-                {lang === "fa" ? "داغ‌ترین" : "Trending"}
-              </div>
-              <div className="flex items-center gap-2">
-                {trendingCoin.thumb && (
-                  <img
-                    src={trendingCoin.thumb}
-                    alt={trendingCoin.name}
-                    className="w-6 h-6 rounded-full shrink-0"
-                    loading="lazy"
-                  />
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-bold text-[var(--brand-text)] truncate">
-                    {trendingCoin.name}
-                  </div>
-                  <div className="text-[10px] text-[var(--brand-muted)] font-latin uppercase">
-                    {trendingCoin.symbol}
-                  </div>
-                </div>
-                {trendingCoin.marketCapRank && (
-                  <div className="text-end">
-                    <div className="text-sm font-bold text-[var(--brand-accent)] font-latin">
-                      #{fa(trendingCoin.marketCapRank, lang)}
-                    </div>
-                    <div className="text-[10px] text-[var(--brand-muted)] font-latin">
-                      {lang === "fa" ? "رتبه" : "rank"}
-                    </div>
-                  </div>
-                )}
-              </div>
+            <div className="text-sm font-bold text-[var(--brand-text)] font-latin tabular-nums">
+              {fa(fmtCompact(globalStats.totalMarketCap), lang)}
             </div>
-          )}
+          </div>
+          {/* 24h Volume */}
+          <div className="p-3 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
+            <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-1.5">
+              {lang === "fa" ? "حجم ۲۴س" : "24h Volume"}
+            </div>
+            <div className="text-sm font-bold text-[var(--brand-text)] font-latin tabular-nums">
+              {fa(fmtCompact(globalStats.totalVolume24h), lang)}
+            </div>
+          </div>
+          {/* Active Coins */}
+          <div className="p-3 rounded-xl border border-[var(--brand-border)] bg-[var(--brand-surface)]">
+            <div className="text-[10px] font-latin uppercase tracking-wider text-[var(--brand-muted)] mb-1.5">
+              {lang === "fa" ? "ارزهای فعال" : "Active Coins"}
+            </div>
+            <div className="text-sm font-bold text-[var(--brand-text)] font-latin tabular-nums">
+              {fa(globalStats.activeCryptoCurrencies.toLocaleString(), lang)}
+            </div>
+          </div>
         </div>
 
         {/* BTC + ETH dominance bars */}
         {globalStats.btcDominance > 0 && (
-          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-            {/* BTC dominance */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
             <div className="flex items-center gap-3 text-[10px]">
-              <span className="text-[var(--brand-muted)] font-latin uppercase tracking-wider shrink-0 w-12">
-                BTC
-              </span>
+              <span className="text-[var(--brand-muted)] font-latin uppercase tracking-wider shrink-0 w-12">BTC</span>
               <div className="flex-1 h-1.5 rounded-full bg-[var(--brand-surface-2)] overflow-hidden">
                 <div className="h-full rounded-full bg-[#f7931a]" style={{ width: `${globalStats.btcDominance}%` }} />
               </div>
-              <span className="font-latin font-bold text-[#f7931a] tabular-nums shrink-0">
-                {fa(globalStats.btcDominance.toFixed(1), lang)}%
-              </span>
+              <span className="font-latin font-bold text-[#f7931a] tabular-nums shrink-0">{fa(globalStats.btcDominance.toFixed(1), lang)}%</span>
             </div>
-            {/* ETH dominance */}
             {globalStats.ethDominance > 0 && (
               <div className="flex items-center gap-3 text-[10px]">
-                <span className="text-[var(--brand-muted)] font-latin uppercase tracking-wider shrink-0 w-12">
-                  ETH
-                </span>
+                <span className="text-[var(--brand-muted)] font-latin uppercase tracking-wider shrink-0 w-12">ETH</span>
                 <div className="flex-1 h-1.5 rounded-full bg-[var(--brand-surface-2)] overflow-hidden">
                   <div className="h-full rounded-full bg-[#627eea]" style={{ width: `${globalStats.ethDominance * 5}%` }} />
                 </div>
-                <span className="font-latin font-bold text-[#627eea] tabular-nums shrink-0">
-                  {fa(globalStats.ethDominance.toFixed(1), lang)}%
-                </span>
+                <span className="font-latin font-bold text-[#627eea] tabular-nums shrink-0">{fa(globalStats.ethDominance.toFixed(1), lang)}%</span>
               </div>
             )}
           </div>
         )}
 
-        {/* Market breakdown stats */}
-        <div className="mt-3 grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 text-[10px]">
-          <div className="p-2 rounded-lg bg-[var(--brand-surface-2)]/50">
+        {/* Market breakdown mini-stats */}
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-2 text-[10px]">
+          <div className="p-1.5 rounded-lg bg-[var(--brand-surface-2)]/50">
             <div className="text-[var(--brand-muted)] uppercase tracking-wider">{lang === "fa" ? "آلت‌کوین" : "Altcoins"}</div>
             <div className="font-latin font-bold text-[var(--brand-text)] tabular-nums">{fa(fmtCompact(globalStats.altcoinMarketCap || 0), lang)}</div>
           </div>
-          <div className="p-2 rounded-lg bg-[var(--brand-surface-2)]/50">
+          <div className="p-1.5 rounded-lg bg-[var(--brand-surface-2)]/50">
             <div className="text-[var(--brand-muted)] uppercase tracking-wider">{lang === "fa" ? "دیفای" : "DeFi"}</div>
             <div className="font-latin font-bold text-[var(--brand-text)] tabular-nums">{fa(fmtCompact(globalStats.defiMarketCap), lang)}</div>
           </div>
-          <div className="p-2 rounded-lg bg-[var(--brand-surface-2)]/50">
+          <div className="p-1.5 rounded-lg bg-[var(--brand-surface-2)]/50">
             <div className="text-[var(--brand-muted)] uppercase tracking-wider">{lang === "fa" ? "استیبل" : "Stable"}</div>
             <div className="font-latin font-bold text-[var(--brand-text)] tabular-nums">{fa(fmtCompact(globalStats.stablecoinMarketCap), lang)}</div>
           </div>
-          <div className="p-2 rounded-lg bg-[var(--brand-surface-2)]/50">
+          <div className="p-1.5 rounded-lg bg-[var(--brand-surface-2)]/50">
             <div className="text-[var(--brand-muted)] uppercase tracking-wider">{lang === "fa" ? "مشتقات" : "Derivatives"}</div>
             <div className="font-latin font-bold text-[var(--brand-text)] tabular-nums">{fa(fmtCompact(globalStats.derivativesVolume24h || 0), lang)}</div>
           </div>
-          <div className="p-2 rounded-lg bg-[var(--brand-surface-2)]/50">
+          <div className="p-1.5 rounded-lg bg-[var(--brand-surface-2)]/50">
             <div className="text-[var(--brand-muted)] uppercase tracking-wider">{lang === "fa" ? "صرافی‌ها" : "Exchanges"}</div>
             <div className="font-latin font-bold text-[var(--brand-text)] tabular-nums">{fa(globalStats.activeExchanges.toLocaleString(), lang)}</div>
           </div>
-          <div className="p-2 rounded-lg bg-[var(--brand-surface-2)]/50">
-            <div className="text-[var(--brand-muted)] uppercase tracking-wider">{lang === "fa" ? "ارزها" : "Coins"}</div>
-            <div className="font-latin font-bold text-[var(--brand-text)] tabular-nums">{fa(globalStats.activeCryptoCurrencies.toLocaleString(), lang)}</div>
+          <div className="p-1.5 rounded-lg bg-[var(--brand-surface-2)]/50">
+            <div className="text-[var(--brand-muted)] uppercase tracking-wider">{lang === "fa" ? "جفت‌ها" : "Pairs"}</div>
+            <div className="font-latin font-bold text-[var(--brand-text)] tabular-nums">{fa((globalStats.activeMarketPairs || 0).toLocaleString(), lang)}</div>
           </div>
         </div>
       </div>
