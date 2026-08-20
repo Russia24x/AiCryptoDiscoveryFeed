@@ -4069,3 +4069,65 @@ Stage Summary:
 3. [High] رفع باگ useReadLater و useFeed cache key
 4. [High] حذف duplicate useFeed calls در FeedGrid
 5. [Medium] رفع side effects در useTetherPrice و useTheme
+
+---
+Task ID: 32
+Agent: main (autonomous dev session)
+Task: رفع باگ کارت تکراری + دسته‌بندی تکراری، بازطراحی Market Overview.
+
+Work Log:
+
+### SESSION-START-SYNC-CHECK
+- Repository: /home/z/my-project/AiCryptoDiscoveryFeed
+- Branch: main
+- Remote: https://github.com/Russia24x/AiCryptoDiscoveryFeed.git
+- git fetch origin: ✅ Success
+- git status: clean, up-to-date
+- rev-list: behind=0, ahead=0
+- Verdict: ✅ Up-to-date and clean — proceeding.
+
+### مرحله ۱: تست QA با agent-browser
+- /crypto/market: ✅ بدون خطا
+- /crypto/market/bitcoin: ✅ بدون خطا
+
+### مرحله ۲: رفع باگ‌ها
+
+**باگ ۱: کارت تکراری در صفحه مارکت**
+- علت: Market Overview شامل "Top Gainer" و "Trending" highlight cards بود
+  که با sidebar sections (Top Gainers, Trending) تکرار می‌شد
+- رفع: حذف Top Gainer و Trending cards از Market Overview
+  - Market Overview حالا فقط sentiment + market stats + dominance bars نشون می‌ده
+  - Sidebar فقط Trending, Top Gainers, Hot Coins رو نشون می‌ده
+
+**باگ ۲: دسته‌بندی تکراری در coin-detail**
+- علت: tags هم از displayCoin.categories (که از cmcCoin.tags ساخته شده)
+  و هم از cmcCoin?.tags رندر می‌شد → هر تگ دو بار نمایش داده می‌شد
+- رفع: فقط cmcCoin.tags رندر می‌شه (displayCoin.categories حذف شد)
+
+### مرحله ۳: بازطراحی Market Overview
+- قبلاً: ۳ کارت بزرگ (sentiment, top gainer, trending) + dominance bar + 6 mini-stats
+- حالا: ۴ کارت فشرده (sentiment, market cap, volume, active coins) + dominance bars + 6 mini-stats
+  - p-3 به جای p-4 (فشرده‌تر)
+  - activeMarketPairs اضافه شد (جفت‌های فعال)
+  - بدون تکرار با sidebar
+
+### مرحله ۴: تست نهایی production
+- کارت تکراری: ❌ حذف شد ✅
+- دسته‌بندی تکراری: ❌ حذف شد ✅ (categoriesCount: 1)
+- صفحه market: ✅ بدون خطا
+- صفحه coin-detail: ✅ بدون خطا
+
+Stage Summary:
+
+**وضعیت فعلی:**
+- 2 باگ رفع شد (duplicate cards + duplicate categories)
+- Market Overview بازطراحی شد (مدرن‌تر، فشرده‌تر، بدون تکرار)
+- TypeScript: 0 errors
+- Build: success
+- Production: همه صفحات کار می‌کنن
+
+**توصیه‌های اولویت‌دار:**
+1. Phase C (coin-detail): ۳۰/۶۰/۹۰d تغییر، progress bar عرضه
+2. Phase D باقی‌مانده: skeleton بهتر
+3. Security: نصب isomorphic-dompurify
+4. Performance: حذف layout prop از motion.tr
