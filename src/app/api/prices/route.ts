@@ -9,98 +9,72 @@ export const dynamic = "force-dynamic";
  * Returns a 10-coin price ticker for the top bar.
  *
  * Strategy (Phase 27):
- *  - PRIMARY: Use CMC listings data (already cached, no rate-limit)
- *  - FALLBACK: If CMC is unavailable, use CoinGecko
+ *  - PRIMARY: Use CMC keyless API (same as /api/market/cmc-listings)
+ *  - FALLBACK: In-memory cache (5min TTL)
+ *  - LAST RESORT: CoinGecko (rate-limited)
  *
- * Why this change:
- *  - CoinGecko free tier: 30 calls/min — easily rate-limited
- *  - CMC keyless API: no rate-limit for our usage
- *  - /api/market/cmc-listings already fetches top 100 coins
- *  - We just filter the top 10 and return them here
- *  - This means ZERO additional upstream calls to CoinGecko
+ * This route NO LONGER calls CoinGecko directly for every request.
+ * Instead, it calls CMC (no rate-limit) and only falls back to CoinGecko
+ * if CMC is unavailable.
  *
- * Caching: edge-cached 60s (same as before), in-memory cache 5min.
+ * Caching: edge-cached 60s, in-memory cache 5min.
  */
 
-// In-memory cache for fallback
-let cached: { coins: unknown[]; fetchedAt: string } | null = null;
+const FETCH_TIMEOUT_MS = 5000;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+// In-memory cache
+let cached: { coins: unknown[]; fetchedAt: string } | null = null;
 
 const TICKER_SYMBOLS = [
   "BTC", "ETH", "SOL", "BNB", "XRP",
   "ADA", "DOGE", "AVAX", "TRX", "LINK",
 ];
 
-export async function GET() {
-  // Try to get data from our own CMC listings endpoint (already edge-cached)
+async function fetchCMC(): Promise<{ coins: unknown[]; fetchedAt: string } | null> {
   try {
-    // Use internal fetch to leverage edge cache
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ||
-      (typeof window !== "undefined" ? window.location.origin : "");
+    const ctrl = new AbortController();
+    const id = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
 
-    // Fetch from our own CMC listings — this is edge-cached and shared
-    // with the market table, so it's essentially free
-    const cmcRes = await fetch(
-      `${baseUrl}/api/market/cmc-listings?limit=20`,
-      {
-        // Use cache to leverage edge cache
-        cache: "force-cache",
-        headers: { Accept: "application/json" },
-      }
-    ).catch(() => null);
+    const url = "https://api.coinmarketcap.com/data-api/v3/cryptocurrency/listing?start=1&limit=20&sortBy=market_cap&sortType=desc&convert=USD";
 
-    if (cmcRes && cmcRes.ok) {
-      const cmcData = await cmcRes.json();
-      const allCoins = cmcData?.coins || [];
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: { Accept: "application/json" },
+    });
+    clearTimeout(id);
 
-      // Filter to our ticker symbols and take top 10
-      const tickerCoins = TICKER_SYMBOLS.map(sym =>
-        allCoins.find((c: { symbol: string }) =>
-          c.symbol?.toUpperCase() === sym
-        )
-      ).filter(Boolean).slice(0, 10);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const allCoins = data?.data || [];
 
-      if (tickerCoins.length >= 5) {
-        const coins = tickerCoins.map((c: any) => ({
-          id: c.slug || c.symbol?.toLowerCase() || "",
-          symbol: c.symbol?.toUpperCase() || "",
-          name: c.name || "",
-          image: `https://s2.coinmarketcap.com/static/img/coins/64x64/${c.id}.png`,
-          price: c.price || 0,
-          change24h: c.percentChange24h || 0,
-          marketCap: c.marketCap || 0,
-          volume: c.volume24h || 0,
-        }));
+    // Filter to our ticker symbols and take top 10
+    const tickerCoins = TICKER_SYMBOLS.map(sym =>
+      allCoins.find((c: { symbol: string }) =>
+        c.symbol?.toUpperCase() === sym
+      )
+    ).filter(Boolean).slice(0, 10);
 
-        cached = { coins, fetchedAt: new Date().toISOString() };
+    if (tickerCoins.length < 5) return null;
 
-        return NextResponse.json(
-          { coins, fetchedAt: new Date().toISOString() },
-          {
-            headers: {
-              "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
-            },
-          }
-        );
-      }
-    }
+    const coins = tickerCoins.map((c: any) => ({
+      id: c.slug || c.symbol?.toLowerCase() || "",
+      symbol: c.symbol?.toUpperCase() || "",
+      name: c.name || "",
+      image: `https://s2.coinmarketcap.com/static/img/coins/64x64/${c.id}.png`,
+      price: c.quote?.USD?.price || 0,
+      change24h: c.quote?.USD?.percentChange24h || 0,
+      marketCap: c.quote?.USD?.marketCap || 0,
+      volume: c.quote?.USD?.volume24h || 0,
+    }));
+
+    return { coins, fetchedAt: new Date().toISOString() };
   } catch {
-    // CMC fetch failed — fall through to CoinGecko fallback
+    return null;
   }
+}
 
-  // Fallback: Use in-memory cache if fresh
-  if (cached && Date.now() - new Date(cached.fetchedAt).getTime() < CACHE_TTL_MS) {
-    return NextResponse.json(
-      { ...cached, cached: true },
-      {
-        headers: {
-          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
-        },
-      }
-    );
-  }
-
-  // Last resort: CoinGecko (rate-limited, but better than empty)
+async function fetchCoinGecko(): Promise<{ coins: unknown[]; fetchedAt: string } | null> {
   try {
     const COIN_IDS = [
       "bitcoin", "ethereum", "solana", "binancecoin", "ripple",
@@ -110,14 +84,15 @@ export async function GET() {
       ","
     )}&order=market_cap_desc&per_page=10&page=1&sparkline=false&price_change_percentage=24h`;
 
+    const ctrl = new AbortController();
+    const id = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
     const res = await fetch(url, {
+      signal: ctrl.signal,
       headers: { Accept: "application/json" },
     });
+    clearTimeout(id);
 
-    if (!res.ok) {
-      throw new Error(`CoinGecko HTTP ${res.status}`);
-    }
-
+    if (!res.ok) return null;
     const data: Array<{
       id: string;
       symbol: string;
@@ -140,36 +115,71 @@ export async function GET() {
       volume: c.total_volume,
     }));
 
-    cached = { coins, fetchedAt: new Date().toISOString() };
+    return { coins, fetchedAt: new Date().toISOString() };
+  } catch {
+    return null;
+  }
+}
 
+export async function GET() {
+  // Try CMC first (no rate-limit)
+  const cmcResult = await fetchCMC();
+  if (cmcResult) {
+    cached = cmcResult;
     return NextResponse.json(
-      { coins, fetchedAt: new Date().toISOString() },
+      cmcResult,
       {
         headers: {
           "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
         },
       }
     );
-  } catch (err) {
-    // Return cached data if available, even if stale
-    if (cached) {
-      return NextResponse.json(
-        { ...cached, cached: true, stale: true },
-        {
-          headers: {
-            "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
-          },
-        }
-      );
-    }
+  }
 
+  // Try in-memory cache (5min TTL)
+  if (cached && Date.now() - new Date(cached.fetchedAt).getTime() < CACHE_TTL_MS) {
     return NextResponse.json(
+      { ...cached, cached: true },
       {
-        error: "Failed to fetch prices",
-        message: err instanceof Error ? err.message : "unknown",
-        coins: [],
-      },
-      { status: 200 }
+        headers: {
+          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+        },
+      }
     );
   }
+
+  // Last resort: CoinGecko (rate-limited)
+  const geckoResult = await fetchCoinGecko();
+  if (geckoResult) {
+    cached = geckoResult;
+    return NextResponse.json(
+      geckoResult,
+      {
+        headers: {
+          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+        },
+      }
+    );
+  }
+
+  // Return stale cache if available
+  if (cached) {
+    return NextResponse.json(
+      { ...cached, cached: true, stale: true },
+      {
+        headers: {
+          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+        },
+      }
+    );
+  }
+
+  // No data available
+  return NextResponse.json(
+    {
+      error: "Failed to fetch prices from all sources",
+      coins: [],
+    },
+    { status: 200 }
+  );
 }
