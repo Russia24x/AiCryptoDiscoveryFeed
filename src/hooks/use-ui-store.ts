@@ -31,7 +31,7 @@ interface UIState {
 
   // === Market page preferences ===
   /** Default sort field for market table. */
-  marketSortField: "market_cap_rank" | "current_price" | "price_change_percentage_24h" | "total_volume" | "market_cap" | "price_change_percentage_30d_in_currency";
+  marketSortField: "market_cap_rank" | "current_price" | "price_change_percentage_24h" | "price_change_percentage_7d_in_currency" | "total_volume" | "market_cap" | "price_change_percentage_30d_in_currency";
   marketSortDir: "asc" | "desc";
   setMarketSort: (field: UIState["marketSortField"], dir: UIState["marketSortDir"]) => void;
 

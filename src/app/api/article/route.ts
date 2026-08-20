@@ -55,58 +55,136 @@ function decodeEntities(s: string): string {
 }
 
 /**
- * Try a series of CSS-selector strategies to extract the article body.
- * Most news sites use one of these common patterns.
+ * Find the matching closing tag for an opening tag at `startIdx`.
  *
- * Strategy priority (most reliable first):
- *   1. Common content classes (entry-content, post-content, etc.) — most WordPress sites.
- *   2. <article> tag — but only if it contains substantial content (>1500 chars).
- *   3. <main> tag.
- *   4. Paragraph fallback — collect all <p> tags with >80 chars from <body>.
+ * This is a simple depth-counting parser — NOT a full HTML parser. It
+ * walks forward from the opening tag and counts `<tag ...>` vs `</tag>`
+ * occurrences, returning the index AFTER the matching close.
+ *
+ * Why we need this: regex-based extraction like
+ *   /<div class="articleContent">([\s\S]*?)<\/div>\s*(?:<div|...)/
+ * stops at the FIRST `</div>`, which is wrong when the content div
+ * has nested divs inside it. Vigiato.net's articleContent div is
+ * 33,765 chars but contains ~30 nested divs, so the regex only
+ * captures 3,854 chars — most of the article is lost.
+ *
+ * `tag` should be lowercase, e.g. "div", "article", "main", "section".
  */
-function extractArticleHtml(html: string): { html: string; strategy: string } {
-  // Strategy 1: common content class patterns (highest priority — most sites use these)
-  const contentPatterns = [
-    // WordPress + standard patterns
-    /<div[^>]*class=["'][^"']*(?:entry-content|post-content|article-content|content-body|article__body|post__content|post-body|content__article|story-body|article-body|rich-text|markdown-body|td-post-content|single-content)[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*(?:<div|<footer|<section|<\/main|<aside)/i,
-    // Vigiato-specific patterns (Persian gaming/entertainment site)
-    /<div[^>]*class=["'][^"']*articleContent[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*(?:<div|<footer|<section|<\/main|<aside)/i,
-    /<div[^>]*class=["'][^"']*articlePost__pictureType2--paragraphs[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*(?:<div|<footer|<section|<\/main|<aside)/i,
-    // Arzdigital-specific patterns (Persian crypto site)
-    /<div[^>]*class=["'][^"']*post__content[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*(?:<div|<footer|<section|<\/main|<aside)/i,
-    /<div[^>]*class=["'][^"']*article__body[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*(?:<div|<footer|<section|<\/main|<aside)/i,
-    // Mihanblockchain patterns
-    /<div[^>]*class=["'][^"']*entry-content[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*(?:<div|<footer|<section|<\/main|<aside)/i,
-    // Article tag with content classes
-    /<article\b[^>]*class=["'][^"']*(?:entry-content|post-content|article-content|content-body|article__body|post__content|post-body)[^"']*["'][^>]*>([\s\S]*?)<\/article>/i,
-  ];
-
-  for (const re of contentPatterns) {
-    const m = html.match(re);
-    if (m && m[1].length > 800) {
-      return { html: m[1], strategy: "content-class" };
+function findMatchingCloseTag(
+  html: string,
+  startIdx: number,
+  tag: string
+): number {
+  const openRe = new RegExp(`<${tag}\\b[^>]*>`, "gi");
+  const closeRe = new RegExp(`</${tag}>`, "gi");
+  // Both regexes MUST start searching from startIdx — otherwise the close
+  // regex will find an earlier </div> from before our opening tag, making
+  // depth go negative and returning a wrong (too-early) close position.
+  openRe.lastIndex = startIdx;
+  closeRe.lastIndex = startIdx;
+  let depth = 1;
+  let pos = startIdx;
+  const max = Math.min(html.length, startIdx + 200_000); // hard cap
+  while (depth > 0 && pos < max) {
+    const openMatch = openRe.exec(html);
+    const closeMatch = closeRe.exec(html);
+    if (!closeMatch) break;
+    if (openMatch && openMatch.index < closeMatch.index) {
+      depth++;
+      pos = openMatch.index + openMatch[0].length;
+    } else {
+      depth--;
+      pos = closeMatch.index + closeMatch[0].length;
+      if (depth === 0) {
+        return pos;
+      }
     }
   }
+  return -1; // no match found
+}
 
-  // Strategy 2: <article> tag (only if it has substantial content)
-  const articleMatches = html.matchAll(/<article\b[^>]*>([\s\S]*?)<\/article>/gi);
+/**
+ * Try a series of strategies to extract the article body.
+ *
+ * Strategy priority (most reliable first):
+ *   1. Nesting-aware div extraction by content class — handles sites
+ *      like vigiato.net whose articleContent div has nested divs.
+ *      The old regex `/<div class="articleContent">([\s\S]*?)<\/div>.../`
+ *      stopped at the FIRST `</div>`, capturing only 3.8KB of a 33KB
+ *      article. We now use a proper depth-counting parser.
+ *   2. <article> tag — but only if it contains substantial content (>1500 chars).
+ *   3. <main> tag.
+ *   4. Paragraph fallback — collect <p> tags from <body> (used only as last resort).
+ */
+function extractArticleHtml(html: string): { html: string; strategy: string } {
+  // Strategy 1: nesting-aware div extraction by content class.
+  // For each pattern, find the opening tag, then find its matching close
+  // using depth counting (handles nested divs correctly).
+  const contentClassPatterns: RegExp[] = [
+    // WordPress + standard patterns (highest priority)
+    /<div[^>]*class=["'][^"']*(?:entry-content|post-content|article-content|content-body|article__body|post__content|post-body|content__article|story-body|article-body|rich-text|markdown-body|td-post-content|single-content)[^"']*["'][^>]*>/i,
+    // Vigiato-specific
+    /<div[^>]*class=["'][^"']*articleContent[^"']*["'][^>]*>/i,
+    // Arzdigital-specific
+    /<div[^>]*class=["'][^"']*(?:post__content|article__body)[^"']*["'][^>]*>/i,
+    // Mihanblockchain + generic WordPress
+    /<div[^>]*class=["'][^"']*entry-content[^"']*["'][^>]*>/i,
+  ];
+
+  let bestContent = "";
+  let bestStrategy = "";
+  for (const re of contentClassPatterns) {
+    const openMatch = re.exec(html);
+    if (!openMatch) continue;
+    const openTagEnd = openMatch.index + openMatch[0].length;
+    const closeEnd = findMatchingCloseTag(html, openTagEnd, "div");
+    if (closeEnd === -1) continue;
+    const content = html.slice(openTagEnd, closeEnd - `</div>`.length);
+    // Track the longest match — sometimes multiple patterns match the
+    // same div, sometimes different divs. Longest = most content.
+    if (content.length > bestContent.length) {
+      bestContent = content;
+      bestStrategy = "content-class";
+    }
+  }
+  if (bestContent.length > 800) {
+    return { html: bestContent, strategy: bestStrategy };
+  }
+
+  // Strategy 2: <article> tag — also nesting-aware (articles can nest)
+  const articleOpenRe = /<article\b[^>]*>/gi;
   let bestArticle = "";
-  for (const m of articleMatches) {
-    if (m[1].length > bestArticle.length) {
-      bestArticle = m[1];
+  let am: RegExpExecArray | null;
+  while ((am = articleOpenRe.exec(html)) !== null) {
+    const openEnd = am.index + am[0].length;
+    const closeEnd = findMatchingCloseTag(html, openEnd, "article");
+    if (closeEnd === -1) continue;
+    const content = html.slice(openEnd, closeEnd - `</article>`.length);
+    if (content.length > bestArticle.length) {
+      bestArticle = content;
     }
   }
   if (bestArticle.length > 1500) {
     return { html: bestArticle, strategy: "article" };
   }
 
-  // Strategy 3: <main> tag
-  const mainMatch = html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i);
-  if (mainMatch && mainMatch[1].length > 1500) {
-    return { html: mainMatch[1], strategy: "main" };
+  // Strategy 3: <main> tag — nesting-aware
+  const mainOpen = html.match(/<main\b[^>]*>/i);
+  if (mainOpen && mainOpen.index !== undefined) {
+    const openEnd = mainOpen.index + mainOpen[0].length;
+    const closeEnd = findMatchingCloseTag(html, openEnd, "main");
+    if (closeEnd !== -1) {
+      const content = html.slice(openEnd, closeEnd - `</main>`.length);
+      if (content.length > 1500) {
+        return { html: content, strategy: "main" };
+      }
+    }
   }
 
-  // Strategy 4: WordPress /oembed fallback — get all <p> tags within <body>
+  // Strategy 4: Paragraph fallback — collect <p> tags with >80 chars.
+  // ONLY use this as last resort. We deliberately DON'T include paragraphs
+  // that contain nav/footer keywords, to avoid showing "the main page"
+  // when article extraction fails (which was a user-reported issue).
   const bodyMatch = html.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i);
   if (bodyMatch) {
     const body = bodyMatch[1];
@@ -116,11 +194,13 @@ function extractArticleHtml(html: string): { html: string; strategy: string } {
     while ((m = pRe.exec(body)) !== null) {
       const p = m[1].trim();
       // Skip navigation/footer paragraphs (usually short)
-      if (p.length > 80 && !/cookie|newsletter|subscribe|copyright/i.test(p)) {
+      if (p.length > 80 && !/cookie|newsletter|subscribe|copyright|all rights reserved|پیشنهاد مطالعه|مطالب مرتبط|نظرات شما/i.test(p)) {
         paragraphs.push(`<p>${p}</p>`);
       }
     }
-    if (paragraphs.length >= 3) {
+    // Require at least 5 substantial paragraphs — this prevents grabbing
+    // 3 random nav paragraphs and calling it an article.
+    if (paragraphs.length >= 5) {
       return {
         html: paragraphs.join("\n"),
         strategy: "paragraphs",

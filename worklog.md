@@ -4589,3 +4589,178 @@ Stage Summary:
 2. [Phase E] Prefetch هوشمند با hover روی coin rows (TanStack Query prefetch)
 3. [Phase F] IndexedDB برای کش coin detail responses
 4. [Phase G] Virtual scrolling برای جدول ۱۰۰ کوین
+
+---
+Task ID: 36
+Agent: main (autonomous dev session)
+Task: رفع MiniTrend گمراه‌کننده، جایگزینی Exchanges/Pairs با معیارهای مفید،
+اسکرول افقی فیلتر دسته‌بندی، اصلاح ممیزی مقاله‌خوان vigiato.net.
+
+Work Log:
+
+### SESSION-START-SYNC-CHECK
+- Repository: /home/z/my-project/AiCryptoDiscoveryFeed
+- Branch: main
+- git fetch origin: ✅ Success
+- git status: clean, up-to-date (commit 4714376)
+- rev-list: behind=0, ahead=0
+- Verdict: ✅ Up-to-date and clean — proceeding.
+
+### مرحله ۱: ممیزی MiniTrend در جدول ۱۰۰ ارز
+
+**مشکل پیدا شد:**
+MiniTrend سه درصد تغییر (۷d%, 24h%, 1h%) رو به‌عنوان یک "خط روند" رسم می‌کرد
+که گمراه‌کننده بود — این یک نمودار قیمت واقعی نیست. کاربر انتظار داشت
+spike ۷ روزه واقعی ببینه، اما این فقط visualization درصد تغییرات بود.
+
+**راه‌حل:**
+- MiniTrend از جدول desktop حذف شد
+- ستون "7d" به "7d %" تغییر کرد (Sortable header)
+- نمایش مقدار واقعی 7d% به‌جای SVG گمراه‌کننده
+- MiniTrend از mobile cards هم حذف شد
+- کامپوننت MiniTrend کامل حذف شد (با comment توضیحی)
+
+### مرحله ۲: جایگزینی Exchanges/Pairs با معیارهای مفید
+
+**مشکل:**
+"صرافی‌ها: ۹۷۰" و "جفت‌های فعال: ۱۱۱,۱۱۷" اعداد خام بدون context بودن —
+برای کشف بازار کاربردی نبودن.
+
+**راه‌حل (هر دو با zero API cost):**
+
+1. **فعالیت بازار (Vol/MCap %)** — `totalVolume24h / totalMarketCap * 100`
+   - High (>10%) = بازار فعال، نقدینگی بالا
+   - Low (<5%) = فاز hodling، علاقه کم
+   - Computed از globalStats موجود
+
+2. **تمرکز ۱۰ (Top 10 %)** — `sum(top10 coins' marketCap) / totalMarketCap * 100`
+   - High (>85%) = بازار متمرکز در BTC/ETH، احتمال altseason کم
+   - Low (<70%) = آلت‌کوین‌ها سهم قابل توجه دارن، احتمال altseason
+   - Computed از cmcCoins موجود (top 10 by cmcRank)
+
+**بهبودها:**
+- MarketPulse signature به‌روزرسانی شد تا `cmcCoins` رو بپذیره
+- 2 BreakdownStat جدید جایگزین 2 تای قبلی شد
+
+### مرحله ۳: اسکرول افقی بهتر برای فیلتر دسته‌بندی
+
+**مشکل قبلی:**
+نوار اسکرول پنهان بود (`scrollbar-width:none`) و کاربر نمی‌فهمید که تگ‌های بیشتری
+وجود داره.
+
+**راه‌حل (TagFilterBar component):**
+- دکمه‌های اسکرول چپ/راست با ChevronLeft/ChevronRight icons
+- فقط وقتی overflow وجود داره نشون داده می‌شن
+- در start/end اسکرول به‌صورت هوشمند پنهان/ظاهر می‌شن
+- انیمیشن اسکرول نرم (300ms)
+- gradient edge fades برای visual hint
+- RTL-aware: اسکرول direction برای Persian معکوس می‌شه
+- ResizeObserver برای re-check هنگام resize
+- Absolute positioning که tags رو هل نده
+
+### مرحله ۴: ممیزی و اصلاح مقاله‌خوان (vigiato.net)
+
+**ریشه‌یابی مشکل:**
+_regex-based extraction_ در `extractArticleHtml` اولین `</div>` رو پیدا می‌کرد،
+نه matching close tag رو. در HTML واقعی، divs تو در تو هستن — مثلاً
+`<div class="articleContent">` شامل ~30 nested divs بود.
+
+**تست روی vigiato.net/p/700123:**
+- حجم واقعی articleContent div: ۳۳,۷۶۵ کاراکتر
+- حجم captured شده با regex قبلی: ۳,۸۵۴ کاراکتر (۸.۷x کمتر!)
+
+**راه‌حل (findMatchingCloseTag function):**
+- Depth-counting parser ساده (نه full HTML parser)
+- `<div[^>]*>` و `</div>` رو با هم دنبال می‌کنه
+- depth رو شمارش می‌کنه: open tag = +1، close tag = -1
+- وقتی depth به 0 برسه، matching close پیدا شده
+- Hard cap 200KB برای جلوگیری از pathological cases
+- نکته مهم: هر دو openRe.lastIndex و closeRe.lastIndex باید روی startIdx
+  تنظیم بشن — وگرنه closeRe از ابتدای html شروع می‌کنه و matching اشتباه
+  پیدا می‌کنه.
+
+**نتیجه تست:**
+- strategy: content-class
+- html length: 15,743 chars (قبلاً 3,854)
+- wordCount: 1333
+- readingTime: 6 min
+- images: 10
+- title: "بررسی بازی موبایلی Caravan SandWitch + لینک دانلود"
+- siteName: "ویجیاتو"
+
+**استراتژی‌های بهبود یافته:**
+1. Strategy 1: nesting-aware div extraction (4 patterns) — طولانی‌ترین match برنده
+2. Strategy 2: nesting-aware `<article>` tag extraction
+3. Strategy 3: nesting-aware `<main>` tag extraction
+4. Strategy 4: Paragraph fallback — حالا حداقل 5 پاراگراف لازمه (قبلاً 3 بود)
+   - فیلتر_keywords فارسی اضافه شد: "پیشنهاد مطالعه", "مطالب مرتبط", "نظرات شما"
+   - این از نمایش "صفحه اصلی" جلوگیری می‌کنه (مشکل گزارش‌شده کاربر)
+
+### مرحله ۵: بهبود UI مقاله‌خوان برای حالت error
+
+**قبل:**
+پیام "محتوای کامل بارگذاری نشد" + متن کوتاه، بدون هیچ اقدامی.
+
+**بعد:**
+- AlertTriangle بزرگ‌تر (w-5 h-5)
+- دو دکمه call-to-action:
+  - **"باز کردن منبع"** (Open source با ExternalLink icon) — link مستقیم به
+    مقاله اصلی (مهم برای زمانی که استخراج fail می‌کنه)
+  - **"تلاش مجدد"** (Retry با RefreshCw icon) — برای failهای transient
+- Persian translation بهتر: "متن کوتاه زیر نمایش داده می‌شود. برای خواندن
+  کامل، مقاله اصلی را در منبع باز کنید."
+
+### مرحله ۶: تست نهایی
+- TypeScript: 0 errors ✅
+- ESLint: 0 errors, 0 warnings ✅
+- Build: success ✅
+- /crypto/market:
+  - 7d% column با مقادیر واقعی (۱۳.۰%, ۲۱.۰%, ۰.۰%) ✅
+  - Tag filter scroll arrows کار می‌کنه (left after scroll) ✅
+  - 6 breakdown stats (4 قبلی + Activity + Top 10) ✅
+- /api/article?url=vigiato.net/p/700123:
+  - html length: 15,743 (قبلاً 3,854) — 4x improvement ✅
+  - wordCount: 1333 ✅
+  - readingTime: 6 min ✅
+  - siteName: ویجیاتو ✅
+
+### خلاصه تغییرات:
+4 فایل، 361+/160- lines:
+- `src/app/api/article/route.ts` (+148/-?): nesting-aware findMatchingCloseTag
+  + بازنویسی extractArticleHtml
+- `src/components/market/market-intelligence.tsx` (+334/-?): حذف MiniTrend،
+  افزودن 7d% sortable column، TagFilterBar با scroll arrows، جایگزینی
+  Exchanges/Pairs با Activity و Top 10 Concentration
+- `src/components/feed/article-reader.tsx` (+37/-?): error state با Open
+  source + Retry buttons
+- `src/hooks/use-ui-store.ts` (+2/-?): افزودن price_change_percentage_7d_in_currency
+  به SortField type
+
+Stage Summary:
+
+**وضعیت فعلی پروژه:**
+- 21 API route، 8 صفحه، 60+ کامپوننت
+- TypeScript: 0 errors ✅
+- ESLint: 0 errors, 0 warnings ✅
+- Build: success ✅
+- MiniTrend گمراه‌کننده حذف شد
+- 2 معیار مفید بازار اضافه شد (Activity + Top 10 Concentration)
+- Tag filter با scroll arrows UX بهتر شد
+- vigiato.net article extraction 4x بهتر شد
+
+**اصلاحات تکمیل‌شده این دور:**
+1. حذف MiniTrend گمراه‌کننده، جایگزینی با 7d% sortable column واقعی
+2. جایگزینی Exchanges/Pairs با Vol/MCap% (فعالیت بازار) و Top 10%
+   (تمرکز بازار) — هر دو computed از داده‌های موجود
+3. TagFilterBar با scroll arrows + edge fades + RTL-aware
+4. findMatchingCloseTag depth-counting parser برای nesting-aware HTML extraction
+5. extractArticleHtml بازنویسی شده با nesting-aware strategies
+6. Paragraph fallback محدودتر (5 پاراگراف minimum + Persian keywords filter)
+7. Article reader error state با "Open source" و "Retry" buttons
+8. SortField type گسترش یافت برای 7d% column
+
+**توصیه‌های اولویت‌دار برای مرحله بعدی:**
+1. [deploy] user باید CLOUDFLARE_API_TOKEN تنظیم کنه و `npm run deploy` اجرا کنه
+2. [test] تست روی production بعد از deploy — مخصوصاً vigiato article reader
+3. [Phase E] Prefetch هوشمند با hover روی coin rows
+4. [Phase F] IndexedDB برای کش coin detail responses

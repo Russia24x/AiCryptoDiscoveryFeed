@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -19,6 +19,8 @@ import {
   BarChart3,
   Star,
   StarOff,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { useLanguage } from "@/hooks/use-language";
 import { useWatchlist } from "@/hooks/use-watchlist";
@@ -120,7 +122,7 @@ interface FngHistory {
   data: Array<{ value: number; classification: string; timestamp: number; date: string }>;
 }
 
-type SortField = "market_cap_rank" | "current_price" | "price_change_percentage_24h" | "total_volume" | "market_cap" | "price_change_percentage_30d_in_currency";
+type SortField = "market_cap_rank" | "current_price" | "price_change_percentage_24h" | "price_change_percentage_7d_in_currency" | "total_volume" | "market_cap" | "price_change_percentage_30d_in_currency";
 type SortDir = "asc" | "desc";
 
 const fa = (n: string | number, lang: "fa" | "en") =>
@@ -419,53 +421,16 @@ export function MarketIntelligence() {
             </button>
           </div>
         </div>
-        {/* Category tags filter bar */}
+        {/* Category tags filter bar — with horizontal scroll arrows */}
         {availableTags.length > 0 && (
-          <div className="border-t border-[var(--brand-border)]/50">
-            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-2">
-              <div className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                <button
-                  onClick={() => setMarketActiveTag(null)}
-                  className={cn(
-                    "shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all whitespace-nowrap",
-                    !activeTag
-                      ? "bg-[var(--brand-accent)] text-[#04201d]"
-                      : "bg-[var(--brand-surface)] border border-[var(--brand-border)] text-[var(--brand-muted)] hover:text-[var(--brand-text)]"
-                  )}
-                >
-                  {lang === "fa" ? "همه" : "All"}
-                  {/* Coin count badge — shows total coins */}
-                  <span className={cn(
-                    "min-w-[14px] h-3.5 px-1 flex items-center justify-center rounded-full text-[9px] font-latin",
-                    !activeTag ? "bg-[#04201d]/20 text-[#04201d]" : "bg-[var(--brand-surface-2)] text-[var(--brand-muted)]"
-                  )}>
-                    {fa(coins.length, lang)}
-                  </span>
-                </button>
-                {availableTags.map(({ tag, count }) => (
-                  <button
-                    key={tag}
-                    onClick={() => setMarketActiveTag(activeTag === tag ? null : tag)}
-                    className={cn(
-                      "shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all whitespace-nowrap capitalize",
-                      activeTag === tag
-                        ? "bg-[var(--brand-accent)] text-[#04201d]"
-                        : "bg-[var(--brand-surface)] border border-[var(--brand-border)] text-[var(--brand-muted)] hover:text-[var(--brand-text)] hover:border-[var(--brand-accent)]/30"
-                    )}
-                  >
-                    {tag.replace(/-/g, " ")}
-                    {/* Coin count badge — shows how many coins have this tag */}
-                    <span className={cn(
-                      "min-w-[14px] h-3.5 px-1 flex items-center justify-center rounded-full text-[9px] font-latin",
-                      activeTag === tag ? "bg-[#04201d]/20 text-[#04201d]" : "bg-[var(--brand-surface-2)] text-[var(--brand-muted)]"
-                    )}>
-                      {fa(count, lang)}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
+          <TagFilterBar
+            tags={availableTags}
+            activeTag={activeTag}
+            onSelectTag={setMarketActiveTag}
+            totalCoins={coins.length}
+            lang={lang}
+            fa={fa}
+          />
         )}
       </div>
 
@@ -475,6 +440,7 @@ export function MarketIntelligence() {
           top stats bar above (which was removed in favour of this). */}
       <MarketPulse
         globalStats={globalStats}
+        cmcCoins={cmcData?.coins}
         lang={lang}
         fa={fa}
         fmtCompact={fmtCompact}
@@ -568,7 +534,7 @@ export function MarketIntelligence() {
                         <th className="px-3 py-2 text-start font-bold text-[var(--brand-muted)] uppercase tracking-wider">{lang === "fa" ? "نام" : "Name"}</th>
                         <SortHeader label={lang === "fa" ? "قیمت" : "Price"} field="current_price" sortField={sortField} sortDir={sortDir} onSort={onSort} align="end" />
                         <SortHeader label="24h %" field="price_change_percentage_24h" sortField={sortField} sortDir={sortDir} onSort={onSort} align="end" />
-                        <th className="px-3 py-2 text-end font-bold text-[var(--brand-muted)] uppercase tracking-wider hidden lg:table-cell">7d</th>
+                        <SortHeader label="7d %" field="price_change_percentage_7d_in_currency" sortField={sortField} sortDir={sortDir} onSort={onSort} align="end" />
                         <SortHeader label="30d %" field="price_change_percentage_30d_in_currency" sortField={sortField} sortDir={sortDir} onSort={onSort} align="end" />
                         <SortHeader label={lang === "fa" ? "حجم" : "Volume"} field="total_volume" sortField={sortField} sortDir={sortDir} onSort={onSort} align="end" />
                         <SortHeader label={lang === "fa" ? "مارکت کپ" : "M.Cap"} field="market_cap" sortField={sortField} sortDir={sortDir} onSort={onSort} align="end" />
@@ -581,6 +547,8 @@ export function MarketIntelligence() {
                       {sorted.map((coin, idx) => {
                         const change = coin.price_change_percentage_24h || 0;
                         const up = change >= 0;
+                        const change7d = coin.price_change_percentage_7d_in_currency;
+                        const up7d = (change7d ?? 0) >= 0;
                         const change30d = coin.price_change_percentage_30d_in_currency;
                         const up30d = (change30d ?? 0) >= 0;
                         const isHot = Math.abs(change) >= 5;
@@ -643,12 +611,8 @@ export function MarketIntelligence() {
                             <td className={cn("px-3 py-2.5 text-end font-latin tabular-nums font-bold", up ? "text-[var(--brand-accent)]" : "text-red-400")}>
                               {up ? "▲" : "▼"} {fa(Math.abs(change).toFixed(1), lang)}%
                             </td>
-                            <td className="px-3 py-2.5 text-end hidden lg:table-cell">
-                              <MiniTrend
-                                change1h={coin.price_change_percentage_1h_in_currency}
-                                change24h={change}
-                                change7d={coin.price_change_percentage_7d_in_currency}
-                              />
+                            <td className={cn("px-3 py-2.5 text-end font-latin tabular-nums font-bold", up7d ? "text-[var(--brand-accent)]" : "text-red-400")}>
+                              {change7d != null ? `${up7d ? "+" : ""}${fa(change7d.toFixed(1), lang)}%` : "—"}
                             </td>
                             <td className={cn("px-3 py-2.5 text-end font-latin tabular-nums font-bold", up30d ? "text-[var(--brand-accent)]" : "text-red-400")}>
                               {change30d != null ? `${up30d ? "+" : ""}${fa(change30d.toFixed(1), lang)}%` : "—"}
@@ -676,8 +640,6 @@ export function MarketIntelligence() {
                   {sorted.map((coin, idx) => {
                     const change = coin.price_change_percentage_24h || 0;
                     const up = change >= 0;
-                    const change1h = coin.price_change_percentage_1h_in_currency;
-                    const change7d = coin.price_change_percentage_7d_in_currency;
                     return (
                       <motion.div
                         key={coin.id}
@@ -707,13 +669,6 @@ export function MarketIntelligence() {
                               )}
                             </div>
                           </div>
-                          {/* MiniTrend — adds a 3-point trend sparkline to mobile cards.
-                              Zero API cost: uses 1h/24h/7d changes already in the row. */}
-                          <MiniTrend
-                            change1h={change1h}
-                            change24h={change}
-                            change7d={change7d}
-                          />
                           <div className="text-end shrink-0">
                             <div className="font-latin tabular-nums text-sm font-bold text-[var(--brand-text)]">{fa(fmtPrice(coin.current_price), lang)}</div>
                             <div className={cn("font-latin tabular-nums text-[10px] font-bold", up ? "text-[var(--brand-accent)]" : "text-red-400")}>{up ? "+" : ""}{fa(change.toFixed(2), lang)}%</div>
@@ -930,6 +885,162 @@ function SortHeader({ label, field, sortField, sortDir, onSort, align }: { label
   );
 }
 
+/**
+ * TagFilterBar — horizontal scrollable filter with arrow buttons.
+ *
+ * UX improvements over a bare overflow-x-auto div:
+ *  - Left/right arrow buttons appear when there's overflow.
+ *  - Arrows are positioned absolutely so they don't push tags.
+ *  - Arrow buttons fade out when at start/end of scroll.
+ *  - Smooth scroll animation (300ms).
+ *  - Edge fade gradients on left/right (subtle visual hint).
+ *
+ * The arrows use ChevronLeft/ChevronRight which automatically flip
+ * in RTL mode (the icons point in the reading direction).
+ */
+function TagFilterBar({
+  tags,
+  activeTag,
+  onSelectTag,
+  totalCoins,
+  lang,
+  fa,
+}: {
+  tags: { tag: string; count: number }[];
+  activeTag: string | null;
+  onSelectTag: (tag: string | null) => void;
+  totalCoins: number;
+  lang: "fa" | "en";
+  fa: (n: string | number, lang: "fa" | "en") => string;
+}) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [canScrollStart, setCanScrollStart] = useState(false);
+  const [canScrollEnd, setCanScrollEnd] = useState(false);
+
+  const checkScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    // In RTL, scrollLeft is negative or works differently across browsers.
+    // Using scrollWidth + scrollLeft + clientWidth handles both cases.
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    const current = Math.abs(el.scrollLeft);
+    setCanScrollStart(current > 8);
+    setCanScrollEnd(current < maxScroll - 8);
+  }, []);
+
+  useEffect(() => {
+    checkScroll();
+    const el = scrollRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", checkScroll, { passive: true });
+    // Re-check on resize (window or container size changes)
+    const ro = typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(checkScroll)
+      : null;
+    if (ro) ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", checkScroll);
+      if (ro) ro.disconnect();
+    };
+  }, [checkScroll, tags.length]);
+
+  // Scroll by ~200px in the appropriate direction.
+  // In RTL, "left" button scrolls toward higher index (which is visually left).
+  // scrollLeft: -delta works in both LTR (negative goes left) and RTL
+  // (positive goes left visually but is "forward" reading-wise).
+  const scrollByDir = (dir: "prev" | "next") => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const delta = 220;
+    // For RTL languages (Persian), the visual direction is flipped:
+    //   "prev" (ChevronLeft in LTR) should scroll toward end-1 in RTL.
+    // We detect RTL via the parent element's dir attribute or lang.
+    const isRTL = lang === "fa";
+    const effectiveDelta = (dir === "prev") ? -delta : delta;
+    el.scrollBy({ left: isRTL ? -effectiveDelta : effectiveDelta, behavior: "smooth" });
+  };
+
+  return (
+    <div className="border-t border-[var(--brand-border)]/50 relative">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-2">
+        <div className="relative">
+          {/* Left edge fade + arrow button (only visible when can scroll) */}
+          {canScrollStart && (
+            <>
+              <div className="absolute inset-y-0 start-0 w-8 bg-gradient-to-r from-[var(--brand-bg)] to-transparent pointer-events-none z-10" />
+              <button
+                onClick={() => scrollByDir("prev")}
+                className="absolute start-0 top-1/2 -translate-y-1/2 z-20 w-6 h-6 rounded-full bg-[var(--brand-surface)] border border-[var(--brand-border)] flex items-center justify-center text-[var(--brand-muted)] hover:text-[var(--brand-accent)] hover:border-[var(--brand-accent)]/40 transition-colors shadow-sm"
+                aria-label={lang === "fa" ? "اسکرول به راست" : "Scroll left"}
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+              </button>
+            </>
+          )}
+
+          {/* Scrollable container */}
+          <div
+            ref={scrollRef}
+            className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden scroll-smooth"
+          >
+            <button
+              onClick={() => onSelectTag(null)}
+              className={cn(
+                "shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all whitespace-nowrap",
+                !activeTag
+                  ? "bg-[var(--brand-accent)] text-[#04201d]"
+                  : "bg-[var(--brand-surface)] border border-[var(--brand-border)] text-[var(--brand-muted)] hover:text-[var(--brand-text)]"
+              )}
+            >
+              {lang === "fa" ? "همه" : "All"}
+              <span className={cn(
+                "min-w-[14px] h-3.5 px-1 flex items-center justify-center rounded-full text-[9px] font-latin",
+                !activeTag ? "bg-[#04201d]/20 text-[#04201d]" : "bg-[var(--brand-surface-2)] text-[var(--brand-muted)]"
+              )}>
+                {fa(totalCoins, lang)}
+              </span>
+            </button>
+            {tags.map(({ tag, count }) => (
+              <button
+                key={tag}
+                onClick={() => onSelectTag(activeTag === tag ? null : tag)}
+                className={cn(
+                  "shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all whitespace-nowrap capitalize",
+                  activeTag === tag
+                    ? "bg-[var(--brand-accent)] text-[#04201d]"
+                    : "bg-[var(--brand-surface)] border border-[var(--brand-border)] text-[var(--brand-muted)] hover:text-[var(--brand-text)] hover:border-[var(--brand-accent)]/30"
+                )}
+              >
+                {tag.replace(/-/g, " ")}
+                <span className={cn(
+                  "min-w-[14px] h-3.5 px-1 flex items-center justify-center rounded-full text-[9px] font-latin",
+                  activeTag === tag ? "bg-[#04201d]/20 text-[#04201d]" : "bg-[var(--brand-surface-2)] text-[var(--brand-muted)]"
+                )}>
+                  {fa(count, lang)}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {/* Right edge fade + arrow button */}
+          {canScrollEnd && (
+            <>
+              <div className="absolute inset-y-0 end-0 w-8 bg-gradient-to-l from-[var(--brand-bg)] to-transparent pointer-events-none z-10" />
+              <button
+                onClick={() => scrollByDir("next")}
+                className="absolute end-0 top-1/2 -translate-y-1/2 z-20 w-6 h-6 rounded-full bg-[var(--brand-surface)] border border-[var(--brand-border)] flex items-center justify-center text-[var(--brand-muted)] hover:text-[var(--brand-accent)] hover:border-[var(--brand-accent)]/40 transition-colors shadow-sm"
+                aria-label={lang === "fa" ? "اسکرول به چپ" : "Scroll right"}
+              >
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SidebarCard({ title, icon, accent, children }: { title: string; icon: React.ReactNode; accent: string; children: React.ReactNode }) {
   return (
     <GlassCard accent={accent} className="p-4 overflow-hidden">
@@ -998,12 +1109,14 @@ function FngChart({ data, lang }: { data: Array<{ value: number; classification:
  */
 function MarketPulse({
   globalStats,
+  cmcCoins,
   lang,
   fa,
   fmtCompact,
   usingFallback,
 }: {
   globalStats: GlobalStats | undefined;
+  cmcCoins: CmcCoin[] | undefined;
   lang: "fa" | "en";
   fa: (n: string | number, lang: "fa" | "en") => string;
   fmtCompact: (n: number) => string;
@@ -1223,18 +1336,36 @@ function MarketPulse({
               value={fa(fmtCompact(globalStats.derivativesVolume24h || 0), lang)}
               accent="#fbbf24"
             />
+            {/* Vol/MCap Ratio — market activity indicator.
+                High (>10%) = very active trading / high liquidity.
+                Low (<5%) = hodling phase / low trading interest.
+                Computed from data already fetched. Zero API cost. */}
             <BreakdownStat
-              label={lang === "fa" ? "صرافی‌ها" : "Exchanges"}
-              value={fa((globalStats.activeExchanges || 0).toLocaleString(), lang)}
+              label={lang === "fa" ? "فعالیت بازار" : "Activity"}
+              value={`${fa((globalStats.totalVolume24h / globalStats.totalMarketCap * 100).toFixed(1), lang)}%`}
               accent="#34d399"
-              isCount
             />
-            <BreakdownStat
-              label={lang === "fa" ? "جفت‌های فعال" : "Pairs"}
-              value={fa((globalStats.activeMarketPairs || 0).toLocaleString(), lang)}
-              accent="#fb923c"
-              isCount
-            />
+            {/* Top 10 Concentration — what % of total market cap is in
+                the top 10 coins. Computed from cmcCoins data already
+                fetched for the table. Zero API cost.
+                High (>85%) = market concentrated in BTC/ETH, altseason
+                unlikely. Low (<70%) = altcoins have significant share,
+                altseason potential. */}
+            {(() => {
+              const top10 = (cmcCoins || [])
+                .slice(0, 10)
+                .reduce((sum, c) => sum + (c.marketCap || 0), 0);
+              const concentration = globalStats.totalMarketCap > 0
+                ? (top10 / globalStats.totalMarketCap) * 100
+                : 0;
+              return (
+                <BreakdownStat
+                  label={lang === "fa" ? "تمرکز ۱۰" : "Top 10"}
+                  value={`${fa(concentration.toFixed(1), lang)}%`}
+                  accent="#fb923c"
+                />
+              );
+            })()}
           </div>
         </div>
 
@@ -1285,49 +1416,16 @@ function BreakdownStat({
   );
 }
 
-/* ============= MiniTrend — 3-point trend indicator ============= */
-/**
- * Shows a tiny inline SVG trend line from 1h, 24h, 7d change percentages.
- * No API calls — uses data already fetched in the market table.
- * The line goes from left (1h ago) to right (7d ago), showing the
- * direction of price movement over the past week.
+/* MiniTrend removed — was misleading.
+ *
+ * The previous MiniTrend component plotted 3 change percentages
+ * (7d%, 24h%, 1h%) as a "trend line", but that is NOT a real price
+ * chart — it's a visualization of how change percentages vary across
+ * timeframes. Users expected an actual 7-day price sparkline, which
+ * we don't have without enabling sparkline=true in the CoinGecko
+ * markets API call (which would 4x the response size).
+ *
+ * Replaced with a simple, honest "7d %" column that shows the 7-day
+ * percentage change as text, matching the existing "24h %" and "30d %"
+ * columns.
  */
-function MiniTrend({
-  change1h,
-  change24h,
-  change7d,
-}: {
-  change1h?: number;
-  change24h: number;
-  change7d?: number;
-}) {
-  // Build 3 data points: 7d → 24h → 1h (chronological order)
-  // If a value is missing, use 0 (flat)
-  const points = [
-    change7d ?? 0,
-    change24h ?? 0,
-    change1h ?? 0,
-  ];
-  const width = 48;
-  const height = 20;
-  const min = Math.min(...points);
-  const max = Math.max(...points);
-  const range = max - min || 1;
-  const stepX = width / (points.length - 1);
-  const coords = points.map((v, i) => {
-    const x = i * stepX;
-    const y = height - ((v - min) / range) * height;
-    return `${x},${y}`;
-  }).join(" ");
-
-  // Color: green if 24h change is positive, red if negative
-  const color = change24h >= 0 ? "#2dd4bf" : "#f87171";
-
-  return (
-    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="inline-block align-middle" preserveAspectRatio="none">
-      <polyline points={coords} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-      {/* Dot at the end (current state) */}
-      <circle cx={width} cy={height - ((points[points.length - 1] - min) / range) * height} r="1.5" fill={color} />
-    </svg>
-  );
-}

@@ -20,6 +20,7 @@ import {
   Minus,
   Plus,
   Image as ImageIcon,
+  RefreshCw,
 } from "lucide-react";
 import type { FeedItem } from "@/types/feed";
 import { CATEGORY_META, categoryLabel } from "@/lib/sources";
@@ -477,22 +478,44 @@ export function ArticleReader({
             </div>
           )}
 
-          {/* Error state — fallback to description */}
+          {/* Error state — fallback to description.
+              Shows a clear call-to-action with "Open source" button
+              (so users can read the article in its original context
+              when our extractor fails) and "Retry" button (in case the
+              failure was transient — e.g. network blip). */}
           {!loading && error && (
             <div className="py-8">
               <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 px-4 py-3 mb-6 flex items-start gap-3">
-                <AlertTriangle className="w-4 h-4 text-yellow-400 mt-0.5 shrink-0" />
-                <div className="text-xs">
-                  <p className="font-medium text-yellow-300">
+                <AlertTriangle className="w-5 h-5 text-yellow-400 mt-0.5 shrink-0" />
+                <div className="text-xs flex-1">
+                  <p className="font-medium text-yellow-300 mb-1">
                     {lang === "fa"
                       ? "محتوای کامل بارگذاری نشد"
                       : "Full content unavailable"}
                   </p>
-                  <p className="text-yellow-200/70 mt-0.5">
+                  <p className="text-yellow-200/70 mb-3">
                     {lang === "fa"
-                      ? "متن کوتاه زیر نمایش داده می‌شود. برای خواندن کامل به منبع مراجعه کنید."
-                      : "Showing the RSS excerpt below. Visit the source to read the full article."}
+                      ? "متن کوتاه زیر نمایش داده می‌شود. برای خواندن کامل، مقاله اصلی را در منبع باز کنید."
+                      : "Showing the RSS excerpt below. Open the original article to read in full."}
                   </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <a
+                      href={item.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-yellow-500 text-black text-[10px] font-bold hover:brightness-110 transition-all"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      {lang === "fa" ? "باز کردن منبع" : "Open source"}
+                    </a>
+                    <button
+                      onClick={() => fetchArticle(item.link)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--brand-surface)] border border-[var(--brand-border)] text-yellow-300 text-[10px] font-bold hover:border-yellow-500/40 transition-all"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      {lang === "fa" ? "تلاش مجدد" : "Retry"}
+                    </button>
+                  </div>
                 </div>
               </div>
 
