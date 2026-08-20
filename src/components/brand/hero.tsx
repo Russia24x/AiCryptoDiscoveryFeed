@@ -494,16 +494,37 @@ function TetherWidget() {
           <div className={cn("text-2xl md:text-3xl font-extrabold tabular-nums text-[var(--brand-text)] group-hover:text-[var(--brand-accent)] transition-colors", numFontClass(lang))}>
             {fa(Math.round(data.price).toLocaleString("en-US"))}
           </div>
-          <div className="flex items-center gap-1 text-[10px] text-[var(--brand-muted)] mt-1">
+          <div className={cn("flex items-center gap-1 text-[10px] text-[var(--brand-muted)] mt-1", numFontClass(lang))}>
             <span>{lang === "fa" ? "تومان" : "Toman"}</span>
             <span className="opacity-50">·</span>
             <span className="font-latin">{data.source}</span>
+            {data.change24h != null && (
+              <span className={cn(
+                "font-latin font-semibold",
+                data.change24h >= 0 ? "text-[var(--brand-accent)]" : "text-red-400"
+              )}>
+                {data.change24h >= 0 ? "▲" : "▼"} {fa(Math.abs(data.change24h).toFixed(2))}%
+              </span>
+            )}
             {isStale && (
               <span className="text-amber-400 inline-flex items-center gap-0.5">
                 · {lang === "fa" ? "به‌روزرسانی..." : "refreshing"}
               </span>
             )}
           </div>
+          {/* 24h high/low row */}
+          {data.high24h != null && data.low24h != null && (
+            <div className={cn("flex items-center justify-between text-[9px] text-[var(--brand-muted)]/80 mt-1.5 pt-1.5 border-t border-[var(--brand-border)]/50", numFontClass(lang))}>
+              <span className="flex items-center gap-1">
+                <span className="opacity-60">{lang === "fa" ? "بالا:" : "H:"}</span>
+                <span className="text-[var(--brand-accent)]/80">{fa(Math.round(data.high24h).toLocaleString("en-US"))}</span>
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="opacity-60">{lang === "fa" ? "پایین:" : "L:"}</span>
+                <span className="text-red-400/80">{fa(Math.round(data.low24h).toLocaleString("en-US"))}</span>
+              </span>
+            </div>
+          )}
         </button>
       ) : (
         <div className="space-y-2">
