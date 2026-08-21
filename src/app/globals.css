@@ -59,6 +59,13 @@
   /* ===== Ai Crypto Discovery — Dark premium theme (always on) ===== */
   --radius: 0.75rem;
 
+  /* Font families — self-hosted via @fontsource (no Google Fonts build-time fetch).
+     These CSS variables map to the font-family names defined by each
+     @fontsource package's @font-face declarations. */
+  --font-vazirmatn: "Vazirmatn", system-ui, sans-serif;
+  --font-inter: "Inter", system-ui, sans-serif;
+  --font-jetbrains-mono: "JetBrains Mono", monospace;
+
   /* Background: soft dark charcoal (not pure black) */
   --brand-bg: #0d0f12;
   --brand-surface: #15181d;
