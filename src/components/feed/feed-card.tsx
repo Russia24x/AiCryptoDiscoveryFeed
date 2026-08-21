@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, memo } from "react";
 import {
   ExternalLink,
   Clock,
@@ -44,7 +44,7 @@ const CATEGORY_GRADIENTS: Record<string, string> = {
     "linear-gradient(135deg, rgba(244,114,182,0.10) 0%, transparent 60%)",
 };
 
-export function FeedCard({ item, onOpen, index = 0 }: FeedCardProps) {
+export const FeedCard = memo(function FeedCard({ item, onOpen, index = 0 }: FeedCardProps) {
   const meta = CATEGORY_META[item.source.category];
   const { isBookmarked, toggleBookmark, hydrated } = useBookmarks();
   const { isInQueue, addToQueue, removeFromQueue, hydrated: queueHydrated } = useReadLater();
@@ -276,4 +276,4 @@ export function FeedCard({ item, onOpen, index = 0 }: FeedCardProps) {
       </div>
     </motion.article>
   );
-}
+});

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef, useCallback, useEffect } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect, memo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -359,7 +359,7 @@ export function MarketIntelligence() {
     }
   };
 
-  const onCoinClick = (coin: Coin) => router.push(`/crypto/market/${coin.id}`);
+  const onCoinClick = useCallback((coin: Coin) => router.push(`/crypto/market/${coin.id}`), [router]);
 
   return (
     <div className="min-h-screen bg-[var(--brand-bg)]">
