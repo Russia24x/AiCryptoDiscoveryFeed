@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
+import { createFallbackCache } from "@/lib/fallback-cache";
 
 export const revalidate = 0;
 export const dynamic = "force-dynamic";
@@ -24,7 +26,7 @@ const FETCH_TIMEOUT_MS = 5000;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 // In-memory cache
-let cached: { coins: unknown[]; fetchedAt: string } | null = null;
+const cache = createFallbackCache<{ coins: unknown[]; fetchedAt: string }>();
 
 const TICKER_SYMBOLS = [
   "BTC", "ETH", "SOL", "BNB", "XRP",
@@ -33,20 +35,16 @@ const TICKER_SYMBOLS = [
 
 async function fetchCMC(): Promise<{ coins: unknown[]; fetchedAt: string } | null> {
   try {
-    const ctrl = new AbortController();
-    const id = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
-
     // Use EXACT same URL + headers as /api/market/cmc-listings (proven to work)
     const url = "https://api.coinmarketcap.com/data-api/v3/cryptocurrency/listing?start=1&limit=20&sortBy=market_cap&sortType=desc";
 
-    const res = await fetch(url, {
-      signal: ctrl.signal,
+    const res = await fetchWithTimeout(url, {
       headers: {
         Accept: "application/json",
         "User-Agent": "Mozilla/5.0 (compatible; AiCryptoDiscoveryBot/1.0)",
       },
+      timeoutMs: FETCH_TIMEOUT_MS,
     });
-    clearTimeout(id);
 
     if (!res.ok) return null;
     const data = await res.json();
@@ -95,13 +93,10 @@ async function fetchCoinGecko(): Promise<{ coins: unknown[]; fetchedAt: string }
       ","
     )}&order=market_cap_desc&per_page=10&page=1&sparkline=false&price_change_percentage=24h`;
 
-    const ctrl = new AbortController();
-    const id = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
-    const res = await fetch(url, {
-      signal: ctrl.signal,
+    const res = await fetchWithTimeout(url, {
       headers: { Accept: "application/json" },
+      timeoutMs: FETCH_TIMEOUT_MS,
     });
-    clearTimeout(id);
 
     if (!res.ok) return null;
     const data: Array<{
@@ -136,7 +131,7 @@ export async function GET() {
   // Try CMC first (no rate-limit)
   const cmcResult = await fetchCMC();
   if (cmcResult) {
-    cached = cmcResult;
+    cache.set(cmcResult);
     return NextResponse.json(
       cmcResult,
       {
@@ -147,10 +142,11 @@ export async function GET() {
     );
   }
 
-  // Try in-memory cache (5min TTL)
-  if (cached && Date.now() - new Date(cached.fetchedAt).getTime() < CACHE_TTL_MS) {
+  // Try in-memory cache (5min TTL for proactive refresh)
+  const cachedEntry = cache.get();
+  if (cachedEntry && Date.now() - new Date(cachedEntry.data.fetchedAt).getTime() < CACHE_TTL_MS) {
     return NextResponse.json(
-      { ...cached, cached: true },
+      { ...cachedEntry.data, cached: true },
       {
         headers: {
           "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
@@ -162,7 +158,7 @@ export async function GET() {
   // Last resort: CoinGecko (rate-limited)
   const geckoResult = await fetchCoinGecko();
   if (geckoResult) {
-    cached = geckoResult;
+    cache.set(geckoResult);
     return NextResponse.json(
       geckoResult,
       {
@@ -173,10 +169,11 @@ export async function GET() {
     );
   }
 
-  // Return stale cache if available
-  if (cached) {
+  // Return stale cache if available (indefinitely — see cache policy)
+  const fallback = cache.get();
+  if (fallback) {
     return NextResponse.json(
-      { ...cached, cached: true, stale: true },
+      { ...fallback.data, cached: true, stale: true },
       {
         headers: {
           "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",

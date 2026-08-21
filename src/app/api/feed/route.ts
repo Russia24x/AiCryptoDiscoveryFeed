@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { NextResponse } from "next/server";
 import { SOURCES } from "@/lib/sources";
 import type { FeedItem, FeedResponse } from "@/types/feed";
@@ -211,17 +212,13 @@ async function fetchFeed(source: (typeof SOURCES)[number]): Promise<ParsedItem[]
 
   // Lazy cleanup of expired entries (replaces setInterval which doesn't work on Edge)
   cleanupExpiredCache();
-
-  const controller = new AbortController();
-  // 10s timeout — Digiato feeds take ~5-6s in Edge runtime (slower than direct curl)
-  const timeout = setTimeout(() => controller.abort(), 10000);
   try {
-    const res = await fetch(source.feed, {
+    const res = await fetchWithTimeout(source.feed, {
       headers: {
         "User-Agent": USER_AGENT,
         Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml, */*",
       },
-      signal: controller.signal,
+      timeoutMs: 10000,
       next: { revalidate: 600 },
     });
     if (!res.ok) {
@@ -232,8 +229,8 @@ async function fetchFeed(source: (typeof SOURCES)[number]): Promise<ParsedItem[]
     // Cache successful result
     feedCache.set(cacheKey, { items, timestamp: Date.now() });
     return items;
-  } finally {
-    clearTimeout(timeout);
+  } catch {
+    return [];
   }
 }
 

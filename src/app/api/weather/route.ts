@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -130,12 +131,8 @@ export async function GET(request: Request) {
     `&longitude=${clampedLon.toFixed(4)}` +
     `&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m,wind_direction_10m` +
     `&timezone=auto&forecast_days=1`;
-
-  const ctrl = new AbortController();
-  const id = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
     const res = await fetch(url, {
-      signal: ctrl.signal,
       headers: { Accept: "application/json" },
     });
     if (res.ok) {
@@ -176,8 +173,6 @@ export async function GET(request: Request) {
       },
       { status: 200 }
     );
-  } finally {
-    clearTimeout(id);
   }
 }
 

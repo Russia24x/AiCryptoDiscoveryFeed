@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -43,14 +44,10 @@ export async function GET(request: Request) {
     );
   }
 
-  const ctrl = new AbortController();
-  const id = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
-
   try {
     const res = await fetch(
       `https://api.coinmarketcap.com/data-api/v3/cryptocurrency/detail?slug=${safeSlug}`,
       {
-        signal: ctrl.signal,
         headers: {
           Accept: "application/json",
           "User-Agent": "Mozilla/5.0 (compatible; AiCryptoDiscoveryBot/1.0)",
@@ -89,7 +86,5 @@ export async function GET(request: Request) {
         },
       }
     );
-  } finally {
-    clearTimeout(id);
   }
 }

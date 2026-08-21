@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -22,14 +23,11 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const days = Math.min(Math.max(parseInt(searchParams.get("days") || "30", 10), 1), 365);
 
-  const ctrl = new AbortController();
-  const id = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
 
   try {
     const res = await fetch(
       `https://api.alternative.me/fng/?limit=${days}`,
       {
-        signal: ctrl.signal,
         headers: {
           Accept: "application/json",
           "User-Agent": "Mozilla/5.0 (compatible; AiCryptoDiscoveryBot/1.0)",
@@ -61,7 +59,5 @@ export async function GET(request: Request) {
       { error: err instanceof Error ? err.message : "Unknown error", data: [] },
       { status: 200 }
     );
-  } finally {
-    clearTimeout(id);
   }
 }

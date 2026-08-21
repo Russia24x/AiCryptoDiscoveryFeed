@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createFallbackCache } from "@/lib/fallback-cache";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -62,11 +63,11 @@ const SYMBOLS: Array<{ id: string; binance: string; coinbase: string; coingecko:
 ];
 
 // In-memory cache for fallback when all upstreams fail.
-let cached: { coins: CoinTicker[]; fetchedAt: string } | null = null;
+const cache = createFallbackCache<{ coins: CoinTicker[]; fetchedAt: string }>();
 
 const FETCH_TIMEOUT_MS = 8000;
 
-async function fetchWithTimeout(url: string, opts: RequestInit = {}, timeoutMs = FETCH_TIMEOUT_MS): Promise<Response> {
+async function fetchWithAbortTimeout(url: string, opts: RequestInit = {}, timeoutMs = FETCH_TIMEOUT_MS): Promise<Response> {
   const ctrl = new AbortController();
   const id = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -93,7 +94,7 @@ async function tryBinance(): Promise<{ coins: CoinTicker[]; source: string } | n
   try {
     const symbolsParam = encodeURIComponent(JSON.stringify(SYMBOLS.map((s) => s.binance)));
     const url = `https://api.binance.com/api/v3/ticker/24hr?symbols=${symbolsParam}`;
-    const res = await fetchWithTimeout(url);
+    const res = await fetchWithAbortTimeout(url);
     if (!res.ok) return null;
     const data = await res.json();
     if (!Array.isArray(data)) return null;
@@ -152,7 +153,7 @@ async function tryCoinbase(): Promise<{ coins: CoinTicker[]; source: string } | 
       const batch = SYMBOLS.slice(i, i + batchSize);
       const results = await Promise.allSettled(
         batch.map(async (s) => {
-          const res = await fetchWithTimeout(
+          const res = await fetchWithAbortTimeout(
             `https://api.coinbase.com/v2/prices/${s.coinbase}/spot`
           );
           if (!res.ok) return null;
@@ -195,7 +196,7 @@ async function tryCoinGecko(): Promise<{ coins: CoinTicker[]; source: string } |
   try {
     const ids = SYMBOLS.map((s) => s.coingecko).join(",");
     const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true&include_last_updated_at=true`;
-    const res = await fetchWithTimeout(url);
+    const res = await fetchWithAbortTimeout(url);
     if (!res.ok) return null;
     const data = await res.json();
     if (!data || typeof data !== "object") return null;
@@ -235,7 +236,7 @@ export async function GET() {
         source: result.source,
         fetchedAt: new Date().toISOString(),
       };
-      cached = response;
+      cache.set(response);
       return NextResponse.json(response, {
         headers: {
           "Cache-Control": "public, s-maxage=10, stale-while-revalidate=30",
@@ -244,10 +245,11 @@ export async function GET() {
     }
   }
 
-  // All upstreams failed — return cached value if available
-  if (cached) {
+  // All upstreams failed — return cached value if available (indefinitely)
+  const fallback = cache.get();
+  if (fallback) {
     return NextResponse.json(
-      { ...cached, cached: true, error: "All upstream sources failed" },
+      { ...fallback.data, cached: true, error: "All upstream sources failed" },
       {
         headers: {
           "Cache-Control": "public, s-maxage=10, stale-while-revalidate=30",

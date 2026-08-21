@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -15,19 +16,14 @@ export const revalidate = 0;
  * Caching: edge-cached 300s (5 min), stale-while-revalidate 900s.
  */
 
-const FETCH_TIMEOUT_MS = 10000;
-
 export async function GET() {
-  const ctrl = new AbortController();
-  const id = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
-
   try {
-    const res = await fetch("https://api.coingecko.com/api/v3/search/trending", {
-      signal: ctrl.signal,
+    const res = await fetchWithTimeout("https://api.coingecko.com/api/v3/search/trending", {
       headers: {
         Accept: "application/json",
         "User-Agent": "Mozilla/5.0 (compatible; AiCryptoDiscoveryBot/1.0)",
       },
+      timeoutMs: 10000,
     });
 
     if (!res.ok) {
@@ -66,7 +62,5 @@ export async function GET() {
       { error: err instanceof Error ? err.message : "Unknown error", coins: [] },
       { status: 200 }
     );
-  } finally {
-    clearTimeout(id);
   }
 }

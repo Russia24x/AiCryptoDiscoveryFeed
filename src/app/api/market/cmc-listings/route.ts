@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
+import { createFallbackCache } from "@/lib/fallback-cache";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -77,7 +79,7 @@ interface CoinListing {
 }
 
 const FETCH_TIMEOUT_MS = 10000;
-let cached: { coins: CoinListing[]; fetchedAt: string } | null = null;
+const cache = createFallbackCache<{ coins: CoinListing[]; fetchedAt: string }>();
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -90,16 +92,13 @@ export async function GET(request: Request) {
 
   const url = `https://api.coinmarketcap.com/data-api/v3/cryptocurrency/listing?start=1&limit=${limit}&sortBy=${sortBy}&sortType=${sortType}`;
 
-  const ctrl = new AbortController();
-  const id = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
-
   try {
-    const res = await fetch(url, {
-      signal: ctrl.signal,
+    const res = await fetchWithTimeout(url, {
       headers: {
         Accept: "application/json",
         "User-Agent": "Mozilla/5.0 (compatible; AiCryptoDiscoveryBot/1.0)",
       },
+      timeoutMs: FETCH_TIMEOUT_MS,
     });
 
     if (!res.ok) {
@@ -141,7 +140,7 @@ export async function GET(request: Request) {
       coins,
       fetchedAt: new Date().toISOString(),
     };
-    cached = result;
+    cache.set(result);
 
     return NextResponse.json(result, {
       headers: {
@@ -149,9 +148,10 @@ export async function GET(request: Request) {
       },
     });
   } catch (err) {
-    if (cached) {
+    const fallback = cache.get();
+    if (fallback) {
       return NextResponse.json(
-        { ...cached, cached: true, error: err instanceof Error ? err.message : "Fetch failed" },
+        { ...fallback.data, cached: true, error: err instanceof Error ? err.message : "Fetch failed" },
         {
           headers: {
             "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
@@ -167,7 +167,5 @@ export async function GET(request: Request) {
       },
       { status: 200 }
     );
-  } finally {
-    clearTimeout(id);
   }
 }

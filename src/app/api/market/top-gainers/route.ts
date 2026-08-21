@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -27,8 +28,6 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const limit = Math.min(parseInt(searchParams.get("limit") || "10", 10), 50);
 
-  const ctrl = new AbortController();
-  const id = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
 
   try {
     // Fetch from our own cmc-listings route (which is edge-cached).
@@ -39,7 +38,6 @@ export async function GET(request: Request) {
     url.searchParams.set("sortType", "desc");
 
     const res = await fetch(url.toString(), {
-      signal: ctrl.signal,
       headers: { Accept: "application/json" },
     });
 
@@ -74,7 +72,5 @@ export async function GET(request: Request) {
       },
       { status: 200 }
     );
-  } finally {
-    clearTimeout(id);
   }
 }

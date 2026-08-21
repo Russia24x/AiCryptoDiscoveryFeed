@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -19,14 +20,11 @@ export const revalidate = 0;
 const FETCH_TIMEOUT_MS = 10000;
 
 export async function GET() {
-  const ctrl = new AbortController();
-  const id = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
 
   try {
     const res = await fetch(
       "https://api.coinmarketcap.com/data-api/v3/cryptocurrency/category?start=1&limit=20",
       {
-        signal: ctrl.signal,
         headers: {
           Accept: "application/json",
           "User-Agent": "Mozilla/5.0 (compatible; AiCryptoDiscoveryBot/1.0)",
@@ -63,7 +61,5 @@ export async function GET() {
       { error: err instanceof Error ? err.message : "Unknown error", categories: [] },
       { status: 200 }
     );
-  } finally {
-    clearTimeout(id);
   }
 }

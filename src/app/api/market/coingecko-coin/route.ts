@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -70,22 +71,18 @@ export async function GET(request: Request) {
 
   // Try up to 2 times (initial + 1 retry with exponential backoff)
   for (let attempt = 0; attempt < 2; attempt++) {
-    const ctrl = new AbortController();
-    const id = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
 
     try {
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `https://api.coingecko.com/api/v3/coins/${safeId}?${params}`,
         {
-          signal: ctrl.signal,
           headers: {
             Accept: "application/json",
             "User-Agent": "Mozilla/5.0 (compatible; AiCryptoDiscoveryBot/1.0)",
           },
+          timeoutMs: FETCH_TIMEOUT_MS,
         }
       );
-
-      clearTimeout(id);
 
       if (res.status === 429) {
         if (attempt < 1) {
@@ -131,7 +128,6 @@ export async function GET(request: Request) {
         },
       });
     } catch (err) {
-      clearTimeout(id);
       if (attempt < 1) {
         await sleep(1000 * Math.pow(2, attempt));
         continue;

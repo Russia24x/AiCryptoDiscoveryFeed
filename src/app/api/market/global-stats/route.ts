@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -27,14 +28,11 @@ export const revalidate = 0;
 const FETCH_TIMEOUT_MS = 12000;
 
 export async function GET(request: Request) {
-  const ctrl = new AbortController();
-  const id = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
 
   try {
     // Fetch global metrics from our own edge-cached route
     const globalUrl = new URL("/api/market/cmc-global", new URL(request.url).origin);
     const globalRes = await fetch(globalUrl.toString(), {
-      signal: ctrl.signal,
       headers: { Accept: "application/json" },
     });
     if (!globalRes.ok) throw new Error(`Global API returned HTTP ${globalRes.status}`);
@@ -61,7 +59,5 @@ export async function GET(request: Request) {
       { error: err instanceof Error ? err.message : "Unknown error" },
       { status: 200 }
     );
-  } finally {
-    clearTimeout(id);
   }
 }

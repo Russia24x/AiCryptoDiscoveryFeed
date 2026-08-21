@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -45,9 +46,6 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-
   try {
     const res = await fetch(articleUrl, {
       headers: {
@@ -55,7 +53,6 @@ export async function GET(request: Request) {
         Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "fa,en;q=0.8",
       },
-      signal: controller.signal,
       redirect: "follow",
     });
 
@@ -180,7 +177,5 @@ export async function GET(request: Request) {
         },
       }
     );
-  } finally {
-    clearTimeout(timeout);
   }
 }

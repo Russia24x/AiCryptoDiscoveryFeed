@@ -1,3 +1,4 @@
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -46,15 +47,13 @@ export async function GET(request: Request) {
   // Limit query length to prevent abuse
   const query = q.slice(0, 100);
 
-  const ctrl = new AbortController();
-  const id = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
     const url =
       `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}` +
       `&count=10&language=${encodeURIComponent(language)}&format=json`;
-    const res = await fetch(url, {
-      signal: ctrl.signal,
+    const res = await fetchWithTimeout(url, {
       headers: { Accept: "application/json" },
+      timeoutMs: FETCH_TIMEOUT_MS,
     });
 
     if (!res.ok) {
@@ -103,7 +102,5 @@ export async function GET(request: Request) {
       },
       { status: 200 }
     );
-  } finally {
-    clearTimeout(id);
   }
 }

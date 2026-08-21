@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
+import { createFallbackCache } from "@/lib/fallback-cache";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -33,8 +35,7 @@ export const revalidate = 0;
 const FETCH_TIMEOUT_MS = 10000;
 
 // In-memory cache for fallback when CoinGecko rate-limits or fails.
-// This is per-edge-instance (resets when the edge worker restarts).
-let cached: { coins: unknown[]; fetchedAt: string } | null = null;
+const cache = createFallbackCache<{ coins: unknown[]; fetchedAt: string }>();
 
 /** Sleep for ms milliseconds. */
 function sleep(ms: number): Promise<void> {
@@ -60,22 +61,17 @@ export async function GET(request: Request) {
 
   // Try up to 2 times (initial + 1 retry with exponential backoff)
   for (let attempt = 0; attempt < 2; attempt++) {
-    const ctrl = new AbortController();
-    const id = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
-
     try {
-      const res = await fetch(
+      const res = await fetchWithTimeout(
         `https://api.coingecko.com/api/v3/coins/markets?${params}`,
         {
-          signal: ctrl.signal,
           headers: {
             Accept: "application/json",
             "User-Agent": "Mozilla/5.0 (compatible; AiCryptoDiscoveryBot/1.0)",
           },
+          timeoutMs: FETCH_TIMEOUT_MS,
         }
       );
-
-      clearTimeout(id);
 
       if (res.status === 429) {
         // Rate limited — retry once after 1s delay (exponential backoff: 1s, 2s, 4s...)
@@ -84,9 +80,10 @@ export async function GET(request: Request) {
           continue;
         }
         // Final attempt also rate-limited — serve cached data if available
-        if (cached) {
+        const cachedEntry = cache.get();
+        if (cachedEntry) {
           return NextResponse.json(
-            { ...cached, cached: true, rateLimited: true },
+            { ...cachedEntry.data, cached: true, rateLimited: true },
             {
               status: 200,
               headers: {
@@ -113,7 +110,7 @@ export async function GET(request: Request) {
       const data = await res.json();
 
       // Update in-memory cache
-      cached = { coins: data, fetchedAt: new Date().toISOString() };
+      cache.set({ coins: data, fetchedAt: new Date().toISOString() });
 
       return NextResponse.json(
         { coins: data, fetchedAt: new Date().toISOString() },
@@ -124,16 +121,16 @@ export async function GET(request: Request) {
         }
       );
     } catch (err) {
-      clearTimeout(id);
       if (attempt < 1) {
         // Retry on network error
         await sleep(1000 * Math.pow(2, attempt));
         continue;
       }
       // Final attempt failed — serve cached data if available
-      if (cached) {
+      const fallback = cache.get();
+      if (fallback) {
         return NextResponse.json(
-          { ...cached, cached: true, error: err instanceof Error ? err.message : "Unknown error" },
+          { ...fallback.data, cached: true, error: err instanceof Error ? err.message : "Unknown error" },
           {
             status: 200,
             headers: {

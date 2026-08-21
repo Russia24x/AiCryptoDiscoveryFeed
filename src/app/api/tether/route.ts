@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
+import { createFallbackCache } from "@/lib/fallback-cache";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -28,15 +30,17 @@ export const revalidate = 0;
 
 const FETCH_TIMEOUT_MS = 10000;
 
-// In-memory cache (5 min TTL)
-let cached: { price: number; source: string; fetchedAt: string } | null = null;
+// In-memory cache (5 min TTL for proactive refresh, but stale cache is
+// served indefinitely as fallback — see fallback-cache.ts policy).
+const cache = createFallbackCache<{ price: number; source: string; fetchedAt: string }>();
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
 export async function GET() {
-  // Return in-memory cache if fresh
-  if (cached && Date.now() - new Date(cached.fetchedAt).getTime() < CACHE_TTL_MS) {
+  // Return in-memory cache if fresh (avoids unnecessary upstream fetch)
+  const cachedEntry = cache.get();
+  if (cachedEntry && Date.now() - new Date(cachedEntry.data.fetchedAt).getTime() < CACHE_TTL_MS) {
     return NextResponse.json(
-      { ...cached, cached: true },
+      { ...cachedEntry.data, cached: true },
       {
         headers: {
           "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
@@ -47,17 +51,13 @@ export async function GET() {
   }
 
   try {
-    const ctrl = new AbortController();
-    const id = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
-
-    const res = await fetch("https://nobitex.ir/price/usdt/", {
-      signal: ctrl.signal,
+    const res = await fetchWithTimeout("https://nobitex.ir/price/usdt/", {
       headers: {
         Accept: "text/html",
         "User-Agent": "Mozilla/5.0 (compatible; AiCryptoDiscoveryBot/1.0)",
       },
+      timeoutMs: FETCH_TIMEOUT_MS,
     });
-    clearTimeout(id);
 
     if (!res.ok) {
       throw new Error(`Nobitex website returned HTTP ${res.status}`);
@@ -82,7 +82,7 @@ export async function GET() {
       fetchedAt: new Date().toISOString(),
     };
 
-    cached = result;
+    cache.set(result);
 
     return NextResponse.json(result, {
       headers: {
@@ -91,10 +91,11 @@ export async function GET() {
       },
     });
   } catch (err) {
-    // Return stale cache if available
-    if (cached) {
+    // Return stale cache if available (indefinitely — see cache policy)
+    const fallback = cache.get();
+    if (fallback) {
       return NextResponse.json(
-        { ...cached, cached: true, stale: true },
+        { ...fallback.data, cached: true, stale: true },
         {
           headers: {
             "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
