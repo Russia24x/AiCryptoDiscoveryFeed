@@ -1,34 +1,33 @@
 import type { Metadata, Viewport } from "next";
-import { Vazirmatn, Inter, JetBrains_Mono } from "next/font/google";
 import "@fontsource/estedad/800.css";
 import "@fontsource/estedad/900.css";
+// Self-hosted fonts (no build-time fetch to fonts.googleapis.com).
+// Each weight is imported individually to keep bundle small.
+// Vazirmatn: 300-900 (primary Persian UI font)
+import "@fontsource/vazirmatn/300.css";
+import "@fontsource/vazirmatn/400.css";
+import "@fontsource/vazirmatn/500.css";
+import "@fontsource/vazirmatn/600.css";
+import "@fontsource/vazirmatn/700.css";
+import "@fontsource/vazirmatn/800.css";
+import "@fontsource/vazirmatn/900.css";
+// Inter: 300-900 (Latin/numbers)
+import "@fontsource/inter/300.css";
+import "@fontsource/inter/400.css";
+import "@fontsource/inter/500.css";
+import "@fontsource/inter/600.css";
+import "@fontsource/inter/700.css";
+import "@fontsource/inter/800.css";
+import "@fontsource/inter/900.css";
+// JetBrains Mono: 400, 500, 700 (code blocks)
+import "@fontsource/jetbrains-mono/400.css";
+import "@fontsource/jetbrains-mono/500.css";
+import "@fontsource/jetbrains-mono/700.css";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { PWAInstallPrompt } from "@/components/brand/pwa-install-prompt";
 import { Providers } from "./providers";
-
-// Vazirmatn — primary Persian UI font (clean, modern, readable for body text).
-const vazirmatn = Vazirmatn({
-  subsets: ["arabic", "latin"],
-  variable: "--font-vazirmatn",
-  display: "swap",
-  weight: ["300", "400", "500", "600", "700", "800", "900"],
-});
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-  display: "swap",
-  weight: ["300", "400", "500", "600", "700", "800", "900"],
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-jetbrains-mono",
-  display: "swap",
-  weight: ["400", "500", "700"],
-});
 
 export const metadata: Metadata = {
   title: "Ai Crypto Discovery — آینده رمزنگاری، هوش مصنوعی و فناوری",
@@ -100,9 +99,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="fa" dir="rtl" suppressHydrationWarning>
-      <body
-        className={`${vazirmatn.variable} ${inter.variable} ${jetbrainsMono.variable} antialiased bg-background text-foreground`}
-      >
+      <body className="antialiased bg-background text-foreground">
         <Providers>
           {children}
         </Providers>

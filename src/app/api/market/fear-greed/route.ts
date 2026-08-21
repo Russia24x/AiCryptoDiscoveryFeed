@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
+import { createFallbackCache } from "@/lib/fallback-cache";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -33,9 +35,10 @@ interface FngData {
   cached?: boolean;
 }
 
-let cached: FngData | null = null;
+const cache = createFallbackCache<FngData>();
 
 const FETCH_TIMEOUT_MS = 8000;
+const CACHE_TTL_MS = 15 * 60 * 1000; // 15 min
 
 /**
  * Map the numeric value (0-100) to an emoji-friendly face.
@@ -63,15 +66,13 @@ export function fngColor(value: number): string {
 }
 
 export async function GET() {
-  const ctrl = new AbortController();
-  const id = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch("https://api.alternative.me/fng/?limit=8", {
-      signal: ctrl.signal,
+    const res = await fetchWithTimeout("https://api.alternative.me/fng/?limit=8", {
       headers: {
         Accept: "application/json",
         "User-Agent": "AiCryptoDiscoveryBot/1.0",
       },
+      timeoutMs: FETCH_TIMEOUT_MS,
     });
     if (res.ok) {
       const json = await res.json();
@@ -89,7 +90,7 @@ export async function GET() {
             lastWeek: lastWeek ? Number(lastWeek.value) : undefined,
             fetchedAt: new Date().toISOString(),
           };
-          cached = result;
+          cache.set(result);
           return NextResponse.json(result, {
             headers: {
               "Cache-Control": "public, s-maxage=900, stale-while-revalidate=1800",
@@ -100,13 +101,12 @@ export async function GET() {
     }
   } catch {
     // fall through to cache
-  } finally {
-    clearTimeout(id);
   }
 
-  if (cached) {
+  const cachedEntry = cache.get();
+  if (cachedEntry && cache.isFresh(CACHE_TTL_MS)) {
     return NextResponse.json(
-      { ...cached, cached: true, fetchedAt: new Date().toISOString() },
+      { ...cachedEntry.data, cached: true, fetchedAt: new Date().toISOString() },
       {
         headers: {
           "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",

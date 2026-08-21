@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback, memo } from "react";
 import { RefreshCw, LayoutGrid, List, Filter } from "lucide-react";
 import type { FeedItem } from "@/types/feed";
 import { useFeed } from "@/hooks/use-feed";
@@ -62,11 +62,11 @@ export function FeedGrid({
   }, [allData]);
   const totalItems = allData?.items?.length;
 
-  const onOpen = (item: FeedItem) => {
+  const onOpen = useCallback((item: FeedItem) => {
     const idx = data?.items.findIndex((it) => it.id === item.id) ?? -1;
     setSelectedIdx(idx >= 0 ? idx : 0);
     setReaderOpen(true);
-  };
+  }, [data]);
 
   const onPrev = () => {
     if (selectedIdx === null || !data) return;
@@ -212,7 +212,7 @@ export function FeedGrid({
 }
 
 /** Compact horizontal list-row variant using SmartImage. */
-function FeedListItem({
+const FeedListItem = memo(function FeedListItem({
   item,
   onOpen,
   index,
@@ -264,4 +264,4 @@ function FeedListItem({
       </div>
     </article>
   );
-}
+});
