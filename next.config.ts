@@ -26,6 +26,27 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
+  // Security headers applied to ALL responses (pages + API routes).
+  // The `public/_headers` file only affects static-assets layer responses,
+  // NOT Worker-generated responses. Since every page is "use client" and
+  // every /api/* route is force-dynamic, 100% of responses go through the
+  // Worker — so _headers rules never fire. This headers() function is the
+  // correct way to apply headers in an OpenNext + Cloudflare Workers setup.
+  // Reference: OpenNext docs classify next.config.js headers() as part of
+  // its routing/middleware layer, which the Cloudflare adapter fully implements.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
