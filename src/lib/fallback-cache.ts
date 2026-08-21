@@ -5,12 +5,18 @@
  * unavailable (rate-limited, timeout, 5xx). Each route gets its own
  * isolated cache instance via createFallbackCache<T>().
  *
+ * Cache policy (applies consistently to all converted routes):
+ * Once data is cached, it is served as a fallback indefinitely — however
+ * old, as long as the isolate stays warm. The `cached: true` flag in the
+ * response tells the client the data is stale. This matches the pre-refactor
+ * behavior exactly ("serve whatever is cached, however stale").
+ *
  * Usage:
  *   const cache = createFallbackCache<CoinGeckoData>();
  *   // ... in route handler:
- *   const cached = cache.get();
- *   if (cached && Date.now() - cached.timestamp < TTL_MS) {
- *     return cached.data;  // serve stale
+ *   const cachedEntry = cache.get();
+ *   if (cachedEntry) {
+ *     return NextResponse.json({ ...cachedEntry.data, cached: true });
  *   }
  *   // fetch fresh data...
  *   cache.set(freshData);
@@ -38,9 +44,6 @@ export function createFallbackCache<T>() {
     },
     clear(): void {
       entry = null;
-    },
-    isFresh(ttlMs: number): boolean {
-      return entry !== null && Date.now() - entry.timestamp < ttlMs;
     },
   };
 }

@@ -38,7 +38,6 @@ interface FngData {
 const cache = createFallbackCache<FngData>();
 
 const FETCH_TIMEOUT_MS = 8000;
-const CACHE_TTL_MS = 15 * 60 * 1000; // 15 min
 
 /**
  * Map the numeric value (0-100) to an emoji-friendly face.
@@ -103,8 +102,13 @@ export async function GET() {
     // fall through to cache
   }
 
+  // Serve cached data as fallback regardless of age — matches pre-refactor
+  // behavior. The `cached: true` flag tells the client the data is stale.
+  // Rationale: showing old data is better than showing nothing when the
+  // upstream API is down for extended periods. This policy applies
+  // consistently to all routes converted to use createFallbackCache.
   const cachedEntry = cache.get();
-  if (cachedEntry && cache.isFresh(CACHE_TTL_MS)) {
+  if (cachedEntry) {
     return NextResponse.json(
       { ...cachedEntry.data, cached: true, fetchedAt: new Date().toISOString() },
       {
