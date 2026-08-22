@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { createFallbackCache } from "@/lib/fallback-cache";
 
 export const dynamic = "force-dynamic";
@@ -67,23 +68,10 @@ const cache = createFallbackCache<{ coins: CoinTicker[]; fetchedAt: string }>();
 
 const FETCH_TIMEOUT_MS = 8000;
 
-async function fetchWithAbortTimeout(url: string, opts: RequestInit = {}, timeoutMs = FETCH_TIMEOUT_MS): Promise<Response> {
-  const ctrl = new AbortController();
-  const id = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    return await fetch(url, {
-      ...opts,
-      signal: ctrl.signal,
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; AiCryptoDiscoveryBot/1.0)",
-        Accept: "application/json",
-        ...(opts.headers || {}),
-      },
-    });
-  } finally {
-    clearTimeout(id);
-  }
-}
+const DEFAULT_HEADERS = {
+  "User-Agent": "Mozilla/5.0 (compatible; AiCryptoDiscoveryBot/1.0)",
+  Accept: "application/json",
+};
 
 /**
  * Source 1: Binance
@@ -94,7 +82,10 @@ async function tryBinance(): Promise<{ coins: CoinTicker[]; source: string } | n
   try {
     const symbolsParam = encodeURIComponent(JSON.stringify(SYMBOLS.map((s) => s.binance)));
     const url = `https://api.binance.com/api/v3/ticker/24hr?symbols=${symbolsParam}`;
-    const res = await fetchWithAbortTimeout(url);
+    const res = await fetchWithTimeout(url, {
+      headers: DEFAULT_HEADERS,
+      timeoutMs: FETCH_TIMEOUT_MS,
+    });
     if (!res.ok) return null;
     const data = await res.json();
     if (!Array.isArray(data)) return null;
@@ -153,8 +144,12 @@ async function tryCoinbase(): Promise<{ coins: CoinTicker[]; source: string } | 
       const batch = SYMBOLS.slice(i, i + batchSize);
       const results = await Promise.allSettled(
         batch.map(async (s) => {
-          const res = await fetchWithAbortTimeout(
-            `https://api.coinbase.com/v2/prices/${s.coinbase}/spot`
+          const res = await fetchWithTimeout(
+            `https://api.coinbase.com/v2/prices/${s.coinbase}/spot`,
+            {
+              headers: DEFAULT_HEADERS,
+              timeoutMs: FETCH_TIMEOUT_MS,
+            }
           );
           if (!res.ok) return null;
           const json = await res.json();
@@ -196,7 +191,10 @@ async function tryCoinGecko(): Promise<{ coins: CoinTicker[]; source: string } |
   try {
     const ids = SYMBOLS.map((s) => s.coingecko).join(",");
     const url = `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true&include_last_updated_at=true`;
-    const res = await fetchWithAbortTimeout(url);
+    const res = await fetchWithTimeout(url, {
+      headers: DEFAULT_HEADERS,
+      timeoutMs: FETCH_TIMEOUT_MS,
+    });
     if (!res.ok) return null;
     const data = await res.json();
     if (!data || typeof data !== "object") return null;
