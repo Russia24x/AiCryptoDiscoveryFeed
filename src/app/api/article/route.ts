@@ -127,7 +127,15 @@ function findMatchingCloseTag(
  *   3. <main> tag.
  *   4. Paragraph fallback — collect <p> tags from <body> (used only as last resort).
  */
-function extractArticleHtml(html: string): { html: string; strategy: string } {
+function extractArticleHtml(html: string): {
+  html: string;
+  strategy: string;
+  /** Narrowed HTML region (content-class/article/main), for image
+   *  harvesting only — populated even when `html`/`strategy` above come
+   *  from JSON-LD. Not used for text; cleanArticleHtml+extractImages runs
+   *  on this separately in GET(). */
+  imageSourceHtml?: string;
+} {
   // Strategy 0: JSON-LD structured data.
   // Many modern sites (Digiato, etc.) embed the article body in a
   // <script type="application/ld+json"> block with schema.org
@@ -205,6 +213,12 @@ function extractArticleHtml(html: string): { html: string; strategy: string } {
     }
   }
   if (bestContent.length > 800) {
+    if (jsonLdResult) {
+      // JSON-LD text wins (it's generally cleaner for these sites), but
+      // hand back this div's HTML too so the caller can harvest images
+      // from it specifically — not from the whole raw page.
+      return { ...jsonLdResult, imageSourceHtml: bestContent };
+    }
     return { html: bestContent, strategy: bestStrategy };
   }
 
@@ -222,6 +236,9 @@ function extractArticleHtml(html: string): { html: string; strategy: string } {
     }
   }
   if (bestArticle.length > 1500) {
+    if (jsonLdResult) {
+      return { ...jsonLdResult, imageSourceHtml: bestArticle };
+    }
     return { html: bestArticle, strategy: "article" };
   }
 
@@ -233,6 +250,9 @@ function extractArticleHtml(html: string): { html: string; strategy: string } {
     if (closeEnd !== -1) {
       const content = html.slice(openEnd, closeEnd - `</main>`.length);
       if (content.length > 1500) {
+        if (jsonLdResult) {
+          return { ...jsonLdResult, imageSourceHtml: content };
+        }
         return { html: content, strategy: "main" };
       }
     }
@@ -258,12 +278,20 @@ function extractArticleHtml(html: string): { html: string; strategy: string } {
     // Require at least 5 substantial paragraphs — this prevents grabbing
     // 3 random nav paragraphs and calling it an article.
     if (paragraphs.length >= 5) {
+      const paraHtml = paragraphs.join("\n");
+      if (jsonLdResult) {
+        return { ...jsonLdResult, imageSourceHtml: paraHtml };
+      }
       return {
-        html: paragraphs.join("\n"),
+        html: paraHtml,
         strategy: "paragraphs",
       };
     }
   }
+
+  // Nothing else matched. This is the case Strategy 0 was built for —
+  // return JSON-LD if we have it, instead of discarding it.
+  if (jsonLdResult) return jsonLdResult;
 
   return { html: "", strategy: "none" };
 }
@@ -481,7 +509,7 @@ export async function GET(request: Request) {
     const html = await res.text();
 
     const meta = extractMeta(html, articleUrl);
-    const { html: rawBody, strategy } = extractArticleHtml(html);
+    const { html: rawBody, strategy, imageSourceHtml } = extractArticleHtml(html);
 
     let cleanedHtml = "";
     let extractedImages: string[] = [];
@@ -491,23 +519,12 @@ export async function GET(request: Request) {
       extractedImages = extractImages(cleanedHtml);
     }
 
-    // If JSON-LD won the text extraction but found no images (because
-    // articleBody is plain text with no <img> tags), try harvesting
-    // images from the raw HTML using the HTML-based strategies.
-    // This prevents JSON-LD from silently discarding images that were
-    // available in the server-rendered HTML.
-    if (strategy === "json-ld" && extractedImages.length === 0) {
-      // Run the HTML extraction strategies purely to get the content HTML
-      // (not for the text — JSON-LD's text is already cleaner).
-      const htmlResult = extractArticleHtml(html);
-      // extractArticleHtml already tried JSON-LD first (which won),
-      // so htmlResult is the same JSON-LD text. We need to try the
-      // HTML strategies directly on the raw HTML to find images.
-      // Use extractImages on the full page HTML as a fallback.
-      const pageImages = extractImages(html);
-      if (pageImages.length > 0) {
-        extractedImages = pageImages;
-      }
+    // If JSON-LD's text won but a narrower HTML region was also found
+    // (imageSourceHtml), harvest images from THAT region — not the whole
+    // raw page, which would pull in nav/ads/related-post thumbnails too.
+    if (strategy === "json-ld" && extractedImages.length === 0 && imageSourceHtml) {
+      const harvested = extractImages(cleanArticleHtml(imageSourceHtml));
+      if (harvested.length > 0) extractedImages = harvested;
     }
 
     // If we have og:image but no images in body, add it as the first image
