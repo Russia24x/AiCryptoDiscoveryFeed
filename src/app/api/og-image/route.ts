@@ -1,4 +1,5 @@
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
+import { isBlockedHost, readBodyCapped } from "@/lib/fetch-guard";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -46,21 +47,32 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
   }
 
+  // SSRF guard — block internal/private hosts before fetching
+  if (isBlockedHost(parsed.hostname)) {
+    return NextResponse.json({ error: "Blocked host" }, { status: 400 });
+  }
+
   try {
-    const res = await fetch(articleUrl, {
+    const res = await fetchWithTimeout(articleUrl, {
       headers: {
         "User-Agent": USER_AGENT,
         Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "fa,en;q=0.8",
       },
       redirect: "follow",
+      timeoutMs: 10000,
     });
+
+    // Post-redirect SSRF guard
+    if (res.url && isBlockedHost(new URL(res.url).hostname)) {
+      return NextResponse.json({ error: "Blocked host (after redirect)" }, { status: 400 });
+    }
 
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}`);
     }
 
-    const html = await res.text();
+    const html = await readBodyCapped(res, 1_000_000);
     const headHtml = html.slice(0, 200000);
 
     const cacheHeaders = {

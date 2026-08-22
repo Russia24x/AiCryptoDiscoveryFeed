@@ -1,4 +1,5 @@
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
+import { isBlockedHost, readBodyCapped } from "@/lib/fetch-guard";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -487,15 +488,32 @@ export async function GET(request: Request) {
     );
   }
 
+  // SSRF guard — block internal/private hosts before fetching
+  if (isBlockedHost(parsed.hostname)) {
+    return NextResponse.json(
+      { error: "Blocked host", sourceUrl: articleUrl },
+      { status: 400 }
+    );
+  }
+
   try {
-    const res = await fetch(articleUrl, {
+    const res = await fetchWithTimeout(articleUrl, {
       headers: {
         "User-Agent": USER_AGENT,
         Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "fa,en;q=0.8",
       },
       redirect: "follow",
+      timeoutMs: 10000,
     });
+
+    // Post-redirect SSRF guard — check final URL after redirects
+    if (res.url && isBlockedHost(new URL(res.url).hostname)) {
+      return NextResponse.json(
+        { error: "Blocked host (after redirect)", sourceUrl: articleUrl },
+        { status: 400 }
+      );
+    }
 
     if (!res.ok) {
       throw new Error(`HTTP ${res.status}`);
@@ -506,7 +524,7 @@ export async function GET(request: Request) {
       throw new Error(`Unsupported content-type: ${contentType}`);
     }
 
-    const html = await res.text();
+    const html = await readBodyCapped(res, 2_000_000);
 
     const meta = extractMeta(html, articleUrl);
     const { html: rawBody, strategy, imageSourceHtml } = extractArticleHtml(html);
@@ -530,15 +548,22 @@ export async function GET(request: Request) {
     // If we have og:image but no images in body, add it as the first image
     if (meta.ogImage && !extractedImages.includes(meta.ogImage)) {
       extractedImages.unshift(meta.ogImage);
-      // Also inject the og:image as the lead image in the HTML body if it's empty
+      // Also inject the og:image as the lead image in the HTML body if it's empty.
+      // Route through cleanArticleHtml to sanitize meta values (XSS prevention —
+      // meta tags are user-controlled via decodeEntities which converts &lt;→< etc.)
       if (!cleanedHtml) {
-        cleanedHtml = `<p><img src="${meta.ogImage}" alt="${meta.ogTitle || ""}" /></p>`;
+        const fragment = cleanArticleHtml(
+          `<p><img src="${meta.ogImage}" alt="${meta.ogTitle || ""}" /></p>`
+        );
+        if (fragment) cleanedHtml = fragment;
       }
     }
 
-    // FALLBACK: If article body extraction failed, use og:description as the body
+    // FALLBACK: If article body extraction failed, use og:description as the body.
+    // Route through cleanArticleHtml to sanitize (same XSS concern as above).
     if ((!cleanedHtml || cleanedHtml.length < 200) && meta.ogDescription) {
-      cleanedHtml = `<p>${meta.ogDescription}</p>`;
+      const descHtml = cleanArticleHtml(`<p>${meta.ogDescription}</p>`);
+      if (descHtml) cleanedHtml = descHtml;
     }
 
     const plainText = cleanedHtml ? htmlToText(cleanedHtml) : "";

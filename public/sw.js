@@ -229,9 +229,15 @@ async function handleNavigationRequest(req) {
 // === API handler: network-first, fall back to cache ===
 async function handleApiRequest(req) {
   const cache = await caches.open(API_CACHE);
+  // Proxy routes that fetch user-supplied URLs must never be cached —
+  // a cached XSS payload would persist across sessions even after the
+  // source is fixed. Only the network response is served.
+  const path = new URL(req.url).pathname;
+  const noCache =
+    path.startsWith("/api/article") || path.startsWith("/api/og-image");
   try {
     const networkRes = await fetch(req);
-    if (networkRes && networkRes.ok) {
+    if (networkRes && networkRes.ok && !noCache) {
       // Cache a copy for offline use. Limit to responses under 1MB
       // to prevent cache bloat from large feed responses.
       const clone = networkRes.clone();
@@ -243,7 +249,8 @@ async function handleApiRequest(req) {
     }
     return networkRes;
   } catch {
-    // Network failed — try cache.
+    // Network failed — try cache (unless proxy route, which is never cached).
+    if (noCache) return new Response("Offline", { status: 503 });
     const cached = await cache.match(req);
     if (cached) {
       // Add a header so the UI knows this is stale data.
