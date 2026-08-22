@@ -124,7 +124,18 @@ export async function GET(request: Request) {
       let m: RegExpExecArray | null;
       while ((m = re.exec(body)) !== null) {
         const attrs = m[1];
-        const srcMatch = attrs.match(/src=["']([^"']+)["']/i);
+        let srcMatch = attrs.match(/src=["']([^"']+)["']/i);
+        // If src is data: URI or missing, check lazy-load fallback attributes
+        if (!srcMatch || srcMatch[1].startsWith("data:")) {
+          const lazyAttrs = ["data-src", "data-lazy-src", "data-lazy-original", "data-original"];
+          for (const attr of lazyAttrs) {
+            const lazyMatch = attrs.match(new RegExp(`${attr}=["']([^"']+)["']`, "i"));
+            if (lazyMatch) {
+              srcMatch = lazyMatch;
+              break;
+            }
+          }
+        }
         const wMatch = attrs.match(/width=["'](\d+)["']/i);
         const hMatch = attrs.match(/height=["'](\d+)["']/i);
         if (srcMatch) {

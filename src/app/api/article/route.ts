@@ -128,12 +128,19 @@ function findMatchingCloseTag(
  *   4. Paragraph fallback — collect <p> tags from <body> (used only as last resort).
  */
 function extractArticleHtml(html: string): { html: string; strategy: string } {
-  // Strategy 0: JSON-LD structured data (HIGHEST PRIORITY).
+  // Strategy 0: JSON-LD structured data.
   // Many modern sites (Digiato, etc.) embed the article body in a
   // <script type="application/ld+json"> block with schema.org
   // NewsArticle schema. The articleBody field is plain text — we
   // convert it to simple HTML paragraphs.
   // This works even when the page is JS-rendered (no SSR content).
+  //
+  // IMPORTANT: When JSON-LD wins for the text body, we DON'T return
+  // immediately — we continue to run Strategies 1-3 purely to harvest
+  // images from the HTML (which JSON-LD's articleBody doesn't include).
+  // The caller in GET() merges: JSON-LD text + HTML-extracted images.
+  let jsonLdResult: { html: string; strategy: string } | null = null;
+
   const jsonLdMatch = html.match(
     /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/i
   );
@@ -141,26 +148,15 @@ function extractArticleHtml(html: string): { html: string; strategy: string } {
     try {
       const data = JSON.parse(jsonLdMatch[1]);
       if (data?.articleBody && typeof data.articleBody === "string" && data.articleBody.length > 200) {
-        // Convert plain text to HTML paragraphs.
-        // Some sites (Digiato) use proper double-newline paragraph
-        // breaks; others (also Digiato sometimes) send one big block.
-        // We try \n\n first, and if that yields only 1 paragraph we
-        // fall back to splitting on sentence boundaries ( Persian .
-        // followed by space + capital/Persian letter).
         let paragraphs = data.articleBody
           .split(/\n\s*\n/)
           .map((p: string) => p.trim())
           .filter((p: string) => p.length > 30);
         if (paragraphs.length < 2) {
-          // Fallback: split on Persian/English sentence end + space
-          // This creates shorter paragraphs but preserves readability.
-          // We split on '. ' or '؟ ' or '! ' followed by a non-space char.
           const sentences = data.articleBody
             .split(/(?<=[.؟!])\s+(?=[^\s])/)
             .map((s: string) => s.trim())
             .filter((s: string) => s.length > 30);
-          // Group sentences into paragraphs of ~3 sentences each
-          // to keep paragraphs readable (not too short, not too long).
           paragraphs = [];
           for (let i = 0; i < sentences.length; i += 3) {
             paragraphs.push(sentences.slice(i, i + 3).join(" "));
@@ -168,7 +164,9 @@ function extractArticleHtml(html: string): { html: string; strategy: string } {
         }
         if (paragraphs.length >= 2) {
           const html_content = paragraphs.map((p: string) => `<p>${p}</p>`).join("\n");
-          return { html: html_content, strategy: "json-ld" };
+          // Stash the JSON-LD result — don't return yet.
+          // We'll continue to Strategies 1-3 to harvest images.
+          jsonLdResult = { html: html_content, strategy: "json-ld" };
         }
       }
     } catch {
@@ -359,11 +357,30 @@ function cleanArticleHtml(html: string): string {
 /** Extract all image URLs from cleaned HTML (we'll show them as a gallery). */
 function extractImages(html: string): string[] {
   const images: string[] = [];
-  const re = /<img[^>]+src=["']([^"']+)["']/gi;
+  // Match full <img ...> tags (not just the src attribute) so we can
+  // check multiple attributes for the real URL when lazy-loading is used.
+  const re = /<img\b[^>]*>/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) !== null) {
-    const src = m[1];
-    // Filter out tiny icons / logos / data: URIs
+    const tag = m[0];
+    // Try src first
+    let src = tag.match(/src=["']([^"']+)["']/i)?.[1];
+    // If src is a data: URI or empty, check lazy-load fallback attributes.
+    // WordPress plugins (WP Rocket, Jetpack Lazy Load, a3 Lazy Load, etc.)
+    // rewrite <img src="real.jpg"> into <img src="data:..." data-src="real.jpg">
+    // or <img src="data:..." data-lazy-src="real.jpg">. Without checking these
+    // fallbacks, all in-body images on lazy-loading sites are silently dropped.
+    if (!src || src.startsWith("data:")) {
+      const lazyAttrs = ["data-src", "data-lazy-src", "data-lazy-original", "data-original"];
+      for (const attr of lazyAttrs) {
+        const lazyMatch = tag.match(new RegExp(`${attr}=["']([^"']+)["']`, "i"));
+        if (lazyMatch) {
+          src = lazyMatch[1];
+          break;
+        }
+      }
+    }
+    // Filter out tiny icons / logos / data: URIs (still present after fallback)
     if (src && !src.startsWith("data:") && !images.includes(src)) {
       images.push(src);
     }
@@ -472,6 +489,25 @@ export async function GET(request: Request) {
     if (rawBody) {
       cleanedHtml = cleanArticleHtml(rawBody);
       extractedImages = extractImages(cleanedHtml);
+    }
+
+    // If JSON-LD won the text extraction but found no images (because
+    // articleBody is plain text with no <img> tags), try harvesting
+    // images from the raw HTML using the HTML-based strategies.
+    // This prevents JSON-LD from silently discarding images that were
+    // available in the server-rendered HTML.
+    if (strategy === "json-ld" && extractedImages.length === 0) {
+      // Run the HTML extraction strategies purely to get the content HTML
+      // (not for the text — JSON-LD's text is already cleaner).
+      const htmlResult = extractArticleHtml(html);
+      // extractArticleHtml already tried JSON-LD first (which won),
+      // so htmlResult is the same JSON-LD text. We need to try the
+      // HTML strategies directly on the raw HTML to find images.
+      // Use extractImages on the full page HTML as a fallback.
+      const pageImages = extractImages(html);
+      if (pageImages.length > 0) {
+        extractedImages = pageImages;
+      }
     }
 
     // If we have og:image but no images in body, add it as the first image
