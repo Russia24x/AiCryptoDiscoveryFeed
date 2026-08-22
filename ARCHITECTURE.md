@@ -1,548 +1,438 @@
-# Architecture Documentation — Ai Crypto Discovery
+# Architecture — Ai24Discovery
 
-This document explains **how the entire system works**: API data flow, caching
-strategy, state management, and the role of each technology.
+Last updated: 2026-08-22
+
+This document explains **how the entire system works**: data flow, caching strategy, state management, security, and the role of each technology.
 
 ---
 
-## 🧠 Big Picture ( Mental Model )
+## 🧠 Big Picture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        USER'S BROWSER                            │
-│                                                                   │
-│  ┌──────────────┐   ┌──────────────┐   ┌──────────────────────┐ │
-│  │  React UI    │   │  TanStack     │   │  localStorage         │ │
-│  │  Components  │──▶│  Query Cache  │   │  (user preferences)   │ │
-│  │  (pages)     │   │  (in-memory)  │   │  bookmarks, theme,    │ │
-│  │              │   │               │   │  watchlist, alerts... │ │
-│  └──────────────┘   └──────┬───────┘   └──────────────────────┘ │
+┌──────────────────────────────────────────────────────────────────┐
+│                        USER'S BROWSER                              │
+│                                                                    │
+│  ┌──────────────┐   ┌──────────────┐   ┌────────────────────────┐ │
+│  │  React 19    │   │  TanStack     │   │  localStorage           │ │
+│  │  Components  │──▶│  Query v5     │   │  (useSyncExternalStore)  │ │
+│  │  62 files    │   │  (in-memory)  │   │  11 keys (acd:*)        │ │
+│  │  10 pages    │   │  refetchOn    │   │  bookmarks, theme,     │ │
+│  │              │   │  WindowFocus  │   │  watchlist, alerts...   │ │
+│  └──────────────┘   └──────┬───────┘   └────────────────────────┘ │
 │                            │                                      │
-│                     fetch() when stale                             │
-└────────────────────────────┬──────────────────────────────────────┘
-                             │
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                   CLOUDFLARE PAGES (EDGE)                        │
+│  ┌──────────────┐           │           ┌────────────────────────┐ │
+│  │  Service     │           │           │  Zustand Store          │ │
+│  │  Worker v2.1 │           │           │  (use-ui-store.ts)      │ │
+│  │  4 caches   │           │           │  market sort, filters   │ │
+│  │  LRU evict  │           │           │                         │ │
+│  └──────────────┘           │           └────────────────────────┘ │
+└─────────────────────────────┼─────────────────────────────────────┘
+                              │ fetch() when stale (not polling)
+                              ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                CLOUDFLARE WORKERS (EDGE)                           │
 │                                                                   │
-│  ┌──────────────┐   ┌──────────────┐   ┌──────────────────────┐ │
-│  │  Next.js API │   │  Edge Cache  │   │  In-Memory Cache      │ │
-│  │  Routes      │──▶│  (s-maxage)  │   │  (let cached = ...)   │ │
-│  │  (/api/*)    │   │              │   │  fallback when        │ │
-│  │              │   │  Hits = 0    │   │  upstream fails       │ │
-│  │              │   │  upstream    │   │                       │ │
-│  └──────┬───────┘   │  calls       │   └──────────────────────┘ │
-│         │           └──────────────┘                            │
-│         │  Cache miss only                                         │
-└─────────┼───────────────────────────────────────────────────────┘
-          │
-          ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                  EXTERNAL APIs (ALL FREE)                        │
+│  ┌──────────────┐   ┌──────────────┐   ┌────────────────────────┐ │
+│  │  Next.js 16  │   │  Edge Cache  │   │  In-Memory Cache        │ │
+│  │  21 API      │──▶│  (s-maxage)  │   │  (createFallbackCache)  │ │
+│  │  Routes      │   │  10s–3600s   │   │  7 routes, indefinite    │ │
+│  │  force-dyn   │   │  SWR         │   │  stale fallback          │ │
+│  └──────┬───────┘   └──────────────┘   └────────────────────────┘ │
+│         │                                                          │
+│         │  fetchWithTimeout (10s) + fetch-guard (SSRF)             │
+│  ┌──────┴──────────────────────────────────────────────────────┐ │
+│  │  Security: CSP + HSTS + XFO + nosniff + Referrer + Perms    │ │
+│  │  Flags: nodejs_compat + global_fetch_strictly_public        │ │
+│  └─────────────────────────────────────────────────────────────┘ │
+└──────────────────────────────┬────────────────────────────────────┘
+                               │ Cache miss only
+                               ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                  EXTERNAL APIs (ALL FREE, NO KEYS)                │
 │                                                                   │
-│  CoinMarketCap  CoinGecko  Binance  DefiLlama  Yahoo  Open-Meteo │
-│  (keyless)      (30/min)   (no key) (no limit)          (10K/day)│
-└─────────────────────────────────────────────────────────────────┘
+│  CoinMarketCap  CoinGecko  Binance   Open-Meteo   Nobitex  alt.me │
+│  (keyless)      (30/min)   (no key)  (10K/day)   (scrape) (no key)│
+│                                                                   │
+│  RSS Sources: 32 (15 Persian + 17 English)                       │
+│  Telegram: 3 channels (web preview scraping)                     │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## 📦 Layer 1: External APIs (Upstream)
 
-All data comes from **free, no-API-key** services:
+### Market Data (12 routes under `/api/market/`)
 
-| API | What it gives us | Free tier | Rate limit |
-|---|---|---|---|
-| **CoinMarketCap** (keyless) | Top 100 coins, global metrics, coin metadata, tags | Unlimited | Throttled by IP |
-| **CoinGecko** | Markets table, coin detail, trending | 30 calls/min | 429 if exceeded |
-| **Binance** | Real-time BTC/ETH/SOL prices | Unlimited | Geo-blocked US |
-| **DefiLlama** | TVL, fees, revenue, methodology | Unlimited | No limit |
-| **alternative.me** | Fear & Greed Index | Unlimited | No limit |
-| **Yahoo Finance** | S&P 500 index | Unlimited | No key needed |
-| **Wallex/Nobitex** | Iranian Tether/Toman price | Unlimited | Geo-blocked US |
-| **Open-Meteo** | Weather + geocoding | 10K calls/day | No key |
+| Service | Routes | Rate Limit | API Key |
+|---------|--------|------------|---------|
+| CoinMarketCap (keyless) | cmc-listings, cmc-global, cmc-coin, cmc-categories | Unknown (generous) | None |
+| CoinGecko (free) | coingecko-markets, coingecko-coin | 30 req/min | None |
+| Binance | binance-ticker | Unlimited | None |
+| alternative.me | fear-greed, fear-greed-historical | ~5 req/min | None |
 
-**Key insight**: We never call these APIs directly from the browser.
-All calls go through our own `/api/*` routes on Cloudflare Workers.
+### Content (4 routes)
 
----
+| Service | Route | Rate Limit | API Key |
+|---------|-------|------------|---------|
+| RSS feeds (32 sources) | /api/feed | Per-source (varies) | None |
+| Article proxy | /api/article | N/A (fetches user URL) | None |
+| Telegram preview | /api/channel | N/A (scrapes t.me/s/) | None |
+| OG image proxy | /api/og-image | N/A (fetches user URL) | None |
 
-## 📦 Layer 2: Our API Routes (Cloudflare Edge)
+### Other (4 routes)
 
-We have **27 API routes** in `src/app/api/`. Each one:
+| Service | Route | Rate Limit | API Key |
+|---------|-------|------------|---------|
+| CMC prices | /api/prices | Reuses cmc-listings cache | None |
+| Nobitex Tether | /api/tether | Unknown | None (HTML scraping) |
+| Open-Meteo | /api/weather, /api/weather/geocode | 10K/day | None |
 
-1. **Receives** a request from the browser
-2. **Checks** the edge cache (Cloudflare CDN)
-3. **If cache hit**: returns cached response (0 upstream calls)
-4. **If cache miss**: calls the external API, caches the response, returns it
-5. **If upstream fails**: serves in-memory cached data as fallback
+### Multi-source fallback chains
 
-### How Edge Caching Works
+**Price data** (`useCryptoPrice` hook):
+1. `/api/market/binance-ticker` (real-time, Binance → Coinbase → CoinGecko)
+2. `/api/prices` (CMC, shared with ticker bar)
+3. `/api/market/cmc-listings` (CMC, shared with market table)
 
-Every API route sets this HTTP header:
-```
-Cache-Control: public, s-maxage=60, stale-while-revalidate=300
-```
-
-This tells Cloudflare's CDN:
-- `s-maxage=60`: Cache this response for 60 seconds at the edge
-- `stale-while-revalidate=300`: After 60s, serve the stale cached response
-  while fetching a fresh one in the background (up to 300s)
-
-**What this means in practice:**
-
-```
-User A visits /crypto/market at 12:00:00
-  → Edge cache miss → calls CoinGecko → caches response → returns data
-
-User B visits /crypto/market at 12:00:30
-  → Edge cache HIT (still fresh) → returns cached data (0 upstream calls)
-
-User C visits /crypto/market at 12:01:01
-  → Edge cache expired (60s passed) → calls CoinGecko → caches → returns
-
-User D visits /crypto/market at 12:01:30
-  → Edge cache HIT → returns cached data (0 upstream calls)
-```
-
-**Result**: For 100 users visiting in 1 minute, we make only 1 CoinGecko call.
-
-### Cache TTL by Data Type
-
-| Data type | s-maxage | Why |
-|---|---|---|
-| BTC price (Binance) | 10s | Price changes every second |
-| Tether/Toman price | 30s | Iranian market updates frequently |
-| S&P 500 | 60s | Market data, updates every minute |
-| CoinGecko markets | 60s | Top 100 coins, changes every minute |
-| CMC listings | 60s | Same as above |
-| CMC global metrics | 60s | Global stats, changes slowly |
-| CoinGecko coin detail | 120s | Coin details change less frequently |
-| DefiLlama protocol/fees | 300s | DeFi TVL changes slowly (5 min) |
-| Fear & Greed | 900s | Updates hourly |
-| Fear & Greed historical | 900s | Historical data doesn't change |
-| Weather | 600s | Weather updates every 10 min |
-| Geocoding | 3600s | Cities don't move |
-| og:image | 3600s | Images rarely change |
-
-### Fallback Chains
-
-Some routes have multiple upstream sources:
-
-```
-/api/market/binance-ticker:
-  1. Try Binance (fastest, real-time)
-  2. If Binance fails → Try Coinbase (global, no geo-block)
-  3. If Coinbase fails → Try CoinGecko (slower, but reliable)
-  4. If all fail → Serve in-memory cached data
-  5. If no cache → Return error
-
-/api/market/iran-tether:
-  1. Try Wallex (real Iranian market rate)
-  2. If Wallex fails → Try Nobitex
-  3. If both fail → Return { unavailable: true }
-     (UI shows "ناموجود" — we DON'T fall back to official USD rate)
-```
-
-### CoinGecko Retry with Exponential Backoff
-
-CoinGecko has a strict 30 calls/min limit. When we hit it (HTTP 429):
-
-```
-Attempt 1: Call CoinGecko → 429 (rate limited)
-  → Wait 1 second (exponential backoff: 2^0 = 1s)
-Attempt 2: Call CoinGecko → 200 (success) OR 429 again
-  → If still 429: serve in-memory cached data (with cached: true flag)
-  → If no cache: return { rateLimited: true } (UI shows error)
-```
+**Article extraction** (`/api/article`):
+1. JSON-LD `articleBody` (for JS-rendered sites)
+2. Content-class div (nesting-aware tokenizer)
+3. `<article>` tag (nesting-aware)
+4. `<main>` tag (nesting-aware)
+5. Paragraph fallback (≥5 paragraphs)
 
 ---
 
-## 📦 Layer 3: TanStack Query (Browser Cache)
+## 📦 Layer 2: Cloudflare Workers (Edge)
 
-TanStack Query is our **client-side data layer**. It sits between React
-components and our API routes.
+### Architecture: OpenNext + Cloudflare
 
-### How It Works
+- Next.js 16 app is built by `opennextjs-cloudflare` into a single Worker bundle (`.open-next/worker.js`)
+- Static assets served from `.open-next/assets/` via Workers Static Assets binding
+- All pages are `"use client"` (100% client-rendered)
+- All API routes are `force-dynamic` (always run on the Worker, never statically rendered)
+- No Incremental Cache (Next.js ISR) — `open-next.config.ts` uses empty `defineCloudflareConfig({})`
 
-```
-React Component                    TanStack Query Cache
-     │                                    │
-     │  useQuery({                        │
-     │    queryKey: ["market", "BTC"],    │
-     │    queryFn: fetch("/api/..."),     │  1. Check cache (in-memory)
-     │    staleTime: 30_000,               │  2. If fresh → return immediately (0 fetch)
-     │  })                                 │  3. If stale → return stale data + refetch
-     │                                    │  4. If no data → fetch + show loading
-     ▼                                    │
-  { data, isLoading, error }              │
-                                          │
-                          fetch() only when stale or first load
-                                          ▼
-                                   /api/market/... (our edge route)
-```
+### Edge Cache (Cloudflare CDN)
 
-### Key Concepts
+Each API route sets its own `Cache-Control: public, s-maxage=N, stale-while-revalidate=M`:
 
-**queryKey**: A unique identifier for each piece of data.
-```ts
-queryKey: ["market", "binance-ticker", "BTC"]  // BTC price from Binance
-queryKey: ["market", "coingecko-coin", "bitcoin"]  // Bitcoin full detail
-queryKey: ["weather", 35.6892, 51.3890]  // Tehran weather
-```
-If two components use the same queryKey, TanStack Query **deduplicates** them
-into a single fetch. Example: `BtcWidget` and `EthWidget` both fetch from
-`/api/market/binance-ticker` — only 1 request is made.
+| Route | s-maxage | SWR |
+|-------|----------|-----|
+| /api/feed | 600s (10min) | 1200s |
+| /api/article | 600s | 1200s |
+| /api/channel | 60s | 120s |
+| /api/prices | 60s | 300s |
+| /api/tether | 300s | 600s |
+| /api/market/binance-ticker | 10s | 30s |
+| /api/market/cmc-listings | 60s | 300s |
+| /api/market/cmc-global | 60s | 300s |
+| /api/market/fear-greed | 900s | 1800s |
+| /api/market/fear-greed-historical | 900s | 1800s |
+| /api/market/trending | 300s | 900s |
+| /api/market/top-gainers | 60s | 300s |
+| /api/market/global-stats | 60s | 300s |
+| /api/market/coingecko-markets | 300s | 600s |
+| /api/market/coingecko-coin | 300s | 600s |
+| /api/market/cmc-coin | 300s | 900s |
+| /api/market/cmc-categories | 300s | 900s |
+| /api/weather | 600s | 1200s |
+| /api/weather/geocode | 3600s | 86400s |
+| /api/og-image | 3600s | 86400s |
 
-**staleTime**: How long data is considered "fresh" (no refetch needed).
-```ts
-staleTime: 30_000  // 30 seconds — data is fresh for 30s
-```
-After staleTime expires, the data is still shown (not cleared), but the next
-mount or focus event triggers a background refetch.
+### In-Memory Cache (Worker isolate)
 
-**refetchInterval**: Polling interval (for live data).
-```ts
-refetchInterval: 10_000  // Refetch every 10 seconds
-```
-The refetch only happens if the component is mounted and the tab is visible.
+7 routes use `createFallbackCache<T>()` from `src/lib/fallback-cache.ts`:
 
-**gcTime (garbage collection)**: How long to keep data after all observers
-unmount. Default: 5 minutes. This means navigating away and back is instant.
+| Route | Cache Type | TTL | Fallback Policy |
+|-------|-----------|-----|-----------------|
+| /api/prices | `createFallbackCache` | 5min (proactive refresh) | Serve indefinitely |
+| /api/tether | `createFallbackCache` | 5min (proactive refresh) | Serve indefinitely |
+| /api/market/binance-ticker | `createFallbackCache` | N/A | Serve indefinitely |
+| /api/market/cmc-listings | `createFallbackCache` | N/A | Serve indefinitely |
+| /api/market/cmc-global | `createFallbackCache` | N/A | Serve indefinitely |
+| /api/market/coingecko-markets | `createFallbackCache` | N/A | Serve indefinitely |
+| /api/market/fear-greed | `createFallbackCache` | N/A | Serve indefinitely |
+| /api/feed | `Map<string, {items, timestamp}>` | 5min | N/A (returns empty) |
 
-### Query Flow Example
+**Policy**: Once cached, data is served as fallback indefinitely — however old, as long as the isolate stays warm. The `cached: true` flag in the response tells the client the data is stale. This matches the pre-refactor behavior exactly.
 
-```
-1. User opens /crypto/market
-2. MarketIntelligence component mounts
-3. useQuery({ queryKey: ["market", "coingecko-markets", "top100"] })
-4. TanStack Query: "Is this in cache?" → No
-5. TanStack Query: "Is anyone else fetching this?" → No
-6. Call queryFn → fetch("/api/market/coingecko-markets?per_page=100")
-7. Our API route: checks edge cache → hit → returns data
-8. TanStack Query: stores in cache, returns to component
-9. Component renders table with 100 coins
+**Note**: Module-scope variables persist within a single Cloudflare Workers isolate. Different isolates (different regions or after idle eviction) have empty caches. The edge cache (s-maxage) handles cross-isolate caching.
 
-10. User navigates to /crypto/market/bitcoin
-11. CoinDetail component mounts
-12. useQuery({ queryKey: ["market", "coingecko-coin", "bitcoin"] })
-13. TanStack Query: "Is this in cache?" → No
-14. Fetch → API route → CoinGecko → returns data
-15. Component renders coin detail
+### Feed route cache optimization
 
-16. User navigates back to /crypto/market
-17. MarketIntelligence mounts again
-18. useQuery({ queryKey: ["market", "coingecko-markets", "top100"] })
-19. TanStack Query: "Is this in cache?" → YES (still in gcTime)
-20. Returns cached data INSTANTLY (0 fetch)
-21. Background: checks if stale → yes (30s passed) → refetches silently
-22. When fresh data arrives, updates the table
-```
-
-### All TanStack Query Calls (27 total)
-
-| Component | queryKey | staleTime | refetchInterval |
-|---|---|---|---|
-| **hero.tsx** (Home) | | | |
-| BtcWidget | `["market", "binance-ticker", "BTC"]` | 5s | 10s |
-| TetherWidget | `["market", "iran-tether"]` | 15s | 30s |
-| Sp500Widget | `["market", "sp500"]` | 30s | 60s |
-| FearGreedWidget | `["market", "fear-greed"]` | 2min | 5min |
-| WeatherWidget | `["weather", lat, lon]` | 5min | 10min |
-| **crypto-widgets.tsx** (/crypto) | | | |
-| EthWidget | `["market", "binance-ticker", "ETH"]` | 10s | 15s |
-| SolWidget | `["market", "binance-ticker", "SOL"]` | 10s | 15s |
-| TopGainersWidget | `["market", "top-gainers"]` | 2min | 5min |
-| DominanceWidget | `["market", "cmc-global"]` | 2min | 5min |
-| **market-intelligence.tsx** | | | |
-| Coin table | `["market", "coingecko-markets", "top100"]` | 1min | 5min |
-| CMC tags | `["market", "cmc-listings", "top100"]` | 2min | — |
-| Global stats | `["market", "global-stats"]` | 1min | — |
-| Trending | `["market", "trending"]` | 5min | — |
-| Altcoin season | `["market", "altcoin-season"]` | 5min | — |
-| F&G historical | `["market", "fear-greed-historical", 30]` | 15min | — |
-| **coin-detail.tsx** | | | |
-| CoinGecko detail | `["market", "coingecko-coin", coinId]` | 2min | — |
-| CMC listings (shared) | `["market", "cmc-listings", "top100"]` | 2min | — |
-| CMC coin metadata | `["market", "cmc-coin", slug]` | 5min | — |
-| DefiLlama TVL | `["market", "defillama-protocol", coinId]` | 5min | — |
-| DefiLlama fees | `["market", "defillama-summary", coinId]` | 5min | — |
-| TVL history | `["market", "defillama-tvl-history", chain]` | 10min | — |
-| **use-feed.ts** | | | |
-| RSS feed | `["feed", category, lang, source, search]` | 1min | — |
-
-### Shared Cache Benefits
-
-The `["market", "cmc-listings", "top100"]` query is used by:
-1. `MarketIntelligence` (for category filter tags)
-2. `CoinDetail` (to find CMC slug by matching CoinGecko symbol)
-
-Both components share the **same cached data** — only 1 fetch is made.
-
-Similarly, `["market", "binance-ticker", "BTC"]` is used by:
-1. `BtcWidget` on the home page
-2. The Ticker bar at the top
-
-Both share the same cache entry.
+The feed route caches by **feed URL** (not source ID), so multiple sources sharing the same feed URL (e.g., `zoomit-main` and `zoomit-space` both use `https://www.zoomit.ir/feed/`) reuse the same cache entry — avoiding fetching the 500KB XML twice.
 
 ---
 
-## 📦 Layer 4: localStorage (User State)
+## 📦 Layer 3: Client (Browser)
 
-User preferences that need to **survive page reload** are stored in
-localStorage. Each preference has its own hook:
+### TanStack Query v5
 
-```
-┌─────────────────────────────────────────────────┐
-│                 BROWSER localStorage               │
-│                                                    │
-│  acd:lang          → "fa" or "en"                  │
-│  acd:theme         → "dark" or "light" or "system"│
-│  acd:bookmarks     → [article1, article2, ...]    │
-│  acd:read-later    → [article1, ...] (7-day TTL)   │
-│  acd:search-history → ["bitcoin", "ethereum", ...]│
-│  acd:watchlist     → ["bitcoin", "ethereum", ...] │
-│  acd:price-alerts  → [{coinId, target, ...}, ...] │
-│  acd:weather-city   → {lat, lon, name, ...}        │
-│  acd:custom-channels → [{handle, type, ...}, ...]  │
-│  acd:feed-cache:*  → {data, timestamp} (5-min TTL) │
-│  acd:reader-font-size → 16                         │
-└─────────────────────────────────────────────────┘
-```
+**Global defaults** (`src/lib/query-client.ts`):
+- `staleTime`: 60s (1 min)
+- `gcTime`: 10min
+- `retry`: 1 (with exponential backoff: 1s, 2s, 4s... capped at 30s)
+- `refetchOnWindowFocus`: true ← **key strategy** (replaces polling)
+- `refetchOnReconnect`: true
+- `refetchOnMount`: true
 
-### Hook Pattern
+**Strategy**: No `refetchInterval` anywhere. Data refreshes when:
+1. User switches back to the tab (focus refetch — only if stale)
+2. User manually clicks Refresh
+3. First mount
 
-Every localStorage hook follows the same pattern:
+This reduces API calls by ~75% compared to polling (was ~30/min, now ~6-10/min).
 
-```tsx
-const STORAGE_KEY = "acd:bookmarks";
+**Per-query staleTime overrides**:
 
-// 1. Read from localStorage
-function readStorage(): BookmarkEntry[] { ... }
+| Query | staleTime | Notes |
+|-------|-----------|-------|
+| binance-ticker | 30s | Real-time-ish |
+| prices (CMC) | 2min | Shared with ticker |
+| cmc-listings | 5min | Shared with market table |
+| coingecko-markets | 2min | |
+| global-stats | 2min | |
+| trending | 10min | Slow-changing |
+| fear-greed | 10min | Hourly upstream |
+| fear-greed-historical | 30min | Historical data |
+| top-gainers | 5min | |
+| weather | 10min | |
+| channel (Telegram) | 2min | Posts appear frequently |
+| coin detail | 5min | |
+| feed | 1min | |
 
-// 2. Write to localStorage + notify
-function writeStorage(entries: BookmarkEntry[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
-  window.dispatchEvent(new CustomEvent("acd:bookmarks-changed"));
-}
+**Shared cache**: Same `queryKey` across components reuses data. Example: `["channel", handle]` is shared between ChannelsHub sidebar widget and SocialPortal full-page view — zero duplicate API calls.
 
-// 3. React hook
-export function useBookmarks() {
-  const [bookmarks, setBookmarks] = useState(readStorage());
+### localStorage (useSyncExternalStore)
 
-  useEffect(() => {
-    // Listen for changes (same tab + cross-tab)
-    const onChange = () => setBookmarks(readStorage());
-    window.addEventListener("storage", onChange);           // cross-tab
-    window.addEventListener("acd:bookmarks-changed", onChange); // same-tab
-    return () => { /* cleanup */ };
-  }, []);
+Hook: `src/hooks/use-local-storage.ts`
 
-  const toggleBookmark = useCallback((entry) => {
-    writeStorage(/* updated list */);
-    setBookmarks(/* updated list */);
-  }, []);
+**Architecture**: Uses `useSyncExternalStore` (NOT `useState + useEffect` — that triggers React 19's `set-state-in-effect` warning).
 
-  return { bookmarks, toggleBookmark, ... };
-}
-```
+**Snapshot caching**: `cachedRawRef` and `cachedValueRef` (useRefs). `getSnapshot` checks if the raw localStorage string is unchanged; if so, returns the cached parsed value (stable reference — prevents infinite re-render loop that previously crashed the page).
 
-### Why not Zustand?
+**Event system**: Listens to BOTH `'storage'` (cross-tab) AND custom `'${key}-changed'` (same-tab) events. Keys are prefixed with `acd:` (e.g., `acd:weather-city`), so the custom event name is `acd:weather-city-changed`.
 
-**Zustand** is a global state store (like Redux but simpler). It's in
-`package.json` but **intentionally not used** because:
+**11 localStorage keys**:
 
-1. **TanStack Query handles all server state** (API data)
-2. **localStorage hooks handle all client state** (user preferences)
-3. **Each hook is self-contained** — no shared global store needed
-4. **Zustand would add an abstraction layer** without benefit
+| Key | Purpose | TTL |
+|-----|---------|-----|
+| `acd:bookmarks` | Article bookmarks | Permanent |
+| `acd:read-later` | Read-later queue | 7 days |
+| `acd:watchlist` | Crypto watchlist | Permanent |
+| `acd:price-alerts` | Price alerts | Permanent |
+| `acd:search-history` | Search history | 30 days |
+| `acd:theme` | Theme (dark/light/system) | Permanent |
+| `acd:lang` | Language (fa/en) | Permanent |
+| `acd:weather-city` | Weather city | Permanent |
+| `acd:custom-channels` | Custom Telegram channels | Permanent |
+| `acd:reader-font-size` | Article reader font size | Permanent |
+| `acd:feed-cache:*` | Feed cache (per category) | 5min |
 
-**When Zustand WOULD make sense:**
-- If we need a global store that multiple components read/write simultaneously
-  (e.g., a shopping cart, a multi-step wizard state)
-- If we need middleware (persistence, devtools, logging)
-- If we have derived state that depends on multiple sources
+### Zustand Store
 
-**Current assessment**: The project doesn't need any of these. Each
-localStorage hook is independent and self-contained. Adding Zustand would
-mean rewriting 7 hooks into a single store, which adds complexity without
-benefit.
+Hook: `src/hooks/use-ui-store.ts`
 
-**Decision**: Keep Zustand in `package.json` (it's 1.2KB gzipped) for future
-use, but don't force it into the current architecture.
+Stores UI state that needs to survive page navigation:
+- `marketSortField` / `marketSortDir` — market table sort
+- `marketActiveTag` — active category filter tag
+- `marketShowWatchlistOnly` — watchlist filter toggle
+- `marketViewMode` — grid/list view
 
----
+Persisted to localStorage via `persist` middleware.
 
-## 📦 Layer 5: Components That Still Use Manual fetch()
+### Service Worker (`public/sw.js`)
 
-These components use `fetch()` directly instead of TanStack Query:
+**Version**: `v2.1.0-opennext`
 
-| Component | What it fetches | Should migrate? | Priority |
-|---|---|---|---|
-| `ticker.tsx` | `/api/prices` (10-coin ticker) | ✅ Yes — should share cache with BtcWidget | Medium |
-| `channels-hub.tsx` | `/api/channel` (Telegram posts) | ✅ Yes — multiple channels fetched independently | Low |
-| `telegram-preview.tsx` | `/api/channel` (single channel) | ✅ Yes — should share with channels-hub | Low |
-| `article-reader.tsx` | `/api/article` (article HTML) | ✅ Yes — user might re-open same article | Low |
-| `feed-grid.tsx` | Uses `useFeed` hook (already has TanStack Query) | ✅ Already migrated | — |
-| `settings-panel.tsx` | `/api/weather/geocode` (city search) | ⚠️ Debounced search — TanStack Query possible but not critical | Low |
-| `smart-image.tsx` | `/api/og-image` (image proxy) | ❌ No — one-off image fetch, no caching needed | — |
+**4 caches** (all versioned):
+- `acd-static-v2.1.0-opennext` — static assets (no LRU, immutable)
+- `acd-pages-v2.1.0-opennext` — HTML pages (max 20, LRU)
+- `acd-api-v2.1.0-opennext` — API responses (max 50, LRU, <1MB each)
+- `acd-images-v2.1.0-opennext` — images (max 100, LRU)
 
-**Note**: `feed-grid.tsx` uses `useFeed()` hook which IS TanStack Query
-backed (since Phase 15). It's listed here because the grep found `fetch()`
-in the file (used by the `useFeed` hook itself).
+**Cache strategies**:
+- API: network-first, cache fallback (except `/api/article` and `/api/og-image` — never cached)
+- Navigation: network-first with per-route caching
+- Static: stale-while-revalidate
+- Images: cache-first with background revalidation
 
-### Migration Priority
+**Proxy route exclusion**: `/api/article` and `/api/og-image` are excluded from cache writes. On network failure they return 503 (never serve stale cache). This prevents XSS payload persistence across sessions.
 
-1. **`ticker.tsx`** → use `useQuery` with `["market", "prices"]` queryKey
-   - Currently polls every 15s with `setInterval`
-   - Should use `refetchInterval: 15_000` like other widgets
-   - Would share cache with `BtcWidget` if same queryKey
+**Offline page**: Bilingual FA/EN HTML.
 
-2. **`channels-hub.tsx`** → use `useQuery` with `["channel", handle]` queryKey
-   - Currently uses `useEffect + fetch` for each channel
-   - Would benefit from cache when navigating between channels
-
-3. **`telegram-preview.tsx`** → share queryKey with `channels-hub.tsx`
-
-4. **`article-reader.tsx`** → use `useQuery` with `["article", url]` queryKey
-   - Would cache article content so re-opening is instant
+**Periodic sync**: Refreshes `/api/feed?limit=10`, `/api/prices`, `/api/market/fear-greed`.
 
 ---
 
-## 📊 Data Flow Summary
+## 🔒 Security Architecture
 
-### Market Data Flow (BTC price example)
+### Security Headers (via `next.config.ts` `headers()`)
 
-```
-Binance API (upstream)
-    ↓ fetch (only on cache miss)
-/api/market/binance-ticker (our edge route)
-    ↓ HTTP response with Cache-Control: s-maxage=10
-Cloudflare Edge CDN (caches for 10s)
-    ↓ HTTP response (cached or fresh)
-TanStack Query Cache (browser, staleTime: 5s, refetchInterval: 10s)
-    ↓ useQuery returns { data, isLoading }
-BtcWidget component (renders price)
-    ↓ React renders
-User sees BTC price
-```
+Applied to ALL responses (pages + API routes):
 
-### Content Data Flow (RSS feed example)
+| Header | Value |
+|--------|-------|
+| X-Frame-Options | SAMEORIGIN |
+| X-Content-Type-Options | nosniff |
+| Referrer-Policy | strict-origin-when-cross-origin |
+| Permissions-Policy | camera=(), microphone=(), geolocation=() |
+| Strict-Transport-Security | max-age=63072000; includeSubDomains |
+| Content-Security-Policy | default-src 'self'; script-src 'self' 'unsafe-inline'; ... |
 
-```
-RSS feeds (27 sources, upstream)
-    ↓ fetch (only on cache miss, 5 sources in parallel)
-/api/feed (our edge route, s-maxage=600)
-    ↓ HTTP response
-Cloudflare Edge CDN (caches for 10 min)
-    ↓
-TanStack Query Cache (browser, staleTime: 60s)
-    ↓ useQuery returns { data, loading, error }
-FeedGrid component → renders FeedCards
-    ↓
-User reads articles
-    ↓ Clicks bookmark
-useBookmarks hook → localStorage → cross-tab sync
-```
+**Note**: `public/_headers` file only applies to static-assets layer responses. Since 100% of pages are `"use client"` and 100% of API routes are `force-dynamic`, all responses go through the Worker — so `_headers` rules never fire. The `headers()` function in `next.config.ts` is the correct way.
 
-### Coin Detail Data Flow (3-source merge)
+**CSP details**:
+- `script-src 'self' 'unsafe-inline'` — Next.js bootstrap requires inline (OpenNext doesn't support nonce plumbing without middleware)
+- `connect-src 'self'` — prevents data exfiltration to external domains
+- `img-src 'self' data: https: http:` — images from many CDNs (some HTTP)
+- `object-src 'none'` — blocks Flash/plugins
+- `frame-ancestors 'self'` — anti-clickjacking
 
-```
-User clicks coin in Market Intelligence table
-    ↓
-Router navigates to /crypto/market/bitcoin
-    ↓
-CoinDetail component mounts
-    ↓ 4 useQuery calls in parallel:
+### SSRF Protection (`src/lib/fetch-guard.ts`)
 
-1. CoinGecko:    ["market", "coingecko-coin", "bitcoin"]
-   → /api/market/coingecko-coin?id=bitcoin
-   → edge cache 120s → CoinGecko API
-   → returns: price, market cap, ATH/ATL, sparkline, description, links
+Used by proxy routes (`/api/article`, `/api/og-image`):
 
-2. CMC listings: ["market", "cmc-listings", "top100"]
-   → ALREADY CACHED from Market Intelligence page (shared cache!)
-   → 0 API calls — TanStack Query deduplication
+1. **`isBlockedHost(hostname)`** — blocks:
+   - Internal hostnames: `localhost`, `.local`, `.internal`, `.localdomain`, `.home.arpa`
+   - IPv4 private ranges: `0.x`, `10.x`, `127.x`, `169.254.x` (link-local/cloud metadata), `100.64/10` (CGNAT), `172.16/12`, `192.168/16`
+   - IPv6: `::1`, `::`, `fc00::/7`, `fe80::/10`
 
-3. CMC coin:     ["market", "cmc-coin", "bitcoin"]
-   → /api/market/cmc-coin?slug=bitcoin
-   → edge cache 300s → CMC keyless API
-   → returns: tags, logo, description, URLs
+2. **Post-redirect check** — after `fetchWithTimeout(redirect: "follow")`, checks `res.url` hostname again (catches DNS rebinding / open redirects to internal hosts)
 
-4. DefiLlama:    ["market", "defillama-protocol", "bitcoin"]
-   → /api/market/defillama-protocol?gecko_id=bitcoin
-   → edge cache 300s → DefiLlama /v2/protocols
-   → returns: TVL (if DeFi protocol), chains, category
+3. **`readBodyCapped(res, maxBytes)`** — streams response body with byte counting:
+   - Article: 2MB cap
+   - OG image: 1MB cap
+   - Prevents memory exhaustion DoS
 
-5. DefiLlama fees: ["market", "defillama-summary", "bitcoin"]
-   → /api/market/defillama-summary?gecko_id=bitcoin
-   → edge cache 300s → DefiLlama /overview/fees + /summary/fees
-   → returns: fees 24h/7d/30d/1y, methodology, chart data
+4. **Runtime flag** — `global_fetch_strictly_public` in `wrangler.jsonc` blocks actual network connections to private IPs at the Cloudflare Workers runtime level (catches DNS rebinding that hostname string comparison can't)
 
-6. TVL history:  ["market", "defillama-tvl-history", "Ethereum"]
-   → /api/market/defillama?path=historicalChainTvl/Ethereum
-   → edge cache 300s → DefiLlama /v2/historicalChainTvl
-   → returns: 90-day TVL history (only if DeFi protocol)
+### XSS Prevention
 
-All 6 queries run in parallel. TanStack Query manages loading states,
-error handling, and caching independently for each.
-```
+1. **`cleanArticleHtml(html)`** in `/api/article/route.ts`:
+   - Tag whitelist: `p, h1-h6, ul, ol, li, a, img, figure, figcaption, blockquote, pre, code, br, hr, em, strong, b, i, u, s, table, thead, tbody, tr, th, td`
+   - Strips: scripts, styles, noscript, svg, iframe, form, nav, footer, header, aside, button, HTML comments
+   - Strips attributes: `class`, `style`, `id`, `onclick`, `onload`, `onerror`, `data-*`
+   - `<a href>`: only http(s), `/`, `#`, `mailto:` allowed; `javascript:`, `data:`, `vbscript:` → dropped
+   - `<img src>`: only http(s) or protocol-relative (`//`); `data:` URIs rejected
+   - **All fallback paths** (og:image, og:description) now route through `cleanArticleHtml()` — not raw template literals
+
+2. **`markdownToHtml(md)`** in `src/lib/markdown.ts`:
+   - Escape-first: HTML entities (`& < > " '`) are escaped BEFORE Markdown parsing
+   - Links: only `http(s)` scheme allowed; other schemes become plain text
+   - Hard cap: 4000 chars input, 3 paragraphs
+
+3. **Telegram post sanitization** in `/api/channel/route.ts`:
+   - Custom `sanitizePostHtml()` strips dangerous tags and attributes
+   - HTML entities decoded (including RTL marks: `&rlm;`, `&lrm;`, `&zwnj;`)
+
+### SW Cache Isolation
+
+`/api/article` and `/api/og-image` are excluded from Service Worker cache:
+- **Write**: `noCache` flag prevents `cache.put()` for these paths
+- **Read**: On network failure, returns 503 immediately (before `cache.match()`)
+- **Version bump**: `v2.0.0` → `v2.1.0` flushes all old caches (including any cached proxy responses from before the fix)
 
 ---
 
-## 🔄 What Happens When User Navigates
+## 📰 Content Pipeline
 
-```
-User on /crypto/market (Market Intelligence)
-  ↓ TanStack Query has:
-  - ["market", "coingecko-markets", "top100"] → cached (fresh)
-  - ["market", "cmc-listings", "top100"] → cached (fresh)
-  - ["market", "global-stats"] → cached (fresh)
+### RSS Feed Aggregation (`/api/feed`)
 
-User clicks "Bitcoin" → navigates to /crypto/market/bitcoin
-  ↓ CoinDetail mounts with 6 useQuery calls:
-  - ["market", "coingecko-coin", "bitcoin"] → NOT cached → fetch
-  - ["market", "cmc-listings", "top100"] → ALREADY cached! → 0 fetch
-  - ["market", "cmc-coin", "bitcoin"] → NOT cached → fetch
-  - ["market", "defillama-protocol", "bitcoin"] → NOT cached → fetch
-  - ["market", "defillama-summary", "bitcoin"] → NOT cached → fetch
-  - ["market", "defillama-tvl-history", "Ethereum"] → NOT cached → fetch
+1. Sources filtered by `category`, `language`, optional `source` ID
+2. Up to 8 sources fetched in parallel (`Promise.allSettled`)
+3. Each source: `fetchWithTimeout` (10s) → `parseFeed` (regex-based, 60 items max) → cache by feed URL (5min TTL)
+4. `pathFilter`: if source has `pathFilter`, items filtered by `link.includes(pathFilter)` (e.g., Zoomit `/space/`)
+5. Dedupe: by normalized title + hostname + pathname
+6. Sort: by pubDate descending
+7. Response: `Cache-Control: public, s-maxage=600, stale-while-revalidate=1200`
 
-5 new fetches in parallel, 1 shared from cache.
+### Article Extraction (`/api/article`)
 
-User navigates back to /crypto/market
-  ↓ MarketIntelligence mounts:
-  - ["market", "coingecko-markets", "top100"] → STILL cached (gcTime 5min)
-  → Instant render! 0 API calls.
-  → Background: stale? Yes → refetch silently → update when ready.
-```
+1. URL validated (http/https only)
+2. SSRF guard: `isBlockedHost(hostname)` → 400 if blocked
+3. `fetchWithTimeout` (10s, redirect: "follow")
+4. Post-redirect SSRF guard
+5. `readBodyCapped` (2MB)
+6. `extractArticleHtml(html)` — 5 strategies (see above)
+7. `extractImages()` — checks `src`, then `data-src`, `data-lazy-src`, `data-lazy-original`, `data-original` (lazy-load fallback)
+8. `cleanArticleHtml()` — whitelist sanitizer on body + fallback paths
+9. `extractMeta()` — og:title, og:image, og:description, author, published_date, favicon
 
----
+### Image Extraction
 
-## 📈 Resource Consumption Analysis
+`extractImages(html)` in `/api/article/route.ts`:
+- Matches full `<img ...>` tags (not just `src` attribute)
+- Tries `src` first
+- If `src` is `data:` URI or empty, checks: `data-src`, `data-lazy-src`, `data-lazy-original`, `data-original`
+- Filters: rejects `data:` URIs, dedupes
+- Max 20 images
 
-### Cloudflare Workers Free Tier (100K requests/day)
+### pathFilter
 
-With edge caching, each API route is called at most once per cache TTL
-per Cloudflare region. Assuming 1 active region (e.g., Europe):
-
-| Route | Cache TTL | Max calls/day | Notes |
-|---|---|---|---|
-| /api/market/binance-ticker | 10s | 8,640 | Only if user keeps tab open |
-| /api/market/coingecko-markets | 60s | 1,440 | Shared across all users |
-| /api/market/cmc-listings | 60s | 1,440 | Shared |
-| /api/market/coingecko-coin | 120s | 720 | Per-coin, but cached per coin |
-| /api/feed | 600s | 144 | RSS feeds, slow-changing |
-| Other market routes | 300s | ~288 each | F&G, trending, etc. |
-
-**Realistic estimate** (100 active users):
-- Each user triggers ~5 API calls on page load (shared via edge cache)
-- After first load, subsequent users hit edge cache (0 upstream calls)
-- Total invocations/day: ~2,000-3,000 (well within 20K limit)
-
-**Key optimization**: TanStack Query prevents unnecessary client→server
-calls. If data is fresh (within staleTime), no fetch is made.
+For sources whose category-specific RSS endpoints are broken (Zoomit migrated to Next.js, breaking `/space/feed` and `/ai-articles/feed` which now return HTML):
+- Use the main feed URL (`https://www.zoomit.ir/feed/`)
+- Filter items client-side: `items.filter(it => it.link.includes(src.pathFilter!))`
+- 2 sources use pathFilter: `zoomit-main` (`/ai-articles/`), `zoomit-space` (`/space/`)
+- Cache shared between them (key by feed URL, not source ID)
 
 ---
 
-_Last updated: 2026-08-19_
+## 🎨 Brand & UI Architecture
+
+### Logo (`src/components/brand/logo.tsx`)
+
+- Brand: **Ai24Discovery** (3 spans, LTR-isolated via `dir="ltr"`)
+  - Ai → `#00ffff` (cyan)
+  - 24 → `#ffffff` (white)
+  - Discovery → `#2dd4bf` (bright teal)
+- Category name below: always English (not translated)
+  - Special: AI shows "AI Lab" not "AI"
+  - Social shows "Social" (not in CATEGORY_META — uses `SOCIAL_TINT`)
+
+### Category System
+
+7 categories with distinct brand colors:
+
+| Category | Tint | Icon | Route |
+|----------|------|------|-------|
+| Crypto | `#f7931a` | Bitcoin | /crypto |
+| AI | `#2dd4bf` | Brain | /ai |
+| Tech | `#38bdf8` | Cpu | /tech |
+| Gaming | `#a78bfa` | Gamepad2 | /gaming |
+| Entertainment | `#f472b6` | Film | /entertainment |
+| Space | `#e8e6e1` | Rocket | /space |
+| Social | `#ef4444` | Send | /social (route only, not a feed Category) |
+
+### Fonts (self-hosted via @fontsource)
+
+| Font | Weights | Usage |
+|------|---------|-------|
+| Estedad | 800, 900 | Display headings |
+| Vazirmatn | 300-900 | Persian body text |
+| Inter | 300-900 | Latin/numbers |
+| JetBrains Mono | 400, 500, 700 | Code blocks |
+
+CSS variables defined in `globals.css` `:root`:
+```css
+--font-vazirmatn: "Vazirmatn", system-ui, sans-serif;
+--font-inter: "Inter", system-ui, sans-serif;
+--font-jetbrains-mono: "JetBrains Mono", monospace;
+```
+
+No `next/font/google` — all fonts imported as per-weight CSS from `@fontsource` packages in `layout.tsx`.
+
+---
+
+## 📊 Shared Utilities (`src/lib/`)
+
+| File | Purpose | Used By |
+|------|---------|---------|
+| `utils.ts` | `cn()` (clsx + tailwind-merge) | All components |
+| `query-client.ts` | TanStack Query singleton + defaults | providers.tsx |
+| `fetch-with-timeout.ts` | `fetchWithTimeout(url, {headers, timeoutMs, next, redirect})` | All 20 API routes with external fetch |
+| `fallback-cache.ts` | `createFallbackCache<T>()` factory (get/set/clear, indefinite fallback) | 7 API routes |
+| `fetch-guard.ts` | `isBlockedHost(hostname)` + `readBodyCapped(res, maxBytes)` | /api/article, /api/og-image |
+| `markdown.ts` | `markdownToHtml(md)` + `truncateMarkdown(md, n)` (escape-first) | coin-detail.tsx |
