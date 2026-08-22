@@ -18,7 +18,7 @@
  * Version: 2.0.0 — bumped on every release to trigger SW update.
  */
 
-const VERSION = "v2.0.0-opennext";
+const VERSION = "v2.1.0-opennext"; // Bumped from v2.0.0 — flushes old cache (including any cached /api/article responses from before SSRF/XSS fix)
 const STATIC_CACHE = `acd-static-${VERSION}`;
 const PAGE_CACHE = `acd-pages-${VERSION}`;
 const API_CACHE = `acd-api-${VERSION}`;
