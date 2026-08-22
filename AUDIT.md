@@ -1,156 +1,151 @@
 # AUDIT — Ai24Discovery
 
-Last updated: 2026-08-21
+Last updated: 2026-08-22
 
 ---
 
 ## Executive Summary
 
-Ai24Discovery is a bilingual (Persian/English) content discovery + market intelligence platform deployed on Cloudflare Workers (free tier). The project has grown from a simple RSS aggregator to a comprehensive platform with 7 categories, 21 API routes, 10 pages, 62 components, and ~22,000 lines of TypeScript.
+Ai24Discovery is a bilingual (Persian/English) content discovery + market intelligence platform deployed on Cloudflare Workers (free tier). The project has 124 TypeScript/TSX files, ~22,500 lines of code, 21 API routes, 10 pages, 62 components, 20 hooks, 32 RSS sources, 3 Telegram channels, 8 X/Twitter accounts, and 7 categories.
 
 ### Current Status: ✅ STABLE
 - **TypeScript**: 0 errors
 - **ESLint**: 0 errors, 0 warnings
-- **Build**: Success
+- **Build**: Success (including OpenNext Cloudflare Workers build)
 - **Worker gzip**: ~1.36 MiB (free tier 3 MiB limit)
-- **API calls**: Well within free tier limits (CoinGecko ~6-10 calls/min vs 30/min limit)
+- **API calls**: ~6-10/min worst case (CoinGecko limit: 30/min)
+- **Security**: CSP + HSTS + SSRF guards + XSS sanitization + SW cache isolation
 
 ---
 
-## Architecture Overview
+## Resolved Issues
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Cloudflare Worker                        │
-│  ┌─────────────┐  ┌──────────────┐  ┌───────────────────┐  │
-│  │ Next.js 16  │  │ 21 API Routes│  │ Static Assets     │  │
-│  │ App Router  │  │ (force-dyn)  │  │ (OpenNext bundle) │  │
-│  └──────┬──────┘  └──────┬───────┘  └───────────────────┘  │
-│         │                  │                                  │
-│  ┌──────┴──────────────────┴──────────────────────────────┐ │
-│  │              TanStack Query (client-side)              │ │
-│  │  • refetchOnWindowFocus: true (global)                  │ │
-│  │  • Per-query staleTime (10s–30min)                      │ │
-│  │  • Shared cache across pages (same queryKey)           │ │
-│  └────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-         │                    │                    │
-    ┌────┴────┐         ┌─────┴─────┐        ┌─────┴─────┐
-    │ RSS     │         │ CMC/CG    │        │ Telegram  │
-    │ Sources │         │ API       │        │ Preview   │
-    │ (31)    │         │ (keyless)│        │ (t.me/s/) │
-    └─────────┘         └──────────┘        └───────────┘
-```
+### ✅ CRITICAL — XSS in article fallback paths
+- **Was**: `decodeEntities()` converts `&lt;`→`<` in meta tags, then fallback paths injected `meta.ogImage`/`meta.ogTitle`/`meta.ogDescription` into `cleanedHtml` via raw template literals without passing through `cleanArticleHtml()`
+- **Fixed**: Both fallback paths now route through `cleanArticleHtml()` (commit `5037b5e`)
 
----
+### ✅ HIGH — SSRF in /api/article and /api/og-image
+- **Was**: Both routes fetched arbitrary URLs with raw `fetch()` — no host validation, no timeout, no body cap
+- **Fixed**: `src/lib/fetch-guard.ts` with `isBlockedHost()` (blocks private/loopback/link-local/CGNAT IPs) + `readBodyCapped()` (2MB/1MB limits). Pre-fetch + post-redirect host checks (commit `5037b5e`)
 
-## Resolved Issues (from previous audits)
+### ✅ HIGH — Rate-limiting from excessive polling
+- **Was**: 6 `refetchInterval` timers + 15s `setInterval` on ticker → ~30 calls/min
+- **Fixed**: Removed all `refetchInterval`s, enabled `refetchOnWindowFocus: true` globally (commit `95bba93`)
 
-### ✅ CRITICAL — XSS in dangerouslySetInnerHTML (Task 33)
-- **Was**: Coin description, article HTML, and Telegram posts rendered via `dangerouslySetInnerHTML` without sanitization
-- **Fixed**: 
-  - Coin description: `src/lib/markdown.ts` — safe Markdown→HTML renderer (escape first, then parse)
-  - Article HTML: `cleanArticleHtml()` — whitelist tags, reject `javascript:`/`data:` hrefs
-  - Telegram posts: existing sanitization in `/api/channel` route
+### ✅ HIGH — Article extraction incomplete
+- **Was**: `findMatchingCloseTag` had a `lastIndex` bug; mihanblockchain/gamefa/digiato articles returned wrong/empty content
+- **Fixed**: Tokenizer approach (commit `0c572a8`); JSON-LD extraction for JS-rendered sites (commit `0c572a8`); `imageSourceHtml` field for image harvesting when JSON-LD wins (commit `8845eb9`)
 
-### ✅ HIGH — Article extraction incomplete (Task 39)
-- **Was**: `findMatchingCloseTag` had a `lastIndex` bug causing depth counting to drift. Articles from mihanblockchain, gamefa, and digiato returned wrong content or 0 bytes.
-- **Fixed**: Tokenizer approach — collect all open/close tag positions into a sorted event array, then walk with depth counting. Also added JSON-LD `articleBody` extraction for JS-rendered sites (Digiato).
+### ✅ CRITICAL — Weather city change crashed page
+- **Was**: `useLocalStorage` infinite loop — `getSnapshot` returned new object each call via `JSON.parse`
+- **Fixed**: Snapshot caching with `useRef` (commit `80f9ca0`)
 
-### ✅ HIGH — Rate-limiting from excessive polling (Task 38)
-- **Was**: 6 `refetchInterval` timers + 15s `setInterval` on ticker → ~30 calls/min (hitting CoinGecko 30/min limit)
-- **Fixed**: Removed all `refetchInterval`s, enabled `refetchOnWindowFocus: true` globally. Now ~6-10 calls/min.
+### ✅ MEDIUM — Missing CSP/HSTS headers
+- **Fixed**: Added via `next.config.ts` `headers()` function (commit `5037b5e`)
 
-### ✅ HIGH — Telegram posts showed oldest first (Task 38)
-- **Was**: Telegram web preview returns posts chronologically (oldest first). UI showed oldest post at top.
-- **Fixed**: `posts.reverse()` in `/api/channel` route. Also reduced edge cache from 5min to 1min.
+### ✅ MEDIUM — SW cache poisoning
+- **Was**: Service Worker cached `/api/article` responses — XSS payload would persist across sessions
+- **Fixed**: `/api/article` and `/api/og-image` excluded from cache; SW version bumped to `v2.1.0` (commits `5037b5e`, `6cc0320`)
 
-### ✅ CRITICAL — Weather city change crashed page (Task 40)
-- **Was**: `useLocalStorage` infinite loop — `getSnapshot` returned a new object each call (via `JSON.parse`), causing React's `useSyncExternalStore` to detect a "change" and re-render infinitely → "Maximum update depth exceeded" → page crash.
-- **Fixed**: Cache the parsed value in refs. Only re-parse when the raw localStorage string actually changes.
+### ✅ MEDIUM — Zoomit RSS feeds broken
+- **Fixed**: `pathFilter` field on Source interface — use main feed, filter by URL path (commit `ca93d29`)
 
-### ✅ MEDIUM — Zoomit RSS feeds broken (Task 41)
-- **Was**: Zoomit migrated to Next.js platform and broke category-specific RSS (`/space/feed`, `/ai-articles/feed` return HTML).
-- **Fixed**: `pathFilter` field on Source interface — use main feed, filter client-side by URL path.
+### ✅ MEDIUM — Lazy-load images silently dropped
+- **Fixed**: `extractImages()` checks `data-src`, `data-lazy-src`, `data-lazy-original`, `data-original` when `src` is `data:` URI (commit `3fd02bb`)
 
-### ✅ LOW — MiniTrend was misleading (Task 36)
-- **Was**: MiniTrend plotted 3 change percentages (7d%, 24h%, 1h%) as a "trend line" — not a real price chart.
-- **Fixed**: Removed MiniTrend, replaced with honest "7d %" sortable column.
+### ✅ LOW — MiniTrend was misleading
+- **Fixed**: Removed, replaced with honest "7d %" sortable column (commit `b41562b`)
+
+### ✅ LOW — Duplicate data in Market Intelligence
+- **Fixed**: Unified MarketPulse replaces Stats Bar + MarketOverview (commit `21890e5`)
 
 ---
 
 ## Remaining Issues
 
-### 🟡 MEDIUM — No CSP/HSTS headers
-- **Issue**: No Content-Security-Policy or Strict-Transport-Security headers are set.
-- **Impact**: Potential XSS vector if a sanitized tag slips through. No transport security enforcement.
-- **Recommendation**: Add CSP headers in `next.config.ts` or via Cloudflare Workers headers. Requires careful tuning to avoid breaking inline styles/scripts.
+### 🟡 MEDIUM — No ErrorBoundary
+- **Issue**: No React Error Boundary anywhere in `src/` — unhandled render errors crash the whole page
+- **Impact**: Users see blank page or "This page couldn't load" with no recovery
+- **Recommendation**: Add a root-level ErrorBoundary with fallback UI
 - **Priority**: Phase 2
 
-### 🟡 MEDIUM — SSRF in /api/article and /api/og-image
-- **Issue**: The article proxy fetches arbitrary URLs. While `global_fetch_strictly_public` prevents fetching private IPs, it doesn't validate the URL scheme beyond http/https.
-- **Impact**: Low (Cloudflare Workers environment is sandboxed), but could be used for SSRF if the Workers runtime changes behavior.
-- **Recommendation**: Add URL allowlist or at minimum validate that the hostname is not a known internal address.
-- **Priority**: Phase 2
+### 🟡 MEDIUM — DNS rebinding attack vector
+- **Issue**: `isBlockedHost()` is hostname-string-based; a public domain that resolves to a private IP (e.g. `*.localtest.me` → `127.0.0.1`) passes the check
+- **Mitigation**: Cloudflare Workers `global_fetch_strictly_public` flag blocks the actual network connection at runtime — this is a second layer of defense
+- **Risk**: Only in self-hosted deployments without the flag
+- **Priority**: Phase 3 (would need DNS resolution in Workers, which has API limitations)
 
-### 🟢 LOW — Some unused shadcn/ui components
-- **Issue**: 30+ shadcn/ui components are installed but not all are used (e.g., accordion, breadcrumb, collapsible, slider).
-- **Impact**: Slight bundle size increase.
-- **Recommendation**: Remove unused components via `npx shadcn-ui@latest remove <component>`.
+### 🟢 LOW — Unused shadcn/ui components
+- **Issue**: Some shadcn/ui components installed but not used (accordion, breadcrumb, collapsible, slider, etc.)
+- **Impact**: Slight bundle size increase
 - **Priority**: Phase 3
 
 ### 🟢 LOW — No automated tests
-- **Issue**: No unit tests or integration tests exist.
-- **Impact**: Regressions can only be caught by manual QA.
-- **Recommendation**: Add Playwright E2E tests for critical paths (homepage load, category navigation, article reader, market table).
+- **Issue**: No unit tests or E2E tests
+- **Recommendation**: Playwright E2E for critical paths (homepage, category navigation, article reader, market table)
 - **Priority**: Phase 3
+
+### 🟢 LOW — `unsafe-inline` in CSP script-src
+- **Issue**: Next.js bootstrap scripts require inline execution; OpenNext architecture doesn't support nonce plumbing without middleware
+- **Mitigation**: XSS injection paths are closed (sanitizer + escape-first markdown); CSP serves as second layer for external script loading
+- **Priority**: Phase 3 (requires middleware-based nonce generation)
+
+### 🟢 LOW — Version string mismatch
+- **Issue**: `package.json` says `v1.1.0`, mobile menu footer says `v1.2`
+- **Priority**: Fix when convenient
 
 ---
 
 ## Performance Metrics
 
-| Metric | Value | Notes |
-|--------|-------|-------|
-| Worker gzip size | ~1.36 MiB | Free tier limit: 3 MiB |
-| TypeScript errors | 0 | |
-| ESLint errors | 0 | |
-| ESLint warnings | 0 | |
-| API calls/min (worst case) | ~6-10 | CoinGecko limit: 30/min |
-| TanStack Query staleTime | 10s–30min | Per-query optimization |
-| Edge cache (s-maxage) | 10s–600s | Per-route optimization |
-| localStorage keys | 9 | User preferences + caches |
-| Service Worker caches | 4 | Static, pages, API, images |
+| Metric | Value |
+|--------|-------|
+| Worker gzip size | ~1.36 MiB |
+| TypeScript errors | 0 |
+| ESLint errors | 0 |
+| API calls/min (worst case) | ~6-10 |
+| TanStack Query default staleTime | 60s |
+| TanStack Query gcTime | 10min |
+| Edge cache (s-maxage) | 10s–3600s |
+| SW version | v2.1.0-opennext |
+| localStorage keys | ~11 |
 
 ---
 
 ## Security Checklist
 
-| Check | Status | Notes |
-|-------|--------|-------|
-| XSS prevention | ✅ Fixed | Markdown renderer + HTML sanitizer |
-| SSRF protection | ⚠️ Partial | `global_fetch_strictly_public` flag |
-| Token hygiene | ✅ Clean | No tokens in .git/config |
-| CSP headers | ❌ Missing | Phase 2 |
-| HSTS headers | ❌ Missing | Phase 2 |
-| Input validation | ✅ Good | URL validation, length limits |
-| Rate limiting | ✅ Optimized | refetchOnWindowFocus instead of polling |
-| Secret management | ✅ Clean | .env files gitignored |
+| Check | Status |
+|-------|--------|
+| XSS prevention (sanitizer) | ✅ Fixed |
+| XSS prevention (markdown escape-first) | ✅ |
+| SSRF protection (isBlockedHost) | ✅ Fixed |
+| SSRF protection (readBodyCapped) | ✅ Fixed |
+| Post-redirect SSRF check | ✅ Fixed |
+| CSP headers | ✅ Fixed |
+| HSTS headers | ✅ Fixed |
+| SW cache isolation (proxy routes) | ✅ Fixed |
+| SW version bump | ✅ Fixed (v2.1.0) |
+| Token hygiene (no tokens in .git/config) | ✅ |
+| Rate-limit protection (refetchOnWindowFocus) | ✅ Fixed |
+| Secret management (.env gitignored) | ✅ |
+| ErrorBoundary | ❌ Missing |
+| Automated tests | ❌ Missing |
 
 ---
 
 ## Data Sources Summary
 
-| Source Type | Count | Primary Use | API Key Required |
-|-------------|-------|-------------|------------------|
-| RSS feeds (Persian) | 14 | Content discovery | No |
-| RSS feeds (English) | 17 | Content discovery | No |
-| Telegram channels | 3 | Social portal | No (web preview) |
-| X/Twitter accounts | 8 | Social portal | No (link cards) |
-| CoinMarketCap | 6 routes | Market data | No (keyless API) |
-| CoinGecko | 3 routes | Market data | No (free tier) |
-| Binance | 1 route | Real-time prices | No |
-| Open-Meteo | 2 routes | Weather + geocode | No (free, 10k/day) |
-| Nobitex | 1 route | Tether/Toman price | No (HTML scraping) |
-| alternative.me | 2 routes | Fear & Greed index | No |
+| Source Type | Count | API Key Required |
+|-------------|-------|------------------|
+| RSS feeds (Persian) | 15 | No |
+| RSS feeds (English) | 17 | No |
+| Telegram channels | 3 | No (web preview) |
+| X/Twitter accounts | 8 | No (link cards) |
+| CoinMarketCap (keyless) | 6 routes | No |
+| CoinGecko (free tier) | 3 routes | No (30 req/min) |
+| Binance | 1 route | No |
+| Open-Meteo | 2 routes | No (10k/day) |
+| Nobitex (HTML scraping) | 1 route | No |
+| alternative.me | 2 routes | No |
 
-**Total external API dependencies**: 9 services, all free tier, no API keys required.
+**Total**: 9 external services, all free tier, no API keys.
